@@ -1,0 +1,47 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500&display=swap');
+
+.heading {
+  font-family: 'heading', sans-serif;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Poppins', sans-serif;
+    @apply text-main
+  }
+
+  h1 {
+    @apply heading font-bold text-5xl text-main;
+  }
+
+  h2 {
+    @apply heading font-bold text-2xl text-main;
+  }
+
+  h3 {
+    @apply heading font-bold text-xl text-main;
+  }
+
+  h4 {
+    @apply heading font-bold text-lg text-main;
+  }
+
+  h5 {
+    @apply heading font-bold text-sm text-main;
+  }
+
+  h6 {
+    @apply heading font-bold text-xs text-main;
+  }
+}
+
+@layer components {
+  .elong-arrow {
+    d: path('M0 9.35772H50.9956L44.2001 2.29941L46.4134 0L57 11L46.4134 22L44.2001 19.7006L50.9956 12.6423H0V9.35772Z');
+    d: 'M0 9.35772H50.9956L44.2001 2.29941L46.4134 0L57 11L46.4134 22L44.2001 19.7006L50.9956 12.6423H0V9.35772Z';
+  }
+}

@@ -1,0 +1,39 @@
+@layout('layouts/main')
+@set('title', 'Dashboard - Backlinks')
+@set('body_class', 'flex justify-center items-center')
+
+@section('scripts')
+  @entryPointScripts('backlinks')
+@end
+
+@section('css')
+  <link rel="stylesheet" href="/css/mermaid.min.css">
+@end
+
+
+@section('body')
+  <main>
+      <div class="max-w-xl mx-auto">
+        <h1 class="flex items-center gap-3">
+          <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24">
+            <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2">
+              <path d="m12 17l-1.5 1.5a3.536 3.536 0 0 1-5 0v0a3.536 3.536 0 0 1 0-5l3-3a3.536 3.536 0 0 1 5 0v0"/>
+              <path d="m12 7l1.5-1.5a3.536 3.536 0 0 1 5 0v0a3.536 3.536 0 0 1 0 5l-3 3a3.536 3.536 0 0 1-5 0v0"/>
+            </g>
+          </svg>
+          BACKLINKS
+        </h1>
+        <p class="text-2xl mb-8 mt-2">
+          Voyons l'état actuel de vos backlinks ?
+        </p>
+      </div>
+
+      <div class="max-w-5xl mx-10 select-none">
+        <div id="gridjs-container" class="w-full"></div>
+        <button id="add-row" class="block text-3xl py-1 bg-main/10 hover:bg-main/20 transition-all duration-150 border-2 border-main text-main border-dashed w-full rounded-md select-none">
+          +
+        </button>
+      </div>
+  </main>
+@end
+
