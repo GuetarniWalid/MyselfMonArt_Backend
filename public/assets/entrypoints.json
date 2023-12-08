@@ -12,6 +12,11 @@
       "js": [
         "http://localhost:8080/assets/backlinks.js"
       ]
+    },
+    "painting-options": {
+      "js": [
+        "http://localhost:8080/assets/painting-options.js"
+      ]
     }
   }
 }

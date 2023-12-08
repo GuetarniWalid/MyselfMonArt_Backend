@@ -1,0 +1,68 @@
+@layout('layouts/main')
+@set('title', 'Dashboard - Options des tableaux')
+@set('body_class', 'flex justify-center items-center')
+
+@section('scripts')
+  @entryPointScripts('painting-options')
+@end
+
+@section('css')
+  <link rel="stylesheet" href="/css/mermaid.min.css">
+@end
+
+
+@section('body')
+  <main>
+      <div class="max-w-4xl mx-auto">
+        <h1 class="flex items-center gap-3">
+          <svg xmlns="http://www.w3.org/2000/svg" width="55" height="55" viewBox="0 0 14 14">
+            <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" d="M5 .5H3a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1m0 9H3a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1m6-4H9a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1m-7-1v5m4-2H7a3 3 0 0 1-3-3"/>
+          </svg>
+          OPTIONS DES TABLEAUX
+        </h1>
+        <p class="text-2xl mb-8 mt-2">
+          Voyons les changement que vous voulez apporter aux variantes de vos tableaux
+        </p>
+      </div>
+
+      <div id="wrapper" class="max-w-5xl">
+        
+
+
+        <template id="container">
+          <div class="container mb-10" data-level="1"></div>
+        </template>
+
+        <template id="option">
+            <div class="option relative inline-flex group">
+              <input id="inputDynamique" type="text" name="first" value="Option" class="first absolute top-0 left-0 text-secondary rounded py-3 px-3 w-full" oninput="adjustWidth(this)">
+              <span class="invisible py-3 px-3">Option</span>
+            </div>
+        </template>
+
+        <template id="button-create-child-or-sibling">
+          <div class="button-create-child-or-sibling absolute left-1/2 -bottom-1 -translate-x-1/2 translate-y-full flex gap-2">
+            <button class="rounded-full border-2 hover:text-secondary duration-100 opacity-0 group-hover:opacity-100" onclick="addSiblingOption(this)">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
+                <path fill="currentColor" d="m12 18l-6-6l1.4-1.4l3.6 3.6V5h2v9.2l3.6-3.6L18 12l-6 6Z"/>
+              </svg>
+            </button>
+            <button class="rounded-full border-2 hover:text-secondary duration-100 opacity-0 group-hover:opacity-100" onclick="addChildOption(this)">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="-3 -3 29 29">
+                <path fill="currentColor" d="m14 21l-1.425-1.425l3.6-3.575H5V4h2v10h9.175l-3.6-3.6l1.4-1.425L20 15l-6 6Z"/>
+              </svg>
+            </button>
+          </div>
+        </template>
+
+        <template id="button-create-last-sibling">
+          <button class="button-create-last-sibling absolute rounded-full border-2 -right-1 top-1/2 translate-x-full -translate-y-1/2 hover:text-secondary duration-100 opacity-0 group-hover:opacity-100" onclick="addLastSiblingOption(this)">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
+              <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+            </svg>
+          </button>
+        </template>
+
+      </div>
+  </main>
+@end

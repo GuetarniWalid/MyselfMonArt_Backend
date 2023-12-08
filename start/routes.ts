@@ -33,6 +33,9 @@ Route.group(() => {
   Route.get('/backlinks', async ({ view }) => {
     return view.render('pages/backlinks')
   })
+  Route.get('/painting-options', async ({ view }) => {
+    return view.render('pages/painting-options')
+  })
 })
 .prefix('/dashboard')
 
@@ -43,5 +46,10 @@ Route.group(() => {
     Route.post('/check', 'BacklinksController.checkLinks')
   })
   .prefix('/backlinks')
+
+  Route.group(() => {
+    Route.get('/options/all', 'PaintingsController.index')
+  })
+  .prefix('/paintings')
   })
 .prefix('/api')

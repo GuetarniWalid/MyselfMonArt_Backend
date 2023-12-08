@@ -13,5 +13,13 @@ module.exports = {
       }
     }
   },
+  safelist: [
+    'hover:bg-cyan-700',
+    'border-cyan-700',
+    'text-cyan-700',
+    "hover:bg-green-700",
+    "border-green-700",
+    "text-green-700"
+  ],
   plugins: []
 }

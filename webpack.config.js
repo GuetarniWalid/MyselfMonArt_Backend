@@ -47,6 +47,7 @@ Encore.setPublicPath('/assets')
 */
 Encore.addEntry('app', './resources/js/app.js')
 Encore.addEntry('backlinks', './resources/js/backlinks.js')
+Encore.addEntry('painting-options', './resources/js/painting-options.js')
 
 /*
 |--------------------------------------------------------------------------
