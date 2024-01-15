@@ -31,4 +31,7 @@ export default Env.rules({
   MYSQL_USER: Env.schema.string(),
   MYSQL_PASSWORD: Env.schema.string.optional(),
   MYSQL_DB_NAME: Env.schema.string(),
+  SHOPIFY_SHOP_URL: Env.schema.string(),
+  SHOPIFY_API_VERSION: Env.schema.string(),
+  SHOPIFY_ACCESS_TOKEN_SECRET: Env.schema.string(),
 })

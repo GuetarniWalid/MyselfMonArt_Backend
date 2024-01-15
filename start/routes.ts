@@ -22,7 +22,6 @@ import Route from '@ioc:Adonis/Core/Route'
 
 Route.get('/', async ({ ally }) => {
   return ally.use('google').redirect()
-  
 })
 
 Route.get('/welcome', async ({ view }) => {
@@ -36,20 +35,19 @@ Route.group(() => {
   Route.get('/painting-options', async ({ view }) => {
     return view.render('pages/painting-options')
   })
-})
-.prefix('/dashboard')
+}).prefix('/dashboard')
 
 Route.group(() => {
   Route.group(() => {
     Route.get('/', 'BacklinksController.index')
     Route.post('/delete', 'BacklinksController.delete')
     Route.post('/check', 'BacklinksController.checkLinks')
-  })
-  .prefix('/backlinks')
+  }).prefix('/backlinks')
 
   Route.group(() => {
     Route.get('/options/all', 'PaintingsController.index')
-  })
-  .prefix('/paintings')
-  })
-.prefix('/api')
+    Route.post('/options/store', 'PaintingsController.store')
+  }).prefix('/paintings')
+
+  Route.post('/product/create', 'ProductsController.create')
+}).prefix('/api')
