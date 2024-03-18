@@ -34,30 +34,44 @@
         </p>
       </div>
 
+      <div class="mb-8" id="aspect-ration-selection">
+        <button class="px-4 py-3 bg-main text-secondary border-main border-2 rounded mx-2 hover:bg-main hover:text-secondary" aria-pressed="true" data-aspect-ratio="square" onclick="selectAspectRatio(this)">Carré</button>
+        <button class="px-4 py-3 text-main border-main border-2 rounded mx-2 hover:bg-main hover:text-secondary" aria-pressed="false" data-aspect-ratio="portrait" onclick="selectAspectRatio(this)">Portrait</button>
+        <button class="px-4 py-3 text-main border-main border-2 rounded mx-2 hover:bg-main hover:text-secondary" aria-pressed="false" data-aspect-ratio="landscape" onclick="selectAspectRatio(this)">Paysage</button>
+      </div>
+      <hr class="border-main/20 mb-8">
+
       <div id="wrapper" class="max-w-5xl">
         <template id="option-container">
-          <div class="option-container mb-16 flex items-center gap-5" data-level="1"></div>
+          <div class="option-container relative mb-16 flex items-center gap-5 group/option-container" data-level="1"></div>
         </template>
         <template id="option">
           <div class="option flex gap-3 mr-3">
             <div class="name-price relative inline-flex group text-secondary rounded">
                 <div class="relative inline-block">
-                  <input type="text" name="name" value="Option" class="absolute bg-transparent inset-0 outline-none py-3 px-3" oninput="adjustWidth(this);/*triggerAfterChangement();*/">
-                  <span class="name invisible py-3 px-3">Option</span>
+                  <input type="text" name="name" value="Option" class="absolute bg-transparent inset-0 outline-none py-3 px-3" oninput="adjustWidth(this)">
+                  <span class="name invisible py-3 px-3 whitespace-nowrap">Option</span>
                 </div>
                 <span class="py-3 px-3">|</span>
                 <div class="relative">
-                  <input type="number" name="price" value="0" class="input-number-custom absolute inset-0 bg-transparent outline-none" oninput="adjustWidth(this);/*triggerAfterChangement();*/">
-                  <span class="price invisible py-3 pl-3">0</span>
+                  <input type="number" name="price" value="0" class="input-number-custom absolute inset-0 bg-transparent outline-none" oninput="adjustWidth(this)">
+                  <span class="price invisible py-3 pl-3 whitespace-nowrap">0</span>
                 </div>
                 <span class="price py-3 pr-3">€</span>
                 <button class="absolute -top-1 left-1/2 -translate-x-1/2 -translate-y-full border-red-500 text-red-500 border-2 rounded-full w-6 h-6 inline-flex justify-center items-center hover:bg-red-500 hover:text-secondary duration-100 opacity-0 group-hover:opacity-100" onclick="recursiveRemoveOption(this)">
                   <svg class="inline" xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24"><path fill="currentColor" d="M19 12.998H5v-2h14z"/></svg>
                 </button>
             </div>
-            <button class="button-add-info rounded-full" onclick="">
+            <button class="button-add-info rounded-full" onclick="showInfoPopup(this)">
               <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="currentColor" d="M11 7v2h2V7zm3 10v-2h-1v-4h-3v2h1v2h-1v2zm8-5c0 5.5-4.5 10-10 10S2 17.5 2 12S6.5 2 12 2s10 4.5 10 10m-2 0c0-4.42-3.58-8-8-8s-8 3.58-8 8s3.58 8 8 8s8-3.58 8-8"/></svg>
             </button>
+            <div class="popup-info hidden fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 p-12 pt-6 bg-secondary border-2 rounded-2xl max-w-[400px] z-50">
+              <p class="popup-title mb-6 font-bold underline"></p>
+              <label for="technicalType" class="text-sm">Type technique</label>
+              <input id="technicalType" type="text" name="technicalType" class="px-3 py-2 w-full mt-1 rounded mb-5">
+              <label for="technicalName" class="text-sm">Nom technique</label>
+              <input id="technicalName" type="text" name="technicalName" class="px-3 py-2 w-full mt-1 rounded">
+            </div>
           </div>
         </template>
         <template id="button-create-child-or-sibling">
@@ -75,19 +89,38 @@
           </div>
         </template>
         <template id="button-add-sibling">
-          <button class="absolute -bottom-1 translate-y-full left-1/2 -translate-x-1/2 rounded-full border-2 hover:text-secondary duration-100 opacity-0 group-hover:opacity-100" onclick="">
+          <button class="absolute -bottom-1 translate-y-full left-1/2 -translate-x-1/2 rounded-full border-2 hover:text-secondary duration-100 opacity-0 group-hover:opacity-100" onclick="addSiblingOptionAction2(this)">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M17.073 12.5H5.5q-.213 0-.357-.143Q5 12.213 5 12t.143-.357q.144-.143.357-.143h11.573l-3.735-3.735q-.146-.146-.152-.344q-.007-.198.152-.363q.166-.166.357-.169q.192-.002.357.163l4.383 4.383q.13.13.183.267q.053.136.053.298t-.053.298q-.053.137-.183.267l-4.383 4.383q-.146.146-.347.153q-.201.007-.367-.159q-.16-.165-.162-.354q-.003-.188.162-.353z"/></svg>
+          </button>
+        </template>
+        <template id="button-add-sibling-container">
+          <button class="button-add-sibling-container absolute top-1/2 -translate-y-1/2 -left-3 -translate-x-full rounded-full border-2 border-green-700 text-green-700 hover:text-secondary hover:bg-green-700 duration-100 opacity-0 group-hover/option-container:opacity-100" onclick="addContainerLevel3Action(this)">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
+              <path fill="currentColor" d="m12 18l-6-6l1.4-1.4l3.6 3.6V5h2v9.2l3.6-3.6L18 12l-6 6Z"></path>
+            </svg>
           </button>
         </template>
       </div>
 
-      <button id="save-to-database" class="mt-8 mb-28 bg-green-600 text-secondary py-4 px-6 rounded hover:bg-green-700 duration-100" onclick="saveToDatabase(this)">
-        <svg class="animate-spin inline-block -ml-1 mr-3 h-5 w-5 text-secondary hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-        <span id="loading-text" class="hidden">Changements en cours...</span>
-        <span id="static-text">Sauvegarder</span>
-      </button>
+      <div class="flex flex-wrap gap-5">
+        <button id="save-to-database" class="mt-8 mb-28 bg-green-600 text-secondary h-14 px-6 rounded hover:bg-green-700 duration-100" onclick="saveToDatabase(this)">
+          <svg class="animate-spin inline-block -ml-1 mr-3 h-5 w-5 text-secondary hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span id="loading-text" class="hidden">Changements en cours...</span>
+          <span id="static-text">Sauvegarder</span>
+          <span class="hidden" id="json-to-save"></span>
+        </button>
+        <button id="copy-string-script" class="mt-8 mb-28 text-main h-14 px-6 rounded hover:text-secondary hover:bg-main duration-100 border-main border-2" onclick="copyScript()">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="currentColor" d="M9 18q-.825 0-1.412-.587T7 16V4q0-.825.588-1.412T9 2h9q.825 0 1.413.588T20 4v12q0 .825-.587 1.413T18 18zm0-2h9V4H9zm-4 6q-.825 0-1.412-.587T3 20V6h2v14h11v2zm4-6V4z"/></svg>
+          <span class="hidden" id="string-script"></span>
+        </button>
+        <button id="copy-locale" class="mt-8 mb-28 text-main h-14 px-6 rounded hover:text-secondary hover:bg-main duration-100 border-main border-2" onclick="copyLocale()">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 512 512"><path fill="currentColor" d="m478.33 433.6l-90-218a22 22 0 0 0-40.67 0l-90 218a22 22 0 1 0 40.67 16.79L316.66 406h102.67l18.33 44.39A22 22 0 0 0 458 464a22 22 0 0 0 20.32-30.4ZM334.83 362L368 281.65L401.17 362Zm-66.99-19.08a22 22 0 0 0-4.89-30.7c-.2-.15-15-11.13-36.49-34.73c39.65-53.68 62.11-114.75 71.27-143.49H330a22 22 0 0 0 0-44H214V70a22 22 0 0 0-44 0v20H54a22 22 0 0 0 0 44h197.25c-9.52 26.95-27.05 69.5-53.79 108.36c-31.41-41.68-43.08-68.65-43.17-68.87a22 22 0 0 0-40.58 17c.58 1.38 14.55 34.23 52.86 83.93c.92 1.19 1.83 2.35 2.74 3.51c-39.24 44.35-77.74 71.86-93.85 80.74a22 22 0 1 0 21.07 38.63c2.16-1.18 48.6-26.89 101.63-85.59c22.52 24.08 38 35.44 38.93 36.1a22 22 0 0 0 30.75-4.9Z"/></svg>
+          <span class="hidden" id="string-locale"></span>
+        </button>
+      </div>
   </main>
+  <div id="overlay" class="hidden fixed w-screen h-screen top-0 left-0 bg-black/30 z-40"></div>
 @end

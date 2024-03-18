@@ -1,22 +1,18 @@
-// import type { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
+import type { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
 import Variant from 'App/Models/Variants'
 
 export default class PaintingsController {
-  public async index() {
-    const variants = await Variant.first()
-    console.log('🚀 ~ variants:', variants)
+  public async index({ request }: HttpContextContract) {
+    const aspectRatio = request.param('aspectRatio')
+    const variants = await Variant.query().where('name', aspectRatio).first()
     return variants
   }
 
   public async store({ request }) {
     const variants = request.input('variants')
-    console.log('🚀 ~ variants:', variants)
+    const aspectRatio = request.input('aspectRatio')
 
-    await Variant.truncate()
-
-    const variant = new Variant()
-    variant.json = variants
-    await variant.save()
+    await Variant.updateOrCreate({ name: aspectRatio }, { json: variants })
 
     return {
       message: 'success',

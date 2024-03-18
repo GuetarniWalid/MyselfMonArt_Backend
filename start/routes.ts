@@ -20,13 +20,16 @@
 
 import Route from '@ioc:Adonis/Core/Route'
 
-Route.get('/', async ({ ally }) => {
-  return ally.use('google').redirect()
-})
-
-Route.get('/welcome', async ({ view }) => {
+Route.get('/', async ({ view }) => {
   return view.render('welcome')
-})
+}).middleware(['auth'])
+
+Route.group(() => {
+  Route.get('/', async ({ ally }) => {
+    return ally.use('google').redirect()
+  })
+  Route.get('/callback', 'SocialAuthsController.index')
+}).prefix('/login')
 
 Route.group(() => {
   Route.get('/backlinks', async ({ view }) => {
@@ -35,7 +38,9 @@ Route.group(() => {
   Route.get('/painting-options', async ({ view }) => {
     return view.render('pages/painting-options')
   })
-}).prefix('/dashboard')
+})
+  .prefix('/dashboard')
+  .middleware(['auth'])
 
 Route.group(() => {
   Route.group(() => {
@@ -45,7 +50,7 @@ Route.group(() => {
   }).prefix('/backlinks')
 
   Route.group(() => {
-    Route.get('/options/all', 'PaintingsController.index')
+    Route.get('/options/:aspectRatio', 'PaintingsController.index')
     Route.post('/options/store', 'PaintingsController.store')
   }).prefix('/paintings')
 

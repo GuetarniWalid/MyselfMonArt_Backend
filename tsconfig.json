@@ -34,7 +34,8 @@
       "@japa/preset-adonis/build/adonis-typings",
       "@adonisjs/ally",
       "@adonisjs/lucid",
-      "adonis5-scheduler"
+      "adonis5-scheduler",
+      "@adonisjs/auth"
     ]
   }
 }

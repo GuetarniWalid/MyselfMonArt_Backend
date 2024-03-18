@@ -22,7 +22,10 @@ export default class Shopify {
   }
 
   public async createProduct(product: Product) {
-    const response = this.client.request({ method: 'POST', data: { product } })
-    return response
+    const response = await this.client.request({ method: 'POST', data: { product } })
+    const productCreated = response.data.product as ProductCreated
+    return {
+      variantID: productCreated.variants[0].id,
+    }
   }
 }

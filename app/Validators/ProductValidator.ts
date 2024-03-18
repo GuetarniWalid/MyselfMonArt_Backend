@@ -5,6 +5,7 @@ export default class ProductValidator {
   constructor(protected ctx: HttpContextContract) {}
 
   public schema = schema.create({
+    ratio: schema.enum(['square', 'portrait', 'landscape'] as const),
     title: schema.string(),
     body_html: schema.string.optional(),
     vendor: schema.string.optional(),
