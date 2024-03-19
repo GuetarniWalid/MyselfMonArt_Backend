@@ -21,9 +21,7 @@ export default class BacklinksController {
     if (!Array.isArray(urls) || !urls.every((url) => this.isValidUrl(url))) {
       throw new Error('Bad urls: at least one url is empty or not a string')
     }
-    const results = await this.analyseLinksOnSite(urls)
-
-    return results
+    await this.analyseLinksOnSite(urls)
   }
 
   private isValidUrl(url) {

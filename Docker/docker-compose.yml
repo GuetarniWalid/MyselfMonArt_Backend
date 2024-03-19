@@ -1,0 +1,28 @@
+version: '3.8'
+services:
+  app:
+    image: ${DOCKERHUB_USERNAME}/app:latest
+    env_file:
+      - .env
+    ports:
+      - '${PORT}:${PORT}'
+    depends_on:
+      - db
+
+  nginx:
+    image: ${DOCKERHUB_USERNAME}/nginx:latest
+    ports:
+      - '80:80'
+    depends_on:
+      - app
+
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DB_NAME}
+    volumes:  
+      - db-data:/var/lib/mysql
+
+volumes:
+  db-data:

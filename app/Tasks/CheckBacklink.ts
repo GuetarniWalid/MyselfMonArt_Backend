@@ -2,7 +2,7 @@ import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task
 import BacklinksController from 'App/Controllers/Http/BacklinksController'
 
 export default class CheckBacklink extends BaseTask {
-  backlinksController: BacklinksController
+  private backlinksController: BacklinksController
 
   public static get schedule() {
     return CronTimeV2.everyFourSeconds()
@@ -19,12 +19,13 @@ export default class CheckBacklink extends BaseTask {
   public async handle() {
     this.backlinksController = new BacklinksController()
     const backlinks = await this.fetchBacklinks()
-    const result = await this.backlinksController.checkLinks({urls: backlinks})
+    // @ts-ignore
+    await this.backlinksController.checkLinks({ urls: backlinks })
   }
 
   private async fetchBacklinks() {
     const backlinks = await this.backlinksController.index()
-    const urls = backlinks.map(backlink => backlink.url)
+    const urls = backlinks.map((backlink) => backlink.url)
     return urls
   }
 }
