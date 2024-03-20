@@ -53,8 +53,10 @@ jobs:
           key: ${{ secrets.DIGITALOCEAN_SSH_KEY }}
           script: |
             mv /opt/docker-compose/Docker/docker-compose.yml /opt/docker-compose/docker-compose.yml
+            rm -r /opt/docker-compose/Docker
             apt-get update
             apt-get install docker-compose -y
+            export DOCKERHUB_USERNAME="${{ secrets.DOCKERHUB_USERNAME }}"
             cd /opt/docker-compose
             docker-compose pull
             docker-compose up -d
