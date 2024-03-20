@@ -36,6 +36,8 @@ COPY ecosystem.config.js ./
 
 # Installez les dépendances en utilisant npm ci pour une installation plus rapide et fiable
 RUN npm ci --production --legacy-peer-deps && npm install pm2 -g
+RUN node ace migration:run
+RUN node ace db:seed
 
 # Exposez le port sur lequel votre app va tourner
 EXPOSE 3333
