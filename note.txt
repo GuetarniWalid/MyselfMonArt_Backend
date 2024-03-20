@@ -1,0 +1,1 @@
+ok autre chose le fichier .env ne se trouve pas dans le même emplacement, sur le serveur il sera à "/etc/dashboard_myselfmonart" tandis que mon app sera a ""

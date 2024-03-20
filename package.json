@@ -9,7 +9,8 @@
     "start": "node server.js",
     "test": "node ace test",
     "lint": "eslint . --ext=.ts",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "copy-env": "./copy-env.sh"
   },
   "eslintConfig": {
     "extends": [

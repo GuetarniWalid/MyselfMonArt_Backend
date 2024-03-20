@@ -8,7 +8,7 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 
 # Installez les dépendances en utilisant npm ci pour une installation plus rapide et fiable
-RUN npm ci --production
+RUN npm ci --production --legacy-peer-deps
 
 # Copiez votre code source dans le conteneur
 COPY . .

@@ -1,6 +1,6 @@
 {
-  "assets/app.css": "/assets/app.d768b608.css",
-  "assets/app.js": "/assets/app.31d6cfe0.js",
-  "assets/backlinks.js": "/assets/backlinks.a8b95b83.js",
-  "assets/painting-options.js": "/assets/painting-options.25d6e6fb.js"
+  "assets/app.css": "http://localhost:8080/assets/app.css",
+  "assets/app.js": "http://localhost:8080/assets/app.js",
+  "assets/backlinks.js": "http://localhost:8080/assets/backlinks.js",
+  "assets/painting-options.js": "http://localhost:8080/assets/painting-options.js"
 }
