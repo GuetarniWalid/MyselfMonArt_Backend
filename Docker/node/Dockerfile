@@ -30,7 +30,9 @@ WORKDIR /usr/src/app
 # Copiez les fichiers package.json et le lock file pour installer les dépendances
 COPY package*.json ./
 
-COPY --from=builder /usr/src/app/build ./build
+COPY --from=builder /usr/src/app/build ./
+
+COPY ecosystem.config.js ./
 
 # Installez les dépendances en utilisant npm ci pour une installation plus rapide et fiable
 RUN npm ci --production --legacy-peer-deps && npm install pm2 -g
