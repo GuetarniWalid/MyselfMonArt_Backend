@@ -18,11 +18,14 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
-      - name: Build and push Docker images
+      - name: Build and push Docker images for app
         run: |
-          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/app:latest ./Docker/node
-          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/nginx:latest ./Docker/nginx
+          docker build -f Docker/node/Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME }}/app:latest .
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/app:latest
+
+      - name: Build and push Docker images for nginx
+        run: |
+          docker build -f Docker/nginx/Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME }}/nginx:latest .
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/nginx:latest
 
   deploy:
