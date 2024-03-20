@@ -30,7 +30,7 @@ WORKDIR /usr/src/app
 # Copiez les fichiers package.json et le lock file pour installer les dépendances
 COPY package*.json ./
 
-COPY --from=builder /usr/src/app/build ./
+COPY --from=builder /usr/src/app/build ./build
 
 COPY ecosystem.config.js ./
 
