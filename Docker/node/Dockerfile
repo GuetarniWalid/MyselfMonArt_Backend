@@ -7,6 +7,9 @@ WORKDIR /usr/src/app
 # Copiez les fichiers package.json et le lock file pour installer les dépendances
 COPY package*.json ./
 
+# Affichez les fichiers dans le répertoire de travail pour diagnostic
+RUN ls -la
+
 # Installez les dépendances en utilisant npm ci pour une installation plus rapide et fiable
 RUN npm ci --production --legacy-peer-deps
 
