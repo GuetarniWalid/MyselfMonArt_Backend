@@ -43,7 +43,7 @@ jobs:
           username: ${{ secrets.DIGITALOCEAN_USERNAME }}
           key: ${{ secrets.DIGITALOCEAN_SSH_KEY }}
           source: "./Docker/docker-compose.yml"
-          target: "/opt/docker-compose/docker-compose.yml"
+          target: "/opt/docker-compose"
 
       - name: Deploy to DigitalOcean
         uses: appleboy/ssh-action@master
@@ -52,6 +52,7 @@ jobs:
           username: ${{ secrets.DIGITALOCEAN_USERNAME }}
           key: ${{ secrets.DIGITALOCEAN_SSH_KEY }}
           script: |
+            mv /opt/docker-compose/Docker/docker-compose.yml /opt/docker-compose/docker-compose.yml
             apt-get update
             apt-get install docker-compose -y
             cd /opt/docker-compose
