@@ -7,14 +7,14 @@ WORKDIR /usr/src/app
 # Copiez les fichiers package.json et le lock file pour installer les dépendances
 COPY package*.json ./
 
-# Affichez les fichiers dans le répertoire de travail pour diagnostic
-RUN ls -la
-
 # Installez les dépendances en utilisant npm ci pour une installation plus rapide et fiable
 RUN npm ci --production --legacy-peer-deps
 
 # Copiez votre code source dans le conteneur
 COPY . .
+
+# Affichez les fichiers dans le répertoire de travail pour diagnostic
+RUN ls
 
 # Exécutez le script de build de votre application AdonisJS
 RUN npm run build
