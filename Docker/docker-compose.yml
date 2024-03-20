@@ -1,20 +1,5 @@
 version: '3.8'
 services:
-  app:
-    image: ${DOCKERHUB_USERNAME}/app:latest
-    env_file:
-      - .env
-    ports:
-      - '${PORT}:${PORT}'
-    depends_on:
-      - db
-
-  nginx:
-    image: ${DOCKERHUB_USERNAME}/nginx:latest
-    ports:
-      - '80:80'
-    depends_on:
-      - app
 
   db:
     image: mysql:8.0
@@ -23,6 +8,23 @@ services:
       MYSQL_DATABASE: ${MYSQL_DB_NAME}
     volumes:  
       - db-data:/var/lib/mysql
+
+  app:
+    build:
+      context: ../
+      dockerfile: Docker/node/Dockerfile
+    env_file:
+      - .env
+    ports:
+      - '${PORT}:${PORT}'
+    depends_on:
+      - db
+
+  nginx:
+    build:
+      dockerfile: Docker/nginx/Dockerfile
+      ports:
+        - '80:80'
 
 volumes:
   db-data:
