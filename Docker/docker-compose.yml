@@ -3,7 +3,7 @@ services:
   app:
     image: ${DOCKERHUB_USERNAME}/app:latest
     env_file:
-      - /etc/dashboard_myselfmonart/.env
+      - .env
     ports:
       - '${PORT}:${PORT}'
     depends_on:
