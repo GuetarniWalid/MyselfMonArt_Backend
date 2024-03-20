@@ -39,5 +39,7 @@ jobs:
           username: ${{ secrets.DIGITALOCEAN_USERNAME }}
           key: ${{ secrets.DIGITALOCEAN_SSH_KEY }}
           script: |
+            apt-get update
+            apt-get install docker-compose -y
             docker-compose pull
             docker-compose up -d
