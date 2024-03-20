@@ -33,7 +33,7 @@ COPY package*.json ./
 COPY --from=builder /usr/src/app/build ./build
 
 # Installez les dépendances en utilisant npm ci pour une installation plus rapide et fiable
-RUN npm ci --production --legacy-peer-deps
+RUN npm ci --production --legacy-peer-deps && npm install pm2 -g
 
 # Exposez le port sur lequel votre app va tourner
 EXPOSE 3333
