@@ -8,6 +8,7 @@ WORKDIR /usr/src/app
 
 # Copiez les fichiers package.json et le lock file pour installer les dépendances
 COPY package*.json ./
+COPY ecosystem.config.js ./
 
 # Installe toutes les dépendances, y compris les devDependencies
 RUN npm install
@@ -18,26 +19,8 @@ COPY . .
 # Exécutez le script de build de votre application AdonisJS
 RUN npm run build
 
-
-# Étape de production
-
-# Utilisez l'image officielle Node.js avec une version alpine pour la légèreté
-FROM node:20-alpine
-
-# Définissez le répertoire de travail dans le conteneur
-WORKDIR /usr/src/app
-
-# Copiez les fichiers package.json et le lock file pour installer les dépendances
-COPY package*.json ./
-
-COPY --from=builder /usr/src/app/build ./build
-
-COPY ecosystem.config.js ./
-
 # Installez les dépendances en utilisant npm ci pour une installation plus rapide et fiable
 RUN npm ci --production --legacy-peer-deps && npm install pm2 -g
-RUN node ace migration:run
-RUN node ace db:seed
 
 # Exposez le port sur lequel votre app va tourner
 EXPOSE 3333
