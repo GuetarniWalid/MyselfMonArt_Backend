@@ -3,7 +3,7 @@ name: Deploy to DigitalOcean with Docker
 on:
   push:
     branches:
-      - main
+      - test
 
 jobs:
   build-and-push:
