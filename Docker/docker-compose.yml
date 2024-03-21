@@ -23,8 +23,8 @@ services:
   nginx:
     build:
       dockerfile: Docker/nginx/Dockerfile
-      ports:
-        - '80:80'
+    ports:
+      - '80:80'
 
 volumes:
   db-data:
