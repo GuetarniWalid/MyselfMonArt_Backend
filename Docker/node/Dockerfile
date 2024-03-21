@@ -2,7 +2,7 @@
 FROM node:20-alpine AS builder
 
 # Installer git
-RUN apt-get update && apt-get install -y git
+RUN apk update && apk add --no-cache git
 
 # Définissez le répertoire de travail dans le conteneur
 WORKDIR /usr/src/app
