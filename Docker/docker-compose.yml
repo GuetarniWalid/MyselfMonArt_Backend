@@ -11,10 +11,10 @@ services:
 
   app:
     build:
-      context: ./node
-      dockerfile: Dockerfile
+      context: ../
+      dockerfile: Doker/node/Dockerfile
     env_file:
-      - ../../env
+      - .env
     ports:
       - '${PORT}:${PORT}'
     depends_on:
@@ -22,8 +22,8 @@ services:
 
   nginx:
     build:
-      context: ./nginx
-      dockerfile: Dockerfile
+      context: ../
+      dockerfile: Docker/nginx/Dockerfile
     ports:
       - '80:80'
 
