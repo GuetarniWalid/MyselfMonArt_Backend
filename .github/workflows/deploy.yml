@@ -17,6 +17,7 @@ jobs:
           username: ${{ secrets.DIGITALOCEAN_USERNAME }}
           key: ${{ secrets.DIGITALOCEAN_SSH_KEY }}
           script: |
+            mkdir -p /opt/dashboard_myselfmonart
             cp /opt/env/.env /opt/dashboard_myselfmonart
 
       - name: Deploy the app, nginx and database
