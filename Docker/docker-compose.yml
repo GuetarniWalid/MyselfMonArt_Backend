@@ -14,7 +14,7 @@ services:
       context: ./
       dockerfile: node/Dockerfile
     env_file:
-      - ../.env
+      - .env
     ports:
       - '${PORT}:${PORT}'
     depends_on:

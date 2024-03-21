@@ -31,6 +31,7 @@ jobs:
           script: |
             apt-get update
             apt-get install docker-compose -y
+            cp /opt/dashboard_myselfmonart/.env /opt/dashboard_myselfmonart/Docker/.env
             cd /opt/dashboard_myselfmonart/Docker
             docker-compose pull
             docker-compose up -d
