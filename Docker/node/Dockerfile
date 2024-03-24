@@ -28,7 +28,7 @@ FROM node:20-alpine
 WORKDIR /usr/src/app
 
 # Copiez les fichiers buildés depuis l'étape de build
-COPY --from=builder /usr/src/app/build ./build
+COPY --from=builder /usr/src/app/build .
 RUN ls
 
 # Installez les dépendances en utilisant npm ci pour une installation plus rapide et fiable
