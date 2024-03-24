@@ -17,8 +17,8 @@ jobs:
           username: ${{ secrets.DIGITALOCEAN_USERNAME }}
           key: ${{ secrets.DIGITALOCEAN_SSH_KEY }}
           script: |
-            if [ -d "/opt/Myselfmonart_Backend" ]; then
-              cd /opt/Myselfmonart_Backend
+            if [ -d "/opt/MyselfMonArt_Backend" ]; then
+              cd /opt/MyselfMonArt_Backend
               git pull
             else
               cd /opt
