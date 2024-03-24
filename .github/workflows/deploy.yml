@@ -66,6 +66,6 @@ jobs:
             rm -r /opt/MyselfMonArt_Dashboard/Docker
             apt-get update
             apt-get install docker-compose -y
-            cd /opt/docker-compose
+            cd /opt/MyselfMonArt_Dashboard
             docker-compose pull
             docker-compose up -d
