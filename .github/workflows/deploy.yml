@@ -46,7 +46,7 @@ jobs:
           username: ${{ secrets.DIGITALOCEAN_USERNAME }}
           key: ${{ secrets.DIGITALOCEAN_SSH_KEY }}
           script: |
-            cd /opt/Myselfmonart_Backend
+            cd /opt/MyselfMonArt_Backend
             npm install
               
 
