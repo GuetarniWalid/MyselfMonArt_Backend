@@ -18,10 +18,12 @@ jobs:
           key: ${{ secrets.DIGITALOCEAN_SSH_KEY }}
           script: |
             if [ -d "/opt/Myselfmonart_Backend" ]; then
-              cd /opt/dashboard_myselfmonart
+              cd /opt/Myselfmonart_Backend
               git pull
             else
-              git clone
+              cd /opt
+              git clone https://github.com/username/repo.git Myselfmonart_Backend
+            fi
 
 
 
