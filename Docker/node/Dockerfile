@@ -43,5 +43,6 @@ EXPOSE 3333
 USER node
 
 # Commande pour démarrer votre application
+RUN ls
 RUN chmod +x ./init.sh
 CMD ["./init.sh"]
