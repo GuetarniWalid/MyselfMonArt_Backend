@@ -6,75 +6,65 @@ on:
       - test
 
 jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install app dependencies
+        run: npm install
+
+      - name: Build app
+        run: npm run build
+
+      - name: Copy docker-compose.yml to build directory
+        run: cp Docker/docker-compose.yml build/docker-compose.yml
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Build and push Docker images for app
+        run: |
+          docker build -f Docker/node/Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME }}/app:latest .
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/app:latest
+
+      - name: Build and push Docker images for nginx
+        run: |
+          docker build -f Docker/nginx/Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME }}/nginx:latest .
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/nginx:latest
+
   deploy:
     runs-on: ubuntu-latest
+    needs: build-and-push
 
     steps:
-      - name: Clone repository on server
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Transfer docker-compose.yml to server
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.DIGITALOCEAN_HOST }}
+          username: ${{ secrets.DIGITALOCEAN_USERNAME }}
+          key: ${{ secrets.DIGITALOCEAN_SSH_KEY }}
+          source: "./Docker/docker-compose.yml"
+          target: "/opt/MyselfMonArt_Dashboard/docker-compose.yml"
+
+      - name: Deploy to DigitalOcean
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.DIGITALOCEAN_HOST }}
           username: ${{ secrets.DIGITALOCEAN_USERNAME }}
           key: ${{ secrets.DIGITALOCEAN_SSH_KEY }}
           script: |
-            if [ -d "/opt/MyselfMonArt_Backend" ]; then
-              cd /opt/MyselfMonArt_Backend
-              git pull
-            else
-              cd /opt
-              git clone https://github.com/GuetarniWalid/MyselfMonArt_Backend.git
-            fi
-
-   
-      - name: Install or update Node.js
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.DIGITALOCEAN_HOST }}
-          username: ${{ secrets.DIGITALOCEAN_USERNAME }}
-          key: ${{ secrets.DIGITALOCEAN_SSH_KEY }}
-          script: |
-            curl -fsSL https://deb.nodesource.com/setup_16.x | sudo -E bash -
-            apt-get install -y nodejs
-            npm install -g n
-            n stable
-
-
-      - name: Install dependencies
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.DIGITALOCEAN_HOST }}
-          username: ${{ secrets.DIGITALOCEAN_USERNAME }}
-          key: ${{ secrets.DIGITALOCEAN_SSH_KEY }}
-          script: |
-            cd /opt/MyselfMonArt_Backend
-            npm install
-              
-
-
-
-
-    #   - name: Checkout code
-    #     uses: actions/checkout@v4
-
-      # - name: Transfer Docker directory to server
-      #   uses: appleboy/scp-action@master
-      #   with:
-      #     host: ${{ secrets.DIGITALOCEAN_HOST }}
-      #     username: ${{ secrets.DIGITALOCEAN_USERNAME }}
-      #     key: ${{ secrets.DIGITALOCEAN_SSH_KEY }}
-      #     source: "./Docker"
-      #     target: "/opt/dashboard_myselfmonart"
-
-      # - name: Deploy the app, nginx and database
-      #   uses: appleboy/ssh-action@master
-      #   with:
-      #     host: ${{ secrets.DIGITALOCEAN_HOST }}
-      #     username: ${{ secrets.DIGITALOCEAN_USERNAME }}
-      #     key: ${{ secrets.DIGITALOCEAN_SSH_KEY }}
-      #     script: |
-      #       apt-get update
-      #       apt-get install docker-compose -y
-      #       cp /opt/dashboard_myselfmonart/.env /opt/dashboard_myselfmonart/Docker/.env
-      #       cd /opt/dashboard_myselfmonart/Docker
-      #       docker-compose pull
-      #       docker-compose up -d
+            mv /opt/MyselfMonArt_Dashboard/Docker/docker-compose.yml /opt/MyselfMonArt_Dashboard/docker-compose.yml
+            rm -r /opt/MyselfMonArt_Dashboard/Docker
+            apt-get update
+            apt-get install docker-compose -y
+            cd /opt/docker-compose
+            docker-compose pull
+            docker-compose up -d
