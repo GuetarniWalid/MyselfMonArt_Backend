@@ -25,6 +25,19 @@ jobs:
               git clone https://github.com/GuetarniWalid/MyselfMonArt_Backend.git
             fi
 
+   
+      - name: Install or update Node.js
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.DIGITALOCEAN_HOST }}
+          username: ${{ secrets.DIGITALOCEAN_USERNAME }}
+          key: ${{ secrets.DIGITALOCEAN_SSH_KEY }}
+          script: |
+            curl -fsSL https://deb.nodesource.com/setup_16.x | sudo -E bash -
+            apt-get install -y nodejs
+            npm install -g n
+            n stable
+
 
       - name: Install dependencies
         uses: appleboy/ssh-action@master
