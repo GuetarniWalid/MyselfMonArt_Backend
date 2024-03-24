@@ -29,11 +29,10 @@ WORKDIR /usr/src/app
 
 # Copiez les fichiers buildés depuis l'étape de build
 COPY --from=builder /usr/src/app/build .
-RUN ls
 
 # Installez les dépendances en utilisant npm ci pour une installation plus rapide et fiable
 RUN npm ci --production --legacy-peer-deps
-RUN ls
+RUN install pm2 -g
 
 # Exposez le port sur lequel votre app va tourner
 EXPOSE 3333
