@@ -22,7 +22,7 @@ jobs:
               git pull
             else
               cd /opt
-              git clone https://github.com/username/repo.git Myselfmonart_Backend
+              git clone https://github.com/GuetarniWalid/MyselfMonArt_Backend.git
             fi
 
 
