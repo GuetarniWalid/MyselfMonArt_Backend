@@ -53,7 +53,7 @@ jobs:
           username: ${{ secrets.DIGITALOCEAN_USERNAME }}
           key: ${{ secrets.DIGITALOCEAN_SSH_KEY }}
           source: "./Docker/docker-compose.yml"
-          target: "/opt/MyselfMonArt_Dashboard/docker-compose.yml"
+          target: "/opt/MyselfMonArt_Dashboard"
 
       - name: Deploy to DigitalOcean
         uses: appleboy/ssh-action@master
