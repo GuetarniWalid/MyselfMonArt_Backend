@@ -44,5 +44,4 @@ USER node
 
 # Commande pour démarrer votre application
 RUN ls -la
-RUN chmod +x ./init.sh
 CMD ["./init.sh"]
