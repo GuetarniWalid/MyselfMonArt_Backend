@@ -67,5 +67,8 @@ jobs:
             apt-get update
             apt-get install docker-compose -y
             cd /opt/MyselfMonArt_Dashboard
+            export DOCKERHUB_USERNAME="${{ secrets.DOCKERHUB_USERNAME }}"
             docker-compose pull
             docker-compose up -d
+            docker-compose exec app node ace migration:run
+            docker-compose exec app node ace db:seed
