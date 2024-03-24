@@ -35,6 +35,7 @@ jobs:
         run: |
           docker build -f Docker/node/Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME }}/app:latest .
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/app:latest
+        working-directory: .
 
       - name: Build and push Docker images for nginx
         run: |
