@@ -70,5 +70,5 @@ jobs:
             export DOCKERHUB_USERNAME="${{ secrets.DOCKERHUB_USERNAME }}"
             docker-compose pull
             docker-compose up -d
-            docker-compose exec app node ace migration:run
-            docker-compose exec app node ace db:seed
+            docker-compose exec -T app node ace migration:run
+            docker-compose exec -T app node ace db:seed
