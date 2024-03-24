@@ -30,6 +30,7 @@ WORKDIR /usr/src/app
 # Copiez les fichiers buildés depuis l'étape de build
 COPY --from=builder /usr/src/app/build .
 COPY --from=builder /usr/src/app/ecosystem.config.js .
+COPY --from=builder /usr/src/app/init.sh .
 
 # Installez les dépendances en utilisant npm ci pour une installation plus rapide et fiable
 RUN npm ci --production --legacy-peer-deps
@@ -42,4 +43,5 @@ EXPOSE 3333
 USER node
 
 # Commande pour démarrer votre application
-CMD ["pm2-runtime", "start", "ecosystem.config.js"]
+RUN chmod +x ./init.sh
+CMD ["./init.sh"]
