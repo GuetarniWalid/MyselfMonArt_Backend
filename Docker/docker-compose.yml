@@ -8,6 +8,16 @@ services:
       - '${PORT}:${PORT}'
     depends_on:
       - db
+    command: >
+      /bin/sh -c "
+        while ! nc -z db 3306; do
+          echo 'En attente de la base de données...'
+          sleep 1
+        done
+        echo 'La base de données est prête!'
+        node ace migration:run &&
+        pm2-runtime start ecosystem.config.js
+      "
 
   nginx:
     image: ${DOCKERHUB_USERNAME}/nginx:latest

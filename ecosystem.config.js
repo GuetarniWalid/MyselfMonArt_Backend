@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'dashboard_myselfmonart',
-      script: 'build/server.js',
+      script: 'server.js',
       instances: 'max',
       autorestart: true,
       watch: false,
