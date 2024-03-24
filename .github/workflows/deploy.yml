@@ -27,6 +27,10 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
+      - name: List files
+        run: ls -la
+
+
       - name: Build and push Docker images for app
         run: |
           docker build -f Docker/node/Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME }}/app:latest .
