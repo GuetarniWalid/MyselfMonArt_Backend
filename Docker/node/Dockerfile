@@ -5,7 +5,9 @@ FROM node:20-alpine
 WORKDIR /usr/src/app
 
 # Copiez votre code source dans le conteneur
-COPY ./build .
+COPY . .
+
+RUN ls
 
 # Installez les dépendances en utilisant npm ci pour une installation plus rapide et fiable
 RUN npm ci --production --legacy-peer-deps
