@@ -39,6 +39,8 @@ WORKDIR /usr/src/app
 COPY --from=builder /usr/src/app/build .
 COPY --from=builder /usr/src/app/ecosystem.config.js .
 COPY --from=builder /usr/src/app/init.sh .
+RUN ls
+
 
 # Installez les dépendances en utilisant npm ci pour une installation plus rapide et fiable
 RUN npm ci --production --legacy-peer-deps
