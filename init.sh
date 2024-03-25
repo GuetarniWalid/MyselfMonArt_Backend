@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 echo "Starting the server"
 node ace migration:run
 node ace db:seed
