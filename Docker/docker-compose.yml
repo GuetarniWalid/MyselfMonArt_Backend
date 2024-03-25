@@ -2,7 +2,6 @@ version: '3.8'
 services:
   app:
     image: ${DOCKERHUB_USERNAME}/app:latest
-    command: /bin/sh -c "dockerize -wait tcp://db:3306 -timeout 60s && votre_commande_de_démarrage"
     env_file:
       - .env
     ports:
