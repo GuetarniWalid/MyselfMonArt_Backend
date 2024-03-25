@@ -39,8 +39,6 @@ WORKDIR /usr/src/app
 COPY --from=builder /usr/src/app/build .
 COPY --from=builder /usr/src/app/ecosystem.config.js .
 COPY --from=builder /usr/src/app/init.sh .
-RUN ls
-
 
 # Installez les dépendances en utilisant npm ci pour une installation plus rapide et fiable
 RUN npm ci --production --legacy-peer-deps
@@ -52,6 +50,5 @@ EXPOSE 3333
 # Utilisez un utilisateur non root pour des raisons de sécurité
 USER node
 
-RUN ls
 # Commande pour démarrer votre application
-CMD ["./init.sh"]
+CMD ["/usr/src/app/init.sh"]
