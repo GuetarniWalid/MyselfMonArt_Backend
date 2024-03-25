@@ -50,5 +50,6 @@ EXPOSE 3333
 # Utilisez un utilisateur non root pour des raisons de sécurité
 USER node
 
+RUN ls
 # Commande pour démarrer votre application
 CMD ["./init.sh"]
