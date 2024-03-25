@@ -51,4 +51,4 @@ EXPOSE 3333
 USER node
 
 # Commande pour démarrer votre application
-CMD ["/bin/sh"]
+CMD ["sh", "/usr/src/app/init.sh"]
