@@ -5,7 +5,7 @@ FROM nginx:alpine
 RUN rm /etc/nginx/conf.d/default.conf
 
 # Copiez le fichier de configuration Nginx personnalisé depuis votre projet vers l'image
-COPY ./Docker/nginx/conf.d /etc/nginx/conf.d
+COPY ./Docker/nginx/conf.d /etc/nginx
 
 # Exposez le port 80 (HTTP) et/ou 443 (HTTPS) selon vos besoins
 EXPOSE 80

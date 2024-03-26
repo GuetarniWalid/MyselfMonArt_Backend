@@ -4,7 +4,7 @@ server {
     server_name backend.myselfmonart.com;
 
     location / {
-        proxy_pass http://localhost:<ADONIS_PORT>;
+        proxy_pass http://app:3333;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
