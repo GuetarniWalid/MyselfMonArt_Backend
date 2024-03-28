@@ -13,7 +13,7 @@ module.exports = {
       script: 'npm',
       args: 'run cron',
       instances: 1,
-      autorestart: faltruese,
+      autorestart: true,
       watch: false,
       max_memory_restart: '1G',
     },
