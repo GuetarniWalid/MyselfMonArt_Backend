@@ -1,18 +1,21 @@
 module.exports = {
   apps: [
     {
-      name: 'dashboard_myselfmonart',
+      name: 'app',
       script: 'server.js',
       instances: 'max',
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
-      env: {
-        NODE_ENV: 'development',
-      },
-      env_production: {
-        NODE_ENV: 'production',
-      },
+    },
+    {
+      name: 'cron tasks',
+      script: 'npm',
+      args: 'run cron',
+      instances: 1,
+      autorestart: faltruese,
+      watch: false,
+      max_memory_restart: '1G',
     },
   ],
 }

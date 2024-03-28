@@ -13,6 +13,10 @@ services:
     image: ${DOCKERHUB_USERNAME}/nginx:latest
     ports:
       - '80:80'
+      - '443:443'
+    volumes:
+      - /etc/letsencrypt/live/${DIGITALOCEAN_HOST}/fullchain.pem:/etc/ssl/certs/fullchain.pem
+      - /etc/letsencrypt/live/${DIGITALOCEAN_HOST}/privkey.pem:/etc/ssl/private/privkey.pem
     depends_on:
       - app
 
@@ -21,10 +25,10 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DB_NAME}
-    volumes:  
+    volumes:
       - db-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
       interval: 10s
       timeout: 5s
       retries: 5

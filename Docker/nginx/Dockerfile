@@ -8,7 +8,7 @@ RUN rm /etc/nginx/conf.d/default.conf
 COPY ./Docker/nginx/default.conf /etc/nginx/conf.d
 
 # Exposez le port 80 (HTTP) et/ou 443 (HTTPS) selon vos besoins
-EXPOSE 80
+EXPOSE 80 443
 
 # Lorsque le conteneur démarre, Nginx s'exécute automatiquement en arrière-plan
 CMD ["nginx", "-g", "daemon off;"]
