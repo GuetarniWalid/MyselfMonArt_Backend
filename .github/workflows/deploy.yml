@@ -68,7 +68,7 @@ jobs:
             apt-get install docker-compose -y
             cd /opt/MyselfMonArt_Dashboard
             export DOCKERHUB_USERNAME="${{ secrets.DOCKERHUB_USERNAME }}"
-            export DOCKERHUB_USERNAME="${{ secrets.DIGITALOCEAN_HOST }}"
+            export DIGITALOCEAN_HOST="${{ secrets.DIGITALOCEAN_HOST }}"
             docker-compose pull
             docker-compose up -d
             docker-compose exec -T app node ace migration:run
