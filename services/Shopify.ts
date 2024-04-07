@@ -31,9 +31,15 @@ export default class Shopify {
   }
 
   public async updateProductVariant(product: UpdateProduct) {
+    const optionsAndvariantsQuery = this.getOptionsAndVariantsQuery(product.productId)
+    const data = await this.fetchGraphQL(optionsAndvariantsQuery)
+
+    const nbOfOptions = data.product.options.length
+    const variants = data.product.variants
+
     let createFirstVariant = false
-    if (product.nbOfOptions > 1) {
-      await this.deleteAllVariants(product.productId)
+    if (nbOfOptions > 1) {
+      await this.deleteAllVariants(product.productId, variants)
       createFirstVariant = true
     }
     const graphQLVariantId = createFirstVariant
@@ -44,8 +50,30 @@ export default class Shopify {
     return newVariantId
   }
 
-  private async deleteAllVariants(productId: number) {
-    const variantIds = await this.getVariantIds(productId)
+  private getOptionsAndVariantsQuery(productId: number) {
+    return `query {
+      product(id: "gid://shopify/Product/${productId}") {
+        options {
+          id
+          name
+          values
+        }
+        variants(first: 250) {
+          edges {
+            node {
+              id
+            }
+          }
+        }
+      }
+    }`
+  }
+
+  private async deleteAllVariants(
+    productId: number,
+    variants: { edges: { node: { id: string } }[] }
+  ) {
+    const variantIds = await this.getVariantIds(variants)
     const { query, variables } = this.getDeleteVariantMutationsQuery(productId, variantIds)
     await this.fetchGraphQL(query, variables)
   }
@@ -70,25 +98,9 @@ export default class Shopify {
     }
   }
 
-  private async getVariantIds(productId: number) {
-    const query = this.getVariantIdsQuery(productId)
-    const data = await this.fetchGraphQL(query)
-    const variantIds = data.product.variants.edges.map((edge) => edge.node.id)
+  private async getVariantIds(variants: { edges: { node: { id: string } }[] }) {
+    const variantIds = variants.edges.map((edge) => edge.node.id)
     return variantIds
-  }
-
-  private getVariantIdsQuery(productId: number) {
-    return `query {
-      product(id: "gid://shopify/Product/${productId}") {
-        variants(first: 250) {
-          edges {
-            node {
-              id
-            }
-          }
-        }
-      }
-    }`
   }
 
   private async createFirstVariant(productId: number, variant: Variant) {

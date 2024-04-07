@@ -14,7 +14,6 @@ declare type CreateProduct = {
 declare type UpdateProduct = {
   productId: number
   ratio: 'square' | 'portrait' | 'landscape'
-  nbOfOptions: number
   variant: {
     title: string
     price?: string
