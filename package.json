@@ -6,7 +6,7 @@
     "cron": "node ace scheduler:run",
     "dev": "node ace serve --watch",
     "build": "node ace build --production",
-    "start": "node server.js",
+    "start": "node server.js && node ace scheduler:run",
     "test": "node ace test",
     "lint": "eslint . --ext=.ts",
     "format": "prettier --write .",

@@ -5,7 +5,7 @@ export default class CheckBacklink extends BaseTask {
   private backlinksController: BacklinksController
 
   public static get schedule() {
-    return CronTimeV2.everyFourSeconds()
+    return CronTimeV2.everyDay()
     // or just use return cron-style string (simple cron editor: crontab.guru)
   }
   /**

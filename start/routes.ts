@@ -24,6 +24,10 @@ Route.get('/', async ({ view }) => {
   return view.render('welcome')
 }).middleware(['auth'])
 
+Route.get('/test', async () => {
+  return 'test ok'
+})
+
 Route.group(() => {
   Route.get('/', async ({ ally }) => {
     return ally.use('google').redirect()
@@ -55,4 +59,5 @@ Route.group(() => {
   }).prefix('/paintings')
 
   Route.post('/product/create', 'ProductsController.create')
+  Route.post('/product/update', 'ProductsController.update')
 }).prefix('/api')

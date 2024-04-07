@@ -4,9 +4,6 @@ import User from 'App/Models/User'
 export default class SocialAuthsController {
   public async index({ ally, auth, response }: HttpContextContract) {
     const google = ally.use('google')
-    console.log('🚀 ~ google:', google)
-    console.log('🚀 ~ accessDenied:', google.accessDenied())
-    console.log('🚀 ~ stateMisMatch:', google.stateMisMatch())
 
     if (google.accessDenied()) {
       return 'Access was denied'

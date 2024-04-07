@@ -1,7 +1,7 @@
 import { schema, CustomMessages } from '@ioc:Adonis/Core/Validator'
 import type { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
 
-export default class ProductValidator {
+export default class CreateProductValidator {
   constructor(protected ctx: HttpContextContract) {}
 
   public schema = schema.create({
@@ -16,7 +16,7 @@ export default class ProductValidator {
     published_scope: schema.enum.optional(['global', 'web'] as const),
     variants: schema.array().members(
       schema.object().members({
-        option1: schema.string(),
+        title: schema.string(),
         price: schema.string.optional(),
       })
     ),

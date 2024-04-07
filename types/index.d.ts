@@ -1,4 +1,4 @@
-declare type Product = {
+declare type CreateProduct = {
   title: string
   body_html?: string
   vendor?: string
@@ -11,8 +11,18 @@ declare type Product = {
   images: Image[]
 }
 
+declare type UpdateProduct = {
+  productId: number
+  ratio: 'square' | 'portrait' | 'landscape'
+  nbOfOptions: number
+  variant: {
+    title: string
+    price?: string
+  }
+}
+
 declare type Variant = {
-  option1: string
+  title: string
   price?: string
 }
 
