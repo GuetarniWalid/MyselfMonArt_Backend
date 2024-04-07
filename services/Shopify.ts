@@ -36,9 +36,11 @@ export default class Shopify {
       await this.deleteAllVariants(product.productId)
       createFirstVariant = true
     }
-    const newVariantId = createFirstVariant
+    const graphQLVariantId = createFirstVariant
       ? await this.createFirstVariant(product.productId, product.variant)
       : await this.createVariant(product.productId, product.variant)
+    const graphQLVariantIdSplit = graphQLVariantId.split('/')
+    const newVariantId = graphQLVariantIdSplit[graphQLVariantIdSplit.length - 1]
     return newVariantId
   }
 
@@ -150,6 +152,7 @@ export default class Shopify {
         input: {
           id: variantId,
           price: variant.price,
+          inventoryManagement: 'NOT_MANAGED',
         },
       },
     }
@@ -187,6 +190,7 @@ export default class Shopify {
           productId: `gid://shopify/Product/${productId}`,
           options: variant.title,
           price: variant.price,
+          inventoryManagement: 'NOT_MANAGED',
         },
       },
     }
