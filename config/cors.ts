@@ -6,6 +6,7 @@
  */
 
 import type { CorsConfig } from '@ioc:Adonis/Core/Cors'
+import Env from '@ioc:Adonis/Core/Env'
 
 const corsConfig: CorsConfig = {
   /*
@@ -44,7 +45,10 @@ const corsConfig: CorsConfig = {
   |                     one of the above values.
   |
   */
-  origin: '*',
+  origin:
+    Env.get('NODE_ENV') === 'production'
+      ? [Env.get('FRONTEND_URL'), Env.get('SHOPIFY_SHOP_URL')]
+      : '*',
 
   /*
   |--------------------------------------------------------------------------

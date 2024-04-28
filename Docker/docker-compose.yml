@@ -6,6 +6,7 @@ services:
       - .env
     depends_on:
       - db
+    restart: always
 
   nginx:
     image: ${DOCKERHUB_USERNAME}/nginx:latest
@@ -17,6 +18,7 @@ services:
       - /etc/letsencrypt/live/${DIGITALOCEAN_HOST}/privkey.pem:/etc/ssl/private/privkey.pem
     depends_on:
       - app
+    restart: always
 
   db:
     image: mysql:8.0
@@ -30,6 +32,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: always
 
 volumes:
   db-data:

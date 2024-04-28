@@ -35,4 +35,5 @@ export default Env.rules({
   SHOPIFY_SHOP_URL: Env.schema.string(),
   SHOPIFY_API_VERSION: Env.schema.string(),
   SHOPIFY_ACCESS_TOKEN_SECRET: Env.schema.string(),
+  FRONTEND_URL: Env.schema.string(),
 })
