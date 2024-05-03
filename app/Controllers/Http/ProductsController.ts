@@ -31,8 +31,8 @@ export default class ProductsController {
       product.variant.price = paintingPrice
 
       const shopify = new Shopify('product')
-      const newVariantId = await shopify.updateProductVariant(product)
-      return { newVariantId }
+      const variantData = await shopify.updateProductVariant(product)
+      return variantData
     } catch (error) {
       return error
     }

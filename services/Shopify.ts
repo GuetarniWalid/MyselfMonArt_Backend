@@ -42,12 +42,12 @@ export default class Shopify {
       await this.deleteAllVariants(product.productId, variants)
       createFirstVariant = true
     }
-    const graphQLVariantId = createFirstVariant
+    const variantData = createFirstVariant
       ? await this.createFirstVariant(product.productId, product.variant)
       : await this.createVariant(product.productId, product.variant)
-    const graphQLVariantIdSplit = graphQLVariantId.split('/')
-    const newVariantId = graphQLVariantIdSplit[graphQLVariantIdSplit.length - 1]
-    return newVariantId
+    const idSplit = variantData.id.split('/')
+    variantData.id = idSplit[idSplit.length - 1]
+    return variantData
   }
 
   private getOptionsAndVariantsQuery(productId: number) {
@@ -111,8 +111,12 @@ export default class Shopify {
       variantId,
       variant
     )
-    await this.fetchGraphQL(queryUpdate, variablesUpdate)
-    return variantId
+    const variantMutationsOtherData = await this.fetchGraphQL(queryUpdate, variablesUpdate)
+    return {
+      id: variantId,
+      price: variantMutationsOtherData.productVariantUpdate.productVariant.price,
+      title: variantMutationsOtherData.productVariantUpdate.productVariant.title,
+    }
   }
 
   private getCreateFirstVariantMutationsQuery(productId: number, variant: Variant) {
@@ -158,6 +162,10 @@ export default class Shopify {
             message
             field
           }
+          productVariant {
+            price
+            title
+          }
         }
       }`,
       variables: {
@@ -178,9 +186,17 @@ export default class Shopify {
       const data = await this.fetchGraphQL(variantsQuery)
       const variants = data.product.variants.edges
       const currentVariant = variants.find((v) => v.node.title === variant.title)
-      return currentVariant.node.id
+      return {
+        id: currentVariant.node.id,
+        price: currentVariant.node.price,
+        title: currentVariant.node.title,
+      }
     } else {
-      return variantMutationsData.productVariantCreate.productVariant.id
+      return {
+        id: variantMutationsData.productVariantCreate.productVariant.id,
+        price: variantMutationsData.productVariantCreate.productVariant.price,
+        title: variantMutationsData.productVariantCreate.productVariant.title,
+      }
     }
   }
 
@@ -190,6 +206,8 @@ export default class Shopify {
         productVariantCreate(input: $input) {
           productVariant {
             id
+            title
+            price
           }
           userErrors {
             field
@@ -215,6 +233,7 @@ export default class Shopify {
           edges {
             node {
               id
+              price
               title
             }
           }
