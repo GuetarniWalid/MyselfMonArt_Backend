@@ -4,7 +4,8 @@ import Variant from 'App/Models/Variants'
 export default class PaintingsController {
   public async index({ request }: HttpContextContract) {
     const aspectRatio = request.param('aspectRatio')
-    const variants = await Variant.query().where('name', aspectRatio).first()
+    const aspectRatioWithSpaces = aspectRatio.replace(/%20/g, ' ')
+    const variants = await Variant.query().where('name', aspectRatioWithSpaces).first()
     return variants
   }
 

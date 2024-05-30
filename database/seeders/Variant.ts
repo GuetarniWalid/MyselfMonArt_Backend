@@ -22,7 +22,7 @@ export default class extends BaseSeeder {
       const variantExists = await Variants.findBy('name', variant.name)
 
       if (!variantExists) {
-        await Variants.create(variant as any)
+        await Variants.firstOrCreate(variant as any)
       }
     }
   }
