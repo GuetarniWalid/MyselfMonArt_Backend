@@ -11,9 +11,11 @@ declare type CreateProduct = {
   images: Image[]
 }
 
+declare type Ratio = 'square' | 'portrait' | 'landscape' | 'personalized portrait'
+
 declare type UpdateProduct = {
   productId: number
-  ratio: 'square' | 'portrait' | 'landscape'
+  ratio: Ratio
   variant: {
     title: string
     price?: string

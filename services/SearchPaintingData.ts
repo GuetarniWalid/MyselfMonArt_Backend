@@ -6,7 +6,7 @@ export default class SearchPaintingData {
   private otherOptions: string[]
 
   constructor(
-    private ratio: 'square' | 'portrait' | 'landscape',
+    private ratio: Ratio,
     options: string[]
   ) {
     this.size = options[0]

@@ -6,7 +6,7 @@ export default class UpdateProductValidator {
 
   public schema = schema.create({
     productId: schema.number(),
-    ratio: schema.enum(['square', 'portrait', 'landscape'] as const),
+    ratio: schema.enum(['square', 'portrait', 'landscape', 'personalized portrait'] as const),
     variant: schema.object().members({
       title: schema.string(),
       price: schema.string.optional(),
