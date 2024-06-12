@@ -35,18 +35,35 @@ export default class Shopify {
     const data = await this.fetchGraphQL(optionsAndvariantsQuery)
 
     const nbOfOptions = data.product.options.length
-    const variants = data.product.variants
+    const variants = data.product.variants.edges
 
-    let createFirstVariant = false
     if (nbOfOptions > 1) {
       await this.deleteAllVariants(product.productId, variants)
-      createFirstVariant = true
+      return this.createFirstVariant(product.productId, product.variant)
     }
-    const variantData = createFirstVariant
-      ? await this.createFirstVariant(product.productId, product.variant)
-      : await this.createVariant(product.productId, product.variant)
-    const idSplit = variantData.id.split('/')
-    variantData.id = idSplit[idSplit.length - 1]
+
+    const variantAlreadyExist = variants.find((v) => v.node.title === product.variant.title)
+    if (variantAlreadyExist) {
+      if (Number(variantAlreadyExist.node.price) === Number(product.variant.price)) {
+        return {
+          id: this.extractIdFromGid(variantAlreadyExist.node.id),
+          price: variantAlreadyExist.node.price,
+          title: variantAlreadyExist.node.title,
+        }
+      } else {
+        const { query: queryUpdate, variables: variablesUpdate } =
+          this.getVariantUpdateMutationsQuery(variantAlreadyExist.node.id, product.variant)
+        const variantMutationsOtherData = await this.fetchGraphQL(queryUpdate, variablesUpdate)
+        return {
+          id: this.extractIdFromGid(variantAlreadyExist.node.id),
+          price: variantMutationsOtherData.productVariantUpdate.productVariant.price,
+          title: variantMutationsOtherData.productVariantUpdate.productVariant.title,
+        }
+      }
+    }
+
+    // Create a new variant
+    const variantData = await this.createVariant(product.productId, product.variant)
     return variantData
   }
 
@@ -62,6 +79,8 @@ export default class Shopify {
           edges {
             node {
               id
+              title
+              price
             }
           }
         }
@@ -69,10 +88,7 @@ export default class Shopify {
     }`
   }
 
-  private async deleteAllVariants(
-    productId: number,
-    variants: { edges: { node: { id: string } }[] }
-  ) {
+  private async deleteAllVariants(productId: number, variants: { node: { id: string } }[]) {
     const variantIds = await this.getVariantIds(variants)
     const { query, variables } = this.getDeleteVariantMutationsQuery(productId, variantIds)
     await this.fetchGraphQL(query, variables)
@@ -98,8 +114,8 @@ export default class Shopify {
     }
   }
 
-  private async getVariantIds(variants: { edges: { node: { id: string } }[] }) {
-    const variantIds = variants.edges.map((edge) => edge.node.id)
+  private async getVariantIds(variants: { node: { id: string } }[]) {
+    const variantIds = variants.map((v) => v.node.id)
     return variantIds
   }
 
@@ -113,7 +129,7 @@ export default class Shopify {
     )
     const variantMutationsOtherData = await this.fetchGraphQL(queryUpdate, variablesUpdate)
     return {
-      id: variantId,
+      id: this.extractIdFromGid(variantId),
       price: variantMutationsOtherData.productVariantUpdate.productVariant.price,
       title: variantMutationsOtherData.productVariantUpdate.productVariant.title,
     }
@@ -154,6 +170,11 @@ export default class Shopify {
     }
   }
 
+  private extractIdFromGid(gid: string) {
+    const gidSplit = gid.split('/')
+    return gidSplit[gidSplit.length - 1]
+  }
+
   private getVariantUpdateMutationsQuery(variantId: string, variant: Variant) {
     return {
       query: `mutation updateProductVariantMetafields($input: ProductVariantInput!) {
@@ -181,22 +202,10 @@ export default class Shopify {
   private async createVariant(productId: number, variant: Variant) {
     const { query, variables } = this.getCreateVariantMutationsQuery(productId, variant)
     const variantMutationsData = await this.fetchGraphQL(query, variables)
-    if (variantMutationsData.productVariantCreate.userErrors.length > 0) {
-      const variantsQuery = this.getVariantsQuery(productId)
-      const data = await this.fetchGraphQL(variantsQuery)
-      const variants = data.product.variants.edges
-      const currentVariant = variants.find((v) => v.node.title === variant.title)
-      return {
-        id: currentVariant.node.id,
-        price: currentVariant.node.price,
-        title: currentVariant.node.title,
-      }
-    } else {
-      return {
-        id: variantMutationsData.productVariantCreate.productVariant.id,
-        price: variantMutationsData.productVariantCreate.productVariant.price,
-        title: variantMutationsData.productVariantCreate.productVariant.title,
-      }
+    return {
+      id: this.extractIdFromGid(variantMutationsData.productVariantCreate.productVariant.id),
+      price: variantMutationsData.productVariantCreate.productVariant.price,
+      title: variantMutationsData.productVariantCreate.productVariant.title,
     }
   }
 
@@ -224,22 +233,6 @@ export default class Shopify {
         },
       },
     }
-  }
-
-  private getVariantsQuery(productId: number) {
-    return `query {
-      product(id: "gid://shopify/Product/${productId}") {
-        variants(first: 100) {
-          edges {
-            node {
-              id
-              price
-              title
-            }
-          }
-        }
-      }
-    }`
   }
 
   private async fetchGraphQL(query, variables = {}) {
