@@ -1,36 +1,13 @@
-import axios, { AxiosInstance } from 'axios'
-import Env from '@ioc:Adonis/Core/Env'
+import Authentication from './Authentication'
 
-export default class Shopify {
-  private shopUrl = Env.get('SHOPIFY_SHOP_URL')
-  private apiVersion = Env.get('SHOPIFY_API_VERSION')
-  private accessToken = Env.get('SHOPIFY_ACCESS_TOKEN_SECRET')
-  private endpoints = {
-    product: 'products.json',
-    order: 'products.json',
-  }
-  private client: AxiosInstance
+export default class SVariant extends Authentication {
   private urlGraphQL = `${this.shopUrl}/${this.apiVersion}/graphql.json`
 
-  constructor(endpoint: 'product' | 'order') {
-    this.client = axios.create({
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': this.accessToken,
-      },
-      baseURL: `${this.shopUrl}/${this.apiVersion}/${this.endpoints[endpoint]}`,
-    })
+  constructor() {
+    super()
   }
 
-  public async createProduct(product: CreateProduct) {
-    const response = await this.client.request({ method: 'POST', data: { product } })
-    const productCreated = response.data.product as ProductCreated
-    return {
-      variantID: productCreated.variants[0].id,
-    }
-  }
-
-  public async updateProductVariant(product: UpdateProduct) {
+  public async update(product: UpdateProduct) {
     const optionsAndvariantsQuery = this.getOptionsAndVariantsQuery(product.productId)
     const data = await this.fetchGraphQL(optionsAndvariantsQuery)
 

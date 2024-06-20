@@ -58,6 +58,9 @@ Route.group(() => {
     Route.post('/options/store', 'PaintingsController.store')
   }).prefix('/paintings')
 
-  Route.post('/product/create', 'ProductsController.create')
-  Route.post('/product/update', 'ProductsController.update')
+  Route.group(() => {
+    Route.post('/create', 'ProductsController.create')
+    Route.post('/update', 'ProductsController.update')
+    Route.post('/update/metafield/likes-count', 'ProductsController.updateMetafieldLikesCount')
+  }).prefix('/product')
 }).prefix('/api')
