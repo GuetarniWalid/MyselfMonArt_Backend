@@ -1,4 +1,3 @@
-import { log } from 'crawlee'
 import Authentication from './Authentication'
 
 export default class SVariant extends Authentication {
