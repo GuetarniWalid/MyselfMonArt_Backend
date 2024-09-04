@@ -17,6 +17,11 @@
       "js": [
         "http://localhost:8080/assets/painting-options.js"
       ]
+    },
+    "tapestry-options": {
+      "js": [
+        "http://localhost:8080/assets/tapestry-options.js"
+      ]
     }
   }
 }

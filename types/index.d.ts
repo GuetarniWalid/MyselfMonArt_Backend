@@ -13,13 +13,24 @@ declare type CreateProduct = {
 
 declare type Ratio = 'square' | 'portrait' | 'landscape' | 'personalized portrait'
 
-declare type UpdateProduct = {
+declare type UpdateProductPainting = {
+  type: 'painting'
   productId: number
   ratio: Ratio
   variant: {
     title: string
     price?: string
   }
+}
+
+declare type UpdateProductTapestry = {
+  type: 'tapestry'
+  productId: number
+  variant: {
+    title: string
+    price?: string
+  }
+  cm2: number
 }
 
 declare type Variant = {

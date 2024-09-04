@@ -2,8 +2,10 @@ import type { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
 import CreateProductValidator from 'App/Validators/CreateProductValidator'
 import SearchPaintingData from '../../../services/SearchPaintingData'
 import Shopify from '../../../services/Shopify/index'
-import UpdateProductValidator from 'App/Validators/UpdateProductValidator'
+import UpdateProductPaintingValidator from 'App/Validators/UpdateProductPaintingValidator'
 import UpdateProductMetafieldValidator from 'App/Validators/UpdateProductMetafieldValidator'
+import UpdateProductTapestryValidator from 'App/Validators/UpdateProductTapestryValidator'
+import Tapestry from 'App/Models/Tapestry'
 
 export default class ProductsController {
   public async create({ request }: HttpContextContract) {
@@ -24,12 +26,28 @@ export default class ProductsController {
     }
   }
 
-  public async update({ request }: HttpContextContract) {
+  public async updatePainting({ request }: HttpContextContract) {
     try {
-      const product = await request.validate(UpdateProductValidator)
+      const product = await request.validate(UpdateProductPaintingValidator)
       const options = product.variant.title.split('/')
       const paintingPrice = await new SearchPaintingData(product.ratio, options).getPaintingPrice()
       product.variant.price = paintingPrice
+
+      const shopify = new Shopify()
+      const variantData = await shopify.product.updateVariant(product)
+      return variantData
+    } catch (error) {
+      return error
+    }
+  }
+
+  public async updateTapestry({ request }: HttpContextContract) {
+    try {
+      const product = await request.validate(UpdateProductTapestryValidator)
+      const tapestryModel = await Tapestry.first()
+      const priceM2 = tapestryModel!.price
+      const priceCm2 = priceM2 / 10000
+      product.variant.price = (product.cm2 * priceCm2).toFixed(1)
 
       const shopify = new Shopify()
       const variantData = await shopify.product.updateVariant(product)

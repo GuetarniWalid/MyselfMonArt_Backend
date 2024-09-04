@@ -1,10 +1,25 @@
-POST http://127.0.0.1:3333/api/product/update HTTP/1.1
+# POST http://127.0.0.1:3333/api/product/update/painting HTTP/1.1
+# content-type: application/json
+
+# {
+#     "type": "painting",
+#     "productId": 8827943354715,
+#     "ratio": "square",
+#     "variant": {
+#         "title": "100x100 cm/Toile/Bordure blanche"
+#     }
+# }
+
+
+
+POST http://127.0.0.1:3333/api/product/update/tapestry HTTP/1.1
 content-type: application/json
 
 {
-    "productId": 8827943354715,
-    "ratio": "square",
+    "type": "tapestry",
+    "productId": 9317711741275,
     "variant": {
-        "title": "100x100 cm/Toile/Bordure blanche"
-    }
+        "title": "100cm x 120cm"
+    },
+    "cm2": 12000
 }

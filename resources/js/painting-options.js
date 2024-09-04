@@ -24,6 +24,7 @@ async function getAllOptions(aspectRatio) {
     createDomFromVariants([])
   }
 }
+
 function createDomFromVariants(variants) {
   variants.forEach((firstLevel) => {
     //first level

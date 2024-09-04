@@ -19,9 +19,13 @@ export default class Product extends Authentication {
     }
   }
 
-  public async updateVariant(product: UpdateProduct) {
+  public async updateVariant(product: UpdateProductPainting | UpdateProductTapestry) {
     const variant = new Variant()
-    return variant.update(product)
+    if (product.type === 'painting') {
+      return variant.updatePainting(product)
+    } else if (product.type === 'tapestry') {
+      return variant.updateTapestry(product)
+    }
   }
 
   public async updateMetafieldLikesCount({

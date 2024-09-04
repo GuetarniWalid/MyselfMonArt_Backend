@@ -1,0 +1,39 @@
+@layout('layouts/main')
+@set('title', 'Dashboard - Options des tableaux')
+@set('body_class', 'max-w-4xl mx-auto')
+
+@section('scripts')
+  @entryPointScripts('tapestry-options')
+@end
+
+@section('css')
+  <link rel="stylesheet" href="/css/mermaid.min.css">
+@end
+
+
+@section('body')
+
+  <div class="max-w-4xl mx-auto mt-16">
+    <a href="/" class="border-main border-2 px-6 py-3 hover:bg-main hover:text-secondary duration-200">
+      <svg class="inline-block" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24">
+        <path fill="currentColor" d="m6.8 13l2.9 2.9q.275.275.275.7t-.275.7q-.275.275-.7.275t-.7-.275l-4.6-4.6q-.15-.15-.213-.325T3.426 12q0-.2.063-.375T3.7 11.3l4.6-4.6q.275-.275.7-.275t.7.275q.275.275.275.7t-.275.7L6.8 11H19V8q0-.425.288-.712T20 7q.425 0 .713.288T21 8v3q0 .825-.587 1.413T19 13H6.8Z"/>
+      </svg>
+    </a>
+  </div>
+
+  <main class="px-3 mt-16">
+      <div class="mb-16">
+        <h1 class="flex items-center gap-3">
+          <svg xmlns="http://www.w3.org/2000/svg" width="55" height="55" viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h7V2H4c-1.1 0-2 .9-2 2v7h2zm6 9l-4 5h12l-3-4l-2.03 2.71zm7-4.5c0-.83-.67-1.5-1.5-1.5S14 7.67 14 8.5s.67 1.5 1.5 1.5S17 9.33 17 8.5M20 2h-7v2h7v7h2V4c0-1.1-.9-2-2-2m0 18h-7v2h7c1.1 0 2-.9 2-2v-7h-2zM4 13H2v7c0 1.1.9 2 2 2h7v-2H4z"/></svg>
+          OPTIONS DES TAPISSERIES
+        </h1>
+        <p class="text-2xl mb-8 mt-2">
+          Voyons les changement que vous voulez apporter aux tapisseries
+        </p>
+      </div>
+
+      <div>
+        Prix au mètre carré: <input type="number" id="price-m2" class="border-2 border-main px-2 py-1 rounded-lg" value="0">
+      </div>
+  </main>
+@end

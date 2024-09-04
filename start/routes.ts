@@ -19,10 +19,11 @@
 */
 
 import Route from '@ioc:Adonis/Core/Route'
+import Env from '@ioc:Adonis/Core/Env'
 
 Route.get('/', async ({ view }) => {
   return view.render('welcome')
-}).middleware(['auth'])
+}).middleware(Env.get('NODE_ENV') !== 'development' ? ['auth'] : [])
 
 Route.get('/test', async () => {
   return 'test ok'
@@ -42,9 +43,12 @@ Route.group(() => {
   Route.get('/painting-options', async ({ view }) => {
     return view.render('pages/painting-options')
   })
+  Route.get('/tapestry-options', async ({ view }) => {
+    return view.render('pages/tapestry-options')
+  })
 })
   .prefix('/dashboard')
-  .middleware(['auth'])
+  .middleware(Env.get('NODE_ENV') !== 'development' ? ['auth'] : [])
 
 Route.group(() => {
   Route.group(() => {
@@ -59,8 +63,14 @@ Route.group(() => {
   }).prefix('/paintings')
 
   Route.group(() => {
+    Route.get('/price', 'TapestriesController.index')
+    Route.put('/price', 'TapestriesController.update')
+  }).prefix('/tapestry')
+
+  Route.group(() => {
     Route.post('/create', 'ProductsController.create')
-    Route.post('/update', 'ProductsController.update')
+    Route.post('/update/painting', 'ProductsController.updatePainting')
+    Route.post('/update/tapestry', 'ProductsController.updateTapestry')
     Route.post('/update/metafield/likes-count', 'ProductsController.updateMetafieldLikesCount')
   }).prefix('/product')
 }).prefix('/api')

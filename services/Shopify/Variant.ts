@@ -1,3 +1,4 @@
+import { log } from 'crawlee'
 import Authentication from './Authentication'
 
 export default class SVariant extends Authentication {
@@ -7,7 +8,11 @@ export default class SVariant extends Authentication {
     super()
   }
 
-  public async update(product: UpdateProduct) {
+  /**
+   * Painting variant
+   */
+
+  public async updatePainting(product: UpdateProductPainting) {
     const optionsAndvariantsQuery = this.getOptionsAndVariantsQuery(product.productId)
     const data = await this.fetchGraphQL(optionsAndvariantsQuery)
 
@@ -230,5 +235,43 @@ export default class SVariant extends Authentication {
     }
 
     return responseBody.data
+  }
+
+  /**
+   * Tapestry variant
+   */
+
+  public async updateTapestry(product: UpdateProductTapestry) {
+    const optionsAndvariantsQuery = this.getOptionsAndVariantsQuery(product.productId)
+    const data = await this.fetchGraphQL(optionsAndvariantsQuery)
+    const variants = data.product.variants.edges
+
+    if (variants.length === 1 && variants[0].node.title === 'Default Title') {
+      return this.createFirstVariant(product.productId, product.variant)
+    }
+
+    const variantAlreadyExist = variants.find((v) => v.node.title === product.variant.title)
+    if (variantAlreadyExist) {
+      if (Number(variantAlreadyExist.node.price) === Number(product.variant.price)) {
+        return {
+          id: this.extractIdFromGid(variantAlreadyExist.node.id),
+          price: variantAlreadyExist.node.price,
+          title: variantAlreadyExist.node.title,
+        }
+      } else {
+        const { query: queryUpdate, variables: variablesUpdate } =
+          this.getVariantUpdateMutationsQuery(variantAlreadyExist.node.id, product.variant)
+        const variantMutationsOtherData = await this.fetchGraphQL(queryUpdate, variablesUpdate)
+        return {
+          id: this.extractIdFromGid(variantAlreadyExist.node.id),
+          price: variantMutationsOtherData.productVariantUpdate.productVariant.price,
+          title: variantMutationsOtherData.productVariantUpdate.productVariant.title,
+        }
+      }
+    }
+
+    // Create a new variant
+    const variantData = await this.createVariant(product.productId, product.variant)
+    return variantData
   }
 }
