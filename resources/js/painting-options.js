@@ -561,10 +561,10 @@ function optionsArrayToStructuredData(arr) {
       const structuredData = `
         {
           "@type": "Offer",
-          price: ${size.price + marerial.price},
-          priceCurrency: {{ cart.currency.iso_code | json }},
-          availability: "http://schema.org/InStock",
-          url : {{ request.origin | append: product.url | json }}
+          "price": ${size.price + marerial.price},
+          "priceCurrency": {{ cart.currency.iso_code | json }},
+          "availability": "http://schema.org/InStock",
+          "url" : {{ request.origin | append: product.url | json }}
         }
         `
       structuredDataArr.push(structuredData)
@@ -580,17 +580,17 @@ function structuredDataToString(arr) {
       "@type": "Product",
       "name": {{ product.title | json }},
       "url": {{ request.origin | append: product.url | json }},
-      {% if seo_media -%}
+      {%- if seo_media -%}
         "image": [
           {{ seo_media | image_url: width: seo_media.preview_image.width | prepend: "https:" | json }}
         ],
-      {%- endif %}
+      {%- endif -%}
       "description": {{ product.description | strip_html | json }},
       "brand": {
         "@type": "Brand",
         "name": {{ product.vendor | json }}
       },
-      "offers": ${arr}
+      "offers": [${arr}]
     }
   </script>
   `
