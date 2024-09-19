@@ -260,6 +260,14 @@ async function copyLocale() {
     console.error('Erreur lors de la copie', err)
   }
 }
+async function copyStructuredData() {
+  try {
+    const content = document.getElementById('string-structured-data').textContent
+    await navigator.clipboard.writeText(content)
+  } catch (err) {
+    console.error('Erreur lors de la copie', err)
+  }
+}
 async function saveToDatabase(button) {
   button.classList.remove('bg-red-600')
   button.classList.remove('hover:bg-red-700')
@@ -344,6 +352,7 @@ function triggerAfterChangement() {
         createJSONToCopied(optionsArray)
         createScriptToCopied(optionsArrayTranslated)
         createLocale(optionsArray)
+        createStructuredDataToCopied(optionsArray)
       }
     }
   }
@@ -360,6 +369,7 @@ function listenPopupInputs() {
       createJSONToCopied(optionsArray)
       createScriptToCopied(optionsArrayTranslated)
       createLocale(optionsArray)
+      createStructuredDataToCopied(optionsArray)
     })
   })
 }
@@ -537,6 +547,55 @@ function extractUniqueValues(optionsArray) {
   return uniqueValues
 }
 
+//Create Structured Data
+function createStructuredDataToCopied(optionsArray) {
+  const structuredDataArr = optionsArrayToStructuredData(optionsArray)
+  console.log('🚀 ~ structuredDataArr:', structuredDataArr)
+  const stringScript = structuredDataToString(structuredDataArr)
+  document.getElementById('string-structured-data').textContent = stringScript
+}
+function optionsArrayToStructuredData(arr) {
+  const structuredDataArr = []
+  arr.forEach((size) => {
+    size.children.forEach((marerial) => {
+      const structuredData = `
+        {
+          "@type": "Offer",
+          price: ${size.price + marerial.price},
+          priceCurrency: {{ cart.currency.iso_code | json }},
+          availability: "http://schema.org/InStock",
+          url : {{ request.origin | append: product.url | json }}
+        }
+        `
+      structuredDataArr.push(structuredData)
+    })
+  })
+  return structuredDataArr
+}
+function structuredDataToString(arr) {
+  return `
+  <script type="application/ld+json">
+    {
+      "@context": "http://schema.org/",
+      "@type": "Product",
+      "name": {{ product.title | json }},
+      "url": {{ request.origin | append: product.url | json }},
+      {% if seo_media -%}
+        "image": [
+          {{ seo_media | image_url: width: seo_media.preview_image.width | prepend: "https:" | json }}
+        ],
+      {%- endif %}
+      "description": {{ product.description | strip_html | json }},
+      "brand": {
+        "@type": "Brand",
+        "name": {{ product.vendor | json }}
+      },
+      "offers": ${arr}
+    }
+  </script>
+  `
+}
+
 // Exports
 window.adjustWidth = adjustWidth
 window.addSiblingOptionAction = addSiblingOptionAction
@@ -549,6 +608,7 @@ window.saveToDatabase = saveToDatabase
 window.copyLocale = copyLocale
 window.showInfoPopup = showInfoPopup
 window.selectAspectRatio = selectAspectRatio
+window.copyStructuredData = copyStructuredData
 
 //tailwindcss, don't remove
 //bg-main

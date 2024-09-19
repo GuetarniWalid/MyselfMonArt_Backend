@@ -10,16 +10,26 @@
 #     }
 # }
 
+# POST http://127.0.0.1:3333/api/product/update/tapestry HTTP/1.1
+# content-type: application/json
 
+# {
+#     "type": "tapestry",
+#     "productId": 9317711741275,
+#     "variant": {
+#         "title": "100cm x 120cm"
+#     },
+#     "cm2": 12000
+# }
 
-POST http://127.0.0.1:3333/api/product/update/tapestry HTTP/1.1
-content-type: application/json
-
+POST /admin/api/2024-04/metafields.json
 {
-    "type": "tapestry",
-    "productId": 9317711741275,
-    "variant": {
-        "title": "100cm x 120cm"
-    },
-    "cm2": 12000
+  "metafield": {
+    "namespace": "global",
+    "key": "trustpilot_review",
+    "value": 4.3,
+    "type": "number_decimal",
+    "owner_resource": "shop",
+    "owner_id": 123456789  # Remplace avec l'ID de ta boutique
+  }
 }
