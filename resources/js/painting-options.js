@@ -561,9 +561,16 @@ function optionsArrayToStructuredData(arr) {
         {
           "@type": "Offer",
           "price": ${size.price + marerial.price},
-          "priceCurrency": {{ cart.currency.iso_code | json }},
+          "priceCurrency": "{{ cart.currency.iso_code }}",
           "availability": "http://schema.org/InStock",
-          "url" : {{ request.origin | append: product.url | json }}
+          "url" : "{{ request.origin | append: product.url }}",
+          "seller": {
+              "@type": "Organization",
+              "name": "{{ product.vendor }}"
+          }
+          {%- if reviews_structured_data != blank -%}
+            ,{{ reviews_structured_data }}
+          {%- endif -%}
         }
         `
       structuredDataArr.push(structuredData)
@@ -577,17 +584,22 @@ function structuredDataToString(arr) {
     {
       "@context": "http://schema.org/",
       "@type": "Product",
-      "name": {{ product.title | json }},
-      "url": {{ request.origin | append: product.url | json }},
+      "@id": "{{ request.origin | append: product.url }}",
+      "name": "{{ product.title }}",
+      "logo": "https://cdn.shopify.com/s/files/1/0623/2388/4287/files/logo-myselfmonart.svg?v=1727019678",
+      "url": "{{ request.origin | append: product.url }}",
+      {% if product.metafields.link.mother_collection.value.title != blank %}
+        "category": "{{ product.metafields.link.mother_collection.value.title }}",
+      {% endif %}
       {%- if seo_media -%}
         "image": [
-          {{ seo_media | image_url: width: seo_media.preview_image.width | prepend: "https:" | json }}
+          "{{ seo_media | image_url: width: seo_media.preview_image.width | prepend: "https:" }}"
         ],
       {%- endif -%}
-      "description": {{ product.description | strip_html | json }},
+      "description": "{{ product.description | strip_html }}",
       "brand": {
         "@type": "Brand",
-        "name": {{ product.vendor | json }}
+        "name": "{{ product.vendor }}"
       },
       "offers": [${arr}]
     }
