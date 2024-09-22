@@ -73,3 +73,4 @@ jobs:
             docker-compose up -d
             docker-compose exec -T app node ace migration:run
             docker-compose exec -T app node ace db:seed
+            docker system prune -a --volumes -f
