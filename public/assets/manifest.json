@@ -1,7 +1,7 @@
 {
-  "assets/app.css": "http://localhost:8080/assets/app.css",
-  "assets/app.js": "http://localhost:8080/assets/app.js",
-  "assets/backlinks.js": "http://localhost:8080/assets/backlinks.js",
-  "assets/painting-options.js": "http://localhost:8080/assets/painting-options.js",
-  "assets/tapestry-options.js": "http://localhost:8080/assets/tapestry-options.js"
+  "assets/app.css": "/assets/app.23d62a58.css",
+  "assets/app.js": "/assets/app.31d6cfe0.js",
+  "assets/backlinks.js": "/assets/backlinks.83bdffe4.js",
+  "assets/painting-options.js": "/assets/painting-options.532924b7.js",
+  "assets/tapestry-options.js": "/assets/tapestry-options.c85bb074.js"
 }

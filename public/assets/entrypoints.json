@@ -2,25 +2,25 @@
   "entrypoints": {
     "app": {
       "css": [
-        "http://localhost:8080/assets/app.css"
+        "/assets/app.23d62a58.css"
       ],
       "js": [
-        "http://localhost:8080/assets/app.js"
+        "/assets/app.31d6cfe0.js"
       ]
     },
     "backlinks": {
       "js": [
-        "http://localhost:8080/assets/backlinks.js"
+        "/assets/backlinks.83bdffe4.js"
       ]
     },
     "painting-options": {
       "js": [
-        "http://localhost:8080/assets/painting-options.js"
+        "/assets/painting-options.532924b7.js"
       ]
     },
     "tapestry-options": {
       "js": [
-        "http://localhost:8080/assets/tapestry-options.js"
+        "/assets/tapestry-options.c85bb074.js"
       ]
     }
   }

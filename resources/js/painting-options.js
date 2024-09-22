@@ -550,7 +550,6 @@ function extractUniqueValues(optionsArray) {
 //Create Structured Data
 function createStructuredDataToCopied(optionsArray) {
   const structuredDataArr = optionsArrayToStructuredData(optionsArray)
-  console.log('🚀 ~ structuredDataArr:', structuredDataArr)
   const stringScript = structuredDataToString(structuredDataArr)
   document.getElementById('string-structured-data').textContent = stringScript
 }
