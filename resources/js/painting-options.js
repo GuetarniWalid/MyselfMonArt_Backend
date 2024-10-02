@@ -568,9 +568,6 @@ function optionsArrayToStructuredData(arr) {
               "@type": "Organization",
               "name": {{ product.vendor | json }}
           }
-          {%- if reviews_structured_data != blank -%}
-            ,{{ reviews_structured_data }}
-          {%- endif -%}
         }
         `
       structuredDataArr.push(structuredData)
@@ -599,6 +596,9 @@ function structuredDataToString(arr) {
         "@type": "Brand",
         "name": {{ product.vendor | json }}
       },
+      {%- if reviews_structured_data != blank -%}
+        {{ reviews_structured_data }},
+      {%- endif -%}
       "offers": [${arr}]
     }
   </script>
