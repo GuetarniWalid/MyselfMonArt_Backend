@@ -561,12 +561,12 @@ function optionsArrayToStructuredData(arr) {
         {
           "@type": "Offer",
           "price": ${size.price + marerial.price},
-          "priceCurrency": "{{ cart.currency.iso_code }}",
+          "priceCurrency": {{ cart.currency.iso_code | json }},
           "availability": "http://schema.org/InStock",
-          "url" : "{{ request.origin | append: product.url }}",
+          "url" : {{ request.origin | append: product.url | json }},
           "seller": {
               "@type": "Organization",
-              "name": "{{ product.vendor }}"
+              "name": {{ product.vendor | json }}
           }
           {%- if reviews_structured_data != blank -%}
             ,{{ reviews_structured_data }}
@@ -584,22 +584,20 @@ function structuredDataToString(arr) {
     {
       "@context": "http://schema.org/",
       "@type": "Product",
-      "@id": "{{ request.origin | append: product.url }}",
-      "name": "{{ product.title }}",
+      "@id": {{ request.origin | append: product.url | json }},
+      "name": {{ product.title | json }},
       "logo": "https://cdn.shopify.com/s/files/1/0623/2388/4287/files/logo-myselfmonart.svg?v=1727019678",
-      "url": "{{ request.origin | append: product.url }}",
+      "url": {{ request.origin | append: product.url | json }},
       {% if product.metafields.link.mother_collection.value.title != blank %}
-        "category": "{{ product.metafields.link.mother_collection.value.title }}",
+        "category": {{ product.metafields.link.mother_collection.value.title | json }},
       {% endif %}
-      {%- if seo_media -%}
-        "image": [
-          "{{ seo_media | image_url: width: seo_media.preview_image.width | prepend: "https:" }}"
-        ],
-      {%- endif -%}
-      "description": "{{ product.description | strip_html }}",
+      {% if seo_media %}
+        "image": [{{ seo_media | image_url: width: seo_media.preview_image.width | prepend: "https:" | json }}],
+      {% endif %}
+      "description": {{ product.description | strip_html | json }},
       "brand": {
         "@type": "Brand",
-        "name": "{{ product.vendor }}"
+        "name": {{ product.vendor | json }}
       },
       "offers": [${arr}]
     }
