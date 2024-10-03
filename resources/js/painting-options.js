@@ -567,6 +567,12 @@ function optionsArrayToStructuredData(arr) {
           "seller": {
               "@type": "Organization",
               "name": {{ product.vendor | json }}
+          },
+          "hasMerchantReturnPolicy": {
+              "@type": "MerchantReturnPolicy",
+              "returnPolicyCategory": "/pages/conditions-generales-de-vente-1",
+              "merchantReturnDays": "14",
+              "returnMethod": "http://schema.org/ReturnByMail"
           }
         }
         `
