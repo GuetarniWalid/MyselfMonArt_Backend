@@ -1,12 +1,6 @@
 import Authentication from './Authentication'
 
 export default class SVariant extends Authentication {
-  private urlGraphQL = `${this.shopUrl}/${this.apiVersion}/graphql.json`
-
-  constructor() {
-    super()
-  }
-
   /**
    * Painting variant
    */
@@ -214,26 +208,6 @@ export default class SVariant extends Authentication {
         },
       },
     }
-  }
-
-  private async fetchGraphQL(query, variables = {}) {
-    const response = await fetch(this.urlGraphQL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': this.accessToken,
-      },
-      body: JSON.stringify({ query, variables }),
-    })
-
-    const responseBody = await response.json()
-
-    if (responseBody.errors) {
-      console.error('Shopify GraphQL errors:', responseBody.errors)
-      throw new Error('Failed to fetch Shopify GraphQL API')
-    }
-
-    return responseBody.data
   }
 
   /**

@@ -19,11 +19,8 @@
 */
 
 import Route from '@ioc:Adonis/Core/Route'
-import Env from '@ioc:Adonis/Core/Env'
 
-Route.get('/', async ({ view }) => {
-  return view.render('welcome')
-}).middleware(Env.get('NODE_ENV') !== 'development' ? ['auth'] : [])
+Route.get('/', 'DashboardController.index').middleware(['auth'])
 
 Route.get('/test', async () => {
   return 'test ok'
@@ -34,6 +31,8 @@ Route.group(() => {
     return ally.use('google').redirect()
   })
   Route.get('/callback', 'SocialAuthsController.index')
+  Route.get('/merchant-center', 'SocialAuthsController.redirectToGoogle')
+  Route.get('/merchant-center/callback', 'SocialAuthsController.handleGoogleCallback')
 }).prefix('/login')
 
 Route.group(() => {
@@ -48,7 +47,7 @@ Route.group(() => {
   })
 })
   .prefix('/dashboard')
-  .middleware(Env.get('NODE_ENV') !== 'development' ? ['auth'] : [])
+  .middleware(['auth'])
 
 Route.group(() => {
   Route.group(() => {

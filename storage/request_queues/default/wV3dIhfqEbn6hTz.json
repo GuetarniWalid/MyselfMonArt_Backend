@@ -1,9 +1,0 @@
-{
-	"id": "wV3dIhfqEbn6hTz",
-	"json": "{\"id\":\"wV3dIhfqEbn6hTz\",\"url\":\"http://coco.com\",\"loadedUrl\":\"https://www.chanel.com/\",\"uniqueKey\":\"http://coco.com\",\"method\":\"GET\",\"noRetry\":false,\"retryCount\":0,\"errorMessages\":[],\"headers\":{},\"userData\":{\"__crawlee\":{\"state\":4}},\"handledAt\":\"2023-10-25T12:20:00.604Z\"}",
-	"method": "GET",
-	"orderNo": null,
-	"retryCount": 0,
-	"uniqueKey": "http://coco.com",
-	"url": "http://coco.com"
-}

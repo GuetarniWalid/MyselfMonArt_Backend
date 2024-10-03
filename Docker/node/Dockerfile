@@ -47,8 +47,5 @@ RUN npm install pm2 -g
 # Exposez le port sur lequel votre app va tourner
 EXPOSE 3333
 
-# Utilisez un utilisateur non root pour des raisons de sécurité
-USER node
-
 # Commande pour démarrer votre application
 CMD ["sh", "/usr/src/app/init.sh"]

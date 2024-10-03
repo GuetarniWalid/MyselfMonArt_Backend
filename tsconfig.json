@@ -1,8 +1,9 @@
 {
   "extends": "adonis-preset-ts/tsconfig.json",
   "include": [
-    "**/*"
-, "config"  ],
+    "**/*",
+    "config"
+  ],
   "exclude": [
     "node_modules",
     "build"
@@ -35,7 +36,8 @@
       "@adonisjs/ally",
       "@adonisjs/lucid",
       "adonis5-scheduler",
-      "@adonisjs/auth"
+      "@adonisjs/auth",
+      "@adonisjs/mail"
     ]
   }
 }

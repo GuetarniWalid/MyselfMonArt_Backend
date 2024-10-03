@@ -36,4 +36,12 @@ export default Env.rules({
   SHOPIFY_API_VERSION: Env.schema.string(),
   SHOPIFY_ACCESS_TOKEN_SECRET: Env.schema.string(),
   FRONTEND_URL: Env.schema.string(),
+  ID_MERCHANT_CENTER: Env.schema.string(),
+  SMTP_HOST: Env.schema.string({ format: 'host' }),
+  SMTP_PORT: Env.schema.number(),
+  SMTP_USERNAME: Env.schema.string(),
+  SMTP_PASSWORD: Env.schema.string(),
+  MAIL_SENDER: Env.schema.string(),
+  MAIL_RECIPIENT: Env.schema.string(),
+  GOOGLE_API_KEY: Env.schema.string(),
 })

@@ -1,5 +1,29 @@
 {
   "commands": {
+    "delete:merchant_center_products": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/DeleteMerchantCenterProducts",
+      "commandName": "delete:merchant_center_products",
+      "description": "Delete all products from Google Merchant Center",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
+    "send:mail": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/SendMail",
+      "commandName": "send:mail",
+      "description": "Send a a test email",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
     "dump:rcfile": {
       "settings": {},
       "commandPath": "@adonisjs/core/build/commands/DumpRc",
@@ -598,6 +622,23 @@
       "commandName": "scheduler:run",
       "description": "Start one or more workers",
       "args": [],
+      "aliases": [],
+      "flags": []
+    },
+    "make:mailer": {
+      "settings": {},
+      "commandPath": "@adonisjs/mail/build/commands/MakeMailer",
+      "commandName": "make:mailer",
+      "description": "Make a new mailer class",
+      "args": [
+        {
+          "type": "string",
+          "propertyName": "name",
+          "name": "name",
+          "required": true,
+          "description": "Name of the mailer class"
+        }
+      ],
       "aliases": [],
       "flags": []
     }

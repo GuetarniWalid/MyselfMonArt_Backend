@@ -8,7 +8,7 @@ export default class Variants extends BaseModel {
   public name: Ratio
 
   @column()
-  public json: string
+  public json: PaintingJson
 
   public static async findVariantsByRatio(name: Ratio): Promise<any> {
     const variant = await this.query().where('name', name).firstOrFail()
