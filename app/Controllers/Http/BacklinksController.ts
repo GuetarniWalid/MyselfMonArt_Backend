@@ -16,8 +16,19 @@ export default class BacklinksController {
     await backlink?.delete()
   }
 
-  public async checkLinks({ request }: HttpContextContract) {
-    const { urls } = request.body()
+  public async checkLinks(request: HttpContextContract | { urls: string[] }) {
+    let urls: string[]
+    if ('urls' in request) {
+      urls = request.urls
+    } else {
+      urls = request.request.body().urls
+    }
+
+    if (!urls || urls.length === 0) {
+      console.log('No urls to check at : ', new Date())
+      return
+    }
+
     if (!Array.isArray(urls) || !urls.every((url) => this.isValidUrl(url))) {
       throw new Error('Bad urls: at least one url is empty or not a string')
     }
