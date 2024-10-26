@@ -66,10 +66,7 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
         productOnMerchantCenter
       )
 
-      this.insertProductToMerchantCenter(
-        [productToInsert[0], productToInsert[1], productToInsert[2]],
-        merchantCenter
-      )
+      this.insertProductToMerchantCenter(productToInsert, merchantCenter)
       this.updateProductToMerchantCenter(productToUpdate, merchantCenter, productOnMerchantCenter)
     } catch (error) {
       console.error('🚀 ~ error:', error)
