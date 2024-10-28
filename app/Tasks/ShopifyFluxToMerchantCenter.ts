@@ -127,6 +127,7 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
         offerId: productCleaned.id + '-' + pricePerMaterial.materialType,
         price: pricePerMaterial.price,
         title: this.formatTitleWithMaterial(productCleaned.title, pricePerMaterial.materialName),
+        material: this.translateMaterial(pricePerMaterial.materialType),
       }
     })
   }
@@ -337,6 +338,21 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
       return this.formatFinalTitle(titleToFormat)
     }
     return `${title} en ${material} | Art Moderne & Design Unique | Idéal pour Déco Intérieure`
+  }
+
+  private translateMaterial(material: string) {
+    switch (material) {
+      case 'poster':
+        return 'Affiche & Poster'
+      case 'canvas':
+        return 'Toile'
+      case 'aluminium':
+        return 'Aluminium'
+      case 'aluminium-plexi':
+        return 'Plexiglass'
+      default:
+        return material
+    }
   }
 
   private formatFinalTitle(title: string) {
@@ -727,6 +743,7 @@ interface ProductFormatted {
   offerId: string
   title: string
   description: string
+  material?: string
   link: string
   imageLink: string
   additionalImageLinks: string[]
