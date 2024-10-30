@@ -403,10 +403,33 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
 
   // Products on Merchant Center
   private async getMerchantCenterProducts(merchantCenter: content_v2_1.Content) {
+    let thereArePproductsLeft = true
+    let nextPageToken: string | undefined
+    const products = [] as content_v2_1.Schema$Product[]
+
+    while (thereArePproductsLeft) {
+      const { next25Products, nextPageToken: nextPageTokenReceive } =
+        await this.get25MerchantCenterProducts(merchantCenter, nextPageToken)
+
+      products.push(...next25Products)
+      thereArePproductsLeft = !!nextPageTokenReceive
+      nextPageToken = nextPageTokenReceive
+    }
+
+    return products
+  }
+
+  private async get25MerchantCenterProducts(
+    merchantCenter: content_v2_1.Content,
+    nextPageTokenToSend: string | undefined
+  ) {
     const response = await merchantCenter.products.list({
       merchantId: Env.get('ID_MERCHANT_CENTER'),
+      pageToken: nextPageTokenToSend,
     })
-    return response.data.resources ?? []
+    const next25Products = response.data.resources ?? []
+    const nextPageToken = response.data.nextPageToken ?? undefined
+    return { next25Products, nextPageToken }
   }
 
   private async insertProductToMerchantCenter(
