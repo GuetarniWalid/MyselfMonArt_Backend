@@ -51,7 +51,7 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
 
       const productsFormatForMerchantCenterPromises = productsFormatted.map(async (product) => {
         // @ts-ignore
-        return this.getProductWithStartedPriceByMaterial(product)
+        return this.formatProductAccordingMaterialAndPrice(product)
       })
       const promisesResolved = await Promise.allSettled(productsFormatForMerchantCenterPromises)
       const productsFormatForMerchantCenter = promisesResolved
@@ -103,17 +103,17 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
   }
 
   // Products on Shopify
-  private async getProductWithStartedPriceByMaterial(product: ProductFormatted) {
+  private async formatProductAccordingMaterialAndPrice(product: ProductFormatted) {
     if (product.ratio === 'tapestry') {
       return null
     }
 
     const variant = await Variants.findByOrFail('name', product.ratio)
-    const pricesPerMaterial = this.getPricePerMaterialForSmallerSize(variant.json)
-    const { ratio, ...productCleaned } = product
-    return pricesPerMaterial.map((pricePerMaterial) => {
+    const PriceAndMaterialData = this.getPriceAndMaterialForSmallerSize(variant.json)
+    const { ratio, ...productWithoutRatio } = product
+    return PriceAndMaterialData.map((data) => {
       return {
-        ...productCleaned,
+        ...productWithoutRatio,
         id:
           product.channel +
           ':' +
@@ -121,13 +121,14 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
           ':' +
           product.targetCountry +
           ':' +
-          productCleaned.id +
+          productWithoutRatio.id +
           '-' +
-          pricePerMaterial.materialType,
-        offerId: productCleaned.id + '-' + pricePerMaterial.materialType,
-        price: pricePerMaterial.price,
-        title: this.formatTitleWithMaterial(productCleaned.title, pricePerMaterial.materialName),
-        material: this.translateMaterial(pricePerMaterial.materialType),
+          data.materialType,
+        offerId: productWithoutRatio.id + '-' + data.materialType,
+        price: data.price,
+        title: this.formatTitleWithMaterial(productWithoutRatio.title, data.materialName),
+        material: this.translateMaterial(data.materialType),
+        productTypes: [productWithoutRatio.productTypes[0] + ' > ' + data.materialName],
       }
     })
   }
@@ -307,7 +308,7 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
     }
   }
 
-  private getPricePerMaterialForSmallerSize(
+  private getPriceAndMaterialForSmallerSize(
     data: PaintingJson
   ): { price: { value: string; currency: string }; materialName: string; materialType: string }[] {
     const sizePrice = data[0].price as number
