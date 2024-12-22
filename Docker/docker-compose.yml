@@ -14,10 +14,19 @@ services:
       - '80:80'
       - '443:443' 
     volumes:
-      - /etc/letsencrypt/live/${DIGITALOCEAN_HOST}/fullchain.pem:/etc/ssl/certs/fullchain.pem
-      - /etc/letsencrypt/live/${DIGITALOCEAN_HOST}/privkey.pem:/etc/ssl/private/privkey.pem
+      - /etc/letsencrypt:/etc/letsencrypt
+      - /var/lib/letsencrypt:/var/lib/letsencrypt
     depends_on:
       - app
+    restart: always
+
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt
+      - /var/lib/letsencrypt:/var/lib/letsencrypt
+      - /var/www/certbot:/var/www/certbot
+    entrypoint: "tail -f /dev/null"
     restart: always
 
   db:
@@ -25,6 +34,7 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DB_NAME}
+      MYSQL_INIT_COMMAND: "SET GLOBAL host_cache_size=0"
     volumes:
       - db-data:/var/lib/mysql
     ports:

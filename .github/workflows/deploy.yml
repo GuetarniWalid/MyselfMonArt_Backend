@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - test
 
 jobs:
   build-and-push:
@@ -69,8 +70,50 @@ jobs:
             cd /opt/MyselfMonArt_Dashboard
             export DOCKERHUB_USERNAME="${{ secrets.DOCKERHUB_USERNAME }}"
             export DIGITALOCEAN_HOST="${{ secrets.DIGITALOCEAN_HOST }}"
+            docker-compose down || true
             docker-compose pull
             docker-compose up -d
-            docker-compose exec -T app node ace migration:run
-            docker-compose exec -T app node ace db:seed
-            docker system prune -a --volumes -f
+            docker-compose logs
+            sleep 10
+            # Initial certificate setup if needed
+            docker-compose exec -T certbot certbot certonly --webroot \
+              --webroot-path=/var/www/certbot \
+              --agree-tos \
+              --no-eff-email \
+              --non-interactive \
+              -d backend.myselfmonart.com || true
+            # Verify certificate exists
+            docker-compose exec -T certbot certbot certificates | grep "Certificate Name: backend.myselfmonart.com" || {
+              echo "Certificate setup failed"
+              docker-compose logs certbot
+              exit 1
+            }
+            if ! docker-compose exec -T app node ace migration:run; then
+              echo "Migration failed"
+              docker-compose logs app
+              exit 1
+            fi
+            if ! docker-compose exec -T app node ace db:seed; then
+              echo "Seeding failed"
+              docker-compose logs app
+              exit 1
+            fi
+            docker system prune -a --volumes -f || true
+            set +e
+            docker-compose exec -T certbot certbot renew --webroot \
+              --webroot-path=/var/www/certbot \
+              --agree-tos \
+              --no-eff-email \
+              -d backend.myselfmonart.com || \
+            docker-compose exec -T certbot certbot certonly --webroot \
+              --webroot-path=/var/www/certbot \
+              --agree-tos \
+              --no-eff-email \
+              -d backend.myselfmonart.com
+            docker-compose ps
+            docker-compose logs --tail=100
+            # Debug certbot specifically
+            echo "Checking certbot status:"
+            docker-compose ps certbot
+            echo "Certbot logs:"
+            docker-compose logs certbot
