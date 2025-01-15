@@ -2,7 +2,8 @@
   "extends": "adonis-preset-ts/tsconfig.json",
   "include": [
     "**/*",
-    "config"
+    "config",
+    "types"
   ],
   "exclude": [
     "node_modules",
@@ -26,7 +27,8 @@
         "./database/*"
       ],
       "Types/*": [
-        "./types/*"
+        "./types/*",
+        "./types/Product.d.ts"
       ]
     },
     "types": [

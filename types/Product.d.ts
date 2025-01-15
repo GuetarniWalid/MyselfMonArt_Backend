@@ -1,4 +1,4 @@
-declare type CreateProduct = {
+export type CreateProduct = {
   title: string
   body_html?: string
   vendor?: string
@@ -11,7 +11,7 @@ declare type CreateProduct = {
   images: Image[]
 }
 
-declare type Image = {
+export type Image = {
   src: string
   filename: string
   alt: string
@@ -19,7 +19,7 @@ declare type Image = {
   product_id?: number
 }
 
-declare type ProductCreated = {
+export type ProductCreated = {
   id: number
   variants: [
     {
@@ -28,9 +28,9 @@ declare type ProductCreated = {
   ]
 }
 
-declare type Ratio = 'square' | 'portrait' | 'landscape' | 'personalized portrait'
+export type Ratio = 'square' | 'portrait' | 'landscape' | 'personalized portrait'
 
-declare type UpdateProductPainting = {
+export type UpdateProductPainting = {
   type: 'painting'
   productId: number
   ratio: Ratio
@@ -40,7 +40,7 @@ declare type UpdateProductPainting = {
   }
 }
 
-declare type UpdateProductTapestry = {
+export type UpdateProductTapestry = {
   type: 'tapestry'
   productId: number
   variant: {

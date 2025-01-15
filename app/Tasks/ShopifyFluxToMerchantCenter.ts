@@ -1,3 +1,4 @@
+import type { PaintingJson } from 'Types/Variant'
 import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import Shopify from 'App/Services/Shopify/index'
 import Env from '@ioc:Adonis/Core/Env'

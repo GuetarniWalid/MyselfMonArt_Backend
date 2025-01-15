@@ -1,4 +1,4 @@
-declare type Order = {
+export type Order = {
   email: string
   financial_status: string
   fulfillment_status: string

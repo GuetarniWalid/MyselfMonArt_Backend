@@ -1,5 +1,6 @@
 import { BaseModel, column } from '@ioc:Adonis/Lucid/Orm'
-import { Ratio } from 'Types/Product'
+import type { Ratio } from 'Types/Product'
+import type { PaintingJson } from 'Types/Variant'
 
 export default class Variants extends BaseModel {
   @column({ isPrimary: true })

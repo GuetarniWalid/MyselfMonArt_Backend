@@ -1,5 +1,6 @@
-import { UpdateProductPainting, UpdateProductTapestry } from 'Types/Product'
+import type { UpdateProductPainting, UpdateProductTapestry } from 'Types/Product'
 import Authentication from './Authentication'
+import type { Variant } from 'Types/Variant'
 
 export default class SVariant extends Authentication {
   /**

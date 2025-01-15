@@ -1,16 +1,16 @@
-declare type Variant = {
+export type Variant = {
   title: string
   price?: string
 }
 
-declare type PaintingVariantsWithoutChildren = {
+export type PaintingVariantsWithoutChildren = {
   name: string
   price: number
   technicalName: string | number
   technicalType: string
 }
 
-declare type PaintingVariantsWithChildrenChildren = {
+export type PaintingVariantsWithChildrenChildren = {
   name: string
   price: number
   children: PaintingVariantsWithChildren[]
@@ -18,9 +18,9 @@ declare type PaintingVariantsWithChildrenChildren = {
   technicalType: string
 }
 
-declare type PaintingJson = PaintingVariantsWithChildrenChildren[]
+export type PaintingJson = PaintingVariantsWithChildrenChildren[]
 
-declare type PaintingVariantsWithChildren = {
+export type PaintingVariantsWithChildren = {
   name: string
   price: number
   children: PaintingVariantsWithoutChildren[][]
