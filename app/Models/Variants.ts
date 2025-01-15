@@ -1,4 +1,5 @@
 import { BaseModel, column } from '@ioc:Adonis/Lucid/Orm'
+import { Ratio } from 'Types/Product'
 
 export default class Variants extends BaseModel {
   @column({ isPrimary: true })

@@ -1,4 +1,5 @@
 import Variants from 'App/Models/Variants'
+import { Ratio } from 'Types/Product'
 
 export default class SearchPaintingData {
   private size: string

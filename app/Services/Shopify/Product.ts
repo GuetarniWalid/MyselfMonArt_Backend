@@ -1,3 +1,9 @@
+import {
+  CreateProduct,
+  ProductCreated,
+  UpdateProductPainting,
+  UpdateProductTapestry,
+} from 'Types/Product'
 import Authentication from './Authentication'
 import Metafield from './Metafield'
 import Variant from './Variant'
