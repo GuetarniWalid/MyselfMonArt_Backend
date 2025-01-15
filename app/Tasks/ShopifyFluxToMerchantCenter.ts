@@ -1,5 +1,5 @@
 import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
-import Shopify from '../../services/Shopify/index'
+import Shopify from 'App/Services/Shopify/index'
 import Env from '@ioc:Adonis/Core/Env'
 import { google, content_v2_1 } from 'googleapis'
 import Variants from 'App/Models/Variants'
@@ -9,7 +9,7 @@ import sortBy from 'lodash/sortBy'
 import omit from 'lodash/omit'
 import forOwn from 'lodash/forOwn'
 import isEmpty from 'lodash/isEmpty'
-import Google from '../../services/Google'
+import Google from '../Services/Google'
 
 export default class ShopifyFluxToMerchantCenter extends BaseTask {
   public static get schedule() {

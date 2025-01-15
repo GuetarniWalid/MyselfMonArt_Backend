@@ -2,7 +2,7 @@ import type { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
 import Backlink from 'App/Models/Backlink'
 import { CheerioCrawler } from 'crawlee'
 import { CheerioAPI, Element } from 'cheerio'
-import { BacklinksAnalyseResult } from 'Contracts/Controllers/BacklinksController'
+import { BacklinksAnalyseResult } from 'Types/Backlink'
 
 export default class BacklinksController {
   public async index() {

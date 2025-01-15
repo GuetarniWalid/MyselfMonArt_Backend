@@ -1,5 +1,5 @@
 import type { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
-import Google from '../../../services/Google'
+import Google from 'App/Services/Google'
 
 export default class DashboardController {
   public async index({ view }: HttpContextContract) {
