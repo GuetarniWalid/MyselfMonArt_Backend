@@ -10,8 +10,7 @@
     "test": "node ace test",
     "lint": "eslint . --ext=.ts",
     "format": "prettier --write .",
-    "copy-env": "dotenv node copy-env.js",
-    "prepare": "husky install"
+    "copy-env": "dotenv node copy-env.js"
   },
   "eslintConfig": {
     "extends": [
