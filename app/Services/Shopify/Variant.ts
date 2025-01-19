@@ -13,8 +13,9 @@ export default class SVariant extends Authentication {
 
     const nbOfOptions = data.product.options.length
     const variants = data.product.variants.edges
+    const isDefaultOption = data.product.options[0].values.includes('Default Title')
 
-    if (nbOfOptions > 1) {
+    if (nbOfOptions > 1 || isDefaultOption) {
       await this.deleteAllVariants(product.productId, variants)
       return this.createFirstVariant(product.productId, product.variant)
     }
