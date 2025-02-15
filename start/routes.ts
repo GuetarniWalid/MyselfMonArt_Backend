@@ -21,8 +21,11 @@
 import Route from '@ioc:Adonis/Core/Route'
 
 Route.get('/', 'DashboardController.index').middleware(['auth'])
+Route.post('/', 'WebhooksController.handle')
+Route.post('/webhooks', 'WebhooksController.handle')
 
 Route.get('/test', async () => {
+  console.log('test ok')
   return 'test ok'
 })
 
@@ -72,4 +75,6 @@ Route.group(() => {
     Route.post('/update/tapestry', 'ProductsController.updateTapestry')
     Route.post('/update/metafield/likes-count', 'ProductsController.updateMetafieldLikesCount')
   }).prefix('/product')
+
+  Route.post('/webhooks', 'WebhooksController.handle')
 }).prefix('/api')

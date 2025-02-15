@@ -50,20 +50,26 @@ export type UpdateProductTapestry = {
   cm2: number
 }
 
-export interface ProductToTranslate {
+export interface ProductToTranslate extends Translatable {
+  id: string
   title: string
   descriptionHtml: string
   handle: string
   productType: string
+  options: {
+    optionValues: {
+      id: string
+      name: string
+    }[]
+  }[]
   seo: {
     title: string
     description: string
   }
   media: {
     nodes: {
-      image: {
-        alt: string
-      }
+      id: string
+      alt: string
     }[]
   }
 }
@@ -76,4 +82,85 @@ export interface ProductToTranslateFormatted {
   metaTitle: string
   metaDescription: string
   imageAltTexts: string[]
+}
+
+export interface Product {
+  id: string
+  title: string
+  description: string
+  handle: string
+  media: {
+    nodes: {
+      alt: string
+      mediaContentType: string
+      image: {
+        height: number
+        width: number
+        url: string
+      }
+    }[]
+  }
+  metafields: {
+    edges: {
+      node: {
+        namespace: string
+        key: string
+        reference?: {
+          id?: string
+          title?: string
+          field?: {
+            key: string
+            value: string
+          }
+        }
+      }
+    }[]
+  }
+  options: {
+    id: string
+    name: string
+  }[]
+  seo: {
+    title: string
+    description: string
+  }
+  templateSuffix: string | null
+  vendor: string
+}
+
+export interface ProductUpdate {
+  title?: string
+  descriptionHtml?: string
+  handle?: string
+  productType?: string
+  vendor?: string
+  status?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED'
+  seo?: {
+    title?: string
+    description?: string
+  }
+  options?: {
+    name: string
+  }[]
+  tags?: string[]
+  variants?: {
+    id?: string
+    price?: string
+    compareAtPrice?: string
+    barcode?: string
+    sku?: string
+    weight?: number
+    weightUnit?: 'KILOGRAMS' | 'GRAMS' | 'POUNDS' | 'OUNCES'
+    inventoryQuantity?: number
+    inventoryPolicy?: 'DENY' | 'CONTINUE'
+    inventoryManagement?: 'SHOPIFY' | 'NOT_MANAGED'
+    requiresShipping?: boolean
+    taxable?: boolean
+  }[]
+  metafields?: {
+    namespace: string
+    key: string
+    value: string
+    type: string
+  }[]
 }

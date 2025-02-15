@@ -24,6 +24,114 @@
       "aliases": [],
       "flags": []
     },
+    "shopify:create_web_hook_subscription": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShopifyCreateWebHookSubscription",
+      "commandName": "shopify:create_web_hook_subscription",
+      "description": "Create a web hook subscription",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
+    "shopify:delete_web_hook_subscription": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShopifyDeleteWebHookSubscription",
+      "commandName": "shopify:delete_web_hook_subscription",
+      "description": "Delete a web hook subscription",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
+    "shopify:get_product_by_id": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShopifyGetProductById",
+      "commandName": "shopify:get_product_by_id",
+      "description": "Get Shopify product details by ID",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
+    "shopify:get_product_variant_by_id": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShopifyGetProductVariantById",
+      "commandName": "shopify:get_product_variant_by_id",
+      "description": "Get Shopify product variant details by ID",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
+    "shopify:get_webhook_subscriptions": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShopifyGetWebhookSubscriptions",
+      "commandName": "shopify:get_webhook_subscriptions",
+      "description": "Get all webhook subscriptions for the current shop",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
+    "shopify:prevent_painting_titles_cannibalization": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShopifyPreventPaintingTitlesCannibalization",
+      "commandName": "shopify:prevent_painting_titles_cannibalization",
+      "description": "Prevent painting titles cannibalization",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
+    "shopify:remove_old_variants_from_products": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShopifyRemoveOldVariantsFromProducts",
+      "commandName": "shopify:remove_old_variants_from_products",
+      "description": "Remove old variants from products",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
+    "shopify:update_whebhook_subscription_callback_url": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShopifyUpdateWhebhookSubscriptionCallbackUrl",
+      "commandName": "shopify:update_whebhook_subscription_callback_url",
+      "description": "Update the webhook subscription callback url",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
+    "test:task": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/TestTask",
+      "commandName": "test:task",
+      "description": "Test task logic implementation",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
     "dump:rcfile": {
       "settings": {},
       "commandPath": "@adonisjs/core/build/commands/DumpRc",

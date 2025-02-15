@@ -1,4 +1,5 @@
 import type { PaintingJson } from 'Types/Variant'
+import type { Product as ProductFromShopify } from 'Types/Product'
 import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import Shopify from 'App/Services/Shopify/index'
 import Env from '@ioc:Adonis/Core/Env'
@@ -160,8 +161,8 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
           title: product.title,
           description: product.description,
           link: this.getProductLinkFromHandle(product.handle),
-          imageLink: this.getMainImageUrlFromImages(product.images.edges),
-          additionalImageLinks: this.getAdditionalImageUrlFromImages(product.images.edges),
+          imageLink: this.getMainImageUrlFromImages(product.media.nodes),
+          additionalImageLinks: this.getAdditionalImageUrlFromImages(product.media.nodes),
           googleProductCategory: this.getGoogleTaxonomyIdFromTemplateSuffix(product.templateSuffix),
           productTypes: [this.getProductTypeFromMetafields(product.metafields.edges)],
           availability: 'in stock',
@@ -202,7 +203,7 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
             { country: 'SE', rate: 0.25, taxShip: true },
             { country: 'GB', rate: 0.2, taxShip: true },
           ],
-          ratio: this.getImageRatio(product.images.edges, product.templateSuffix),
+          ratio: this.getImageRatio(product.media.nodes, product.templateSuffix),
           channel: 'online',
           productHighlights: this.getProductHilightsFromMaterial(product.templateSuffix),
         }
@@ -224,19 +225,18 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
   private getProductLinkFromHandle(handle: string) {
     return 'https://www.myselfmonart.com/products/' + handle
   }
-
-  private getMainImageUrlFromImages(images: ProductFromShopify['images']['edges']) {
-    return images[1]?.node.url ?? images[0]?.node.url ?? ''
+  private getMainImageUrlFromImages(images: ProductFromShopify['media']['nodes']) {
+    return images[1]?.image.url ?? images[0]?.image.url ?? ''
   }
 
-  private getAdditionalImageUrlFromImages(images: ProductFromShopify['images']['edges']) {
+  private getAdditionalImageUrlFromImages(images: ProductFromShopify['media']['nodes']) {
     const imagesCopy = [...images]
     imagesCopy.splice(1, 1)
     if (imagesCopy.length === 1) return []
-    return imagesCopy.map((image) => image.node.url)
+    return imagesCopy.map((image) => image.image.url)
   }
 
-  private getGoogleTaxonomyIdFromTemplateSuffix(templateSuffix: string) {
+  private getGoogleTaxonomyIdFromTemplateSuffix(templateSuffix: string | null) {
     switch (templateSuffix) {
       case 'painting':
         return '500044'
@@ -294,13 +294,16 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
     return value
   }
 
-  private getImageRatio(images: ProductFromShopify['images']['edges'], templateSuffix: string) {
+  private getImageRatio(
+    images: ProductFromShopify['media']['nodes'],
+    templateSuffix: ProductFromShopify['templateSuffix']
+  ) {
     if (templateSuffix === 'tapestry') {
       return 'tapestry' as const
     } else if (templateSuffix === 'personalized') {
       return 'personalized portrait' as const
     } else {
-      const image = images[1].node
+      const image = images[1].image
       return image.height > image.width
         ? ('portrait' as const)
         : image.height < image.width
@@ -382,7 +385,7 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
     return formattedFirstPart + rest
   }
 
-  private getProductHilightsFromMaterial(templateSuffix: string) {
+  private getProductHilightsFromMaterial(templateSuffix: ProductFromShopify['templateSuffix']) {
     if (templateSuffix === 'tapestry') {
       return [
         'Impression haute qualité, pour des couleurs vives et des détails impeccables',
@@ -696,35 +699,6 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
         )
     })
   }
-}
-
-interface ProductFromShopify {
-  id: string
-  title: string
-  description: string
-  handle: string
-  images: {
-    edges: {
-      node: {
-        height
-        width
-        url: string
-      }
-    }[]
-  }
-  templateSuffix: string
-  metafields: {
-    edges: {
-      node: {
-        namespace: string
-        key: string
-        reference?: {
-          title: string
-        }
-      }
-    }[]
-  }
-  vendor: string
 }
 
 interface ShippingDetails {

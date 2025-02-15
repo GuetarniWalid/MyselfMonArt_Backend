@@ -44,4 +44,7 @@ export default Env.rules({
   MAIL_SENDER: Env.schema.string(),
   MAIL_RECIPIENT: Env.schema.string(),
   GOOGLE_API_KEY: Env.schema.string(),
+  OPENAI_API_KEY: Env.schema.string(),
+  SHOPIFY_WEBHOOK_URL: Env.schema.string(),
+  SHOPIFY_CLIENT_SECRET: Env.schema.string(),
 })
