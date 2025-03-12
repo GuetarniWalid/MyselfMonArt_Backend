@@ -50,6 +50,62 @@ export type UpdateProductTapestry = {
   cm2: number
 }
 
+export interface ProductWithOutdatedTranslations {
+  id: string
+  title: string
+  descriptionHtml: string
+  handle: string
+  altTextsMetaObject: {
+    reference?: {
+      id: string
+      field: {
+        jsonValue: string[]
+      }
+    }
+  }
+  options: {
+    id: string
+    name: string
+    optionValues: {
+      id: string
+      name: string
+      translations: {
+        key: string
+        locale: string
+        value: string
+        outdated: boolean
+        updatedAt: string
+      }[]
+    }[]
+    translations: {
+      key: string
+      locale: string
+      value: string
+      outdated: boolean
+      updatedAt: string
+    }[]
+  }[]
+  productType: string
+  seo: {
+    title: string
+    description: string
+  }
+  translations: {
+    key: string
+    locale: string
+    value: string
+    outdated: boolean
+    updatedAt: string
+  }[]
+}
+
+export interface Media {
+  nodes: {
+    id: string
+    alt: string
+  }[]
+}
+
 export interface ProductToTranslate extends Translatable {
   id: string
   title: string
@@ -57,6 +113,8 @@ export interface ProductToTranslate extends Translatable {
   handle: string
   productType: string
   options: {
+    id: string
+    name?: string
     optionValues: {
       id: string
       name: string
@@ -67,10 +125,8 @@ export interface ProductToTranslate extends Translatable {
     description: string
   }
   media: {
-    nodes: {
-      id: string
-      alt: string
-    }[]
+    id: string
+    alts: string[]
   }
 }
 
@@ -81,7 +137,8 @@ export interface ProductToTranslateFormatted {
   productType: string
   metaTitle: string
   metaDescription: string
-  imageAltTexts: string[]
+  mediaAltTexts: string[]
+  optionName: string
 }
 
 export interface Product {

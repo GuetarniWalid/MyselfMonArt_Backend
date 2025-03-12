@@ -4,7 +4,7 @@ export type LanguageCode = 'es' | 'en' | 'de'
 
 export interface Translatable {}
 
-export type TranslatableContent = ProductToTranslate
+export type TranslatableContent = Partial<ProductToTranslate>
 
 export interface TranslationsRegister {
   resourceId: string
@@ -16,4 +16,16 @@ export interface TranslationInput {
   locale: LanguageCode
   translatableContentDigest: string
   value: string
+}
+
+export interface MetaobjectTranslation {
+  translatableResource: {
+    translations: {
+      key: string
+      locale: LanguageCode
+      value: string
+      outdated: boolean
+      updatedAt: string
+    }[]
+  }
 }

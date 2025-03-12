@@ -16,17 +16,10 @@ export default class ShopifyGetProductById extends BaseCommand {
     try {
       const productId = await this.askForProductId()
       const product = await shopify.product.getProductById(productId)
-      this.logger.info('Product details retrieved successfully')
-      this.logger.info('Product details :')
-      this.logger.log(product)
-      this.logger.info('Options details :')
-      this.logger.info('Options size : ' + product.options[0].optionValues.length)
       product.options[0].optionValues.forEach((option) => {
-        this.logger.info('Option id : ' + option.id)
-        this.logger.info('Option name : ' + option.name)
+        console.log('Option id : ' + option.id)
+        console.log('Option name : ' + option.name)
       })
-      this.logger.info('Variants details :')
-      this.logger.log(product.variants.nodes)
     } catch (error) {
       this.logger.error('Error getting product by ID', error)
     }

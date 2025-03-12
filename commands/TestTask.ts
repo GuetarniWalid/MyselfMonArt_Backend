@@ -12,22 +12,33 @@ export default class TestTask extends BaseCommand {
   }
 
   public async run() {
-    this.logger.info('Handled')
     const shopify = new Shopify()
     const productsToTranslate = await shopify.translation.getOutdatedTranslations('product')
-
+    console.log('🚀 ~ productsToTranslate length:', productsToTranslate.length)
     const chatGPT = new ChatGPT()
-    // TODO: Add a loop to translate all products
-    const productTranslated = await chatGPT.translate(productsToTranslate[0], 'product', 'en')
-    const responses = await shopify.translation.updateTranslation({
-      resourceToTranslate: productsToTranslate[0],
-      resourceTranslated: productTranslated,
-      resource: 'product',
-      isoCode: 'en',
-    })
-    responses.forEach((response) => {
-      this.logger.info(response)
-    })
+    let count = 0
+
+    for (const product of productsToTranslate) {
+      count++
+      console.log('============================')
+      console.log(product)
+      console.log('============================')
+      const productTranslated = await chatGPT.translate(product, 'product', 'en')
+      const responses = await shopify.translation.updateTranslation({
+        resourceToTranslate: product,
+        resourceTranslated: productTranslated,
+        resource: 'product',
+        isoCode: 'en',
+      })
+      responses.forEach((response) => {
+        if (response.translationsRegister.userErrors.length > 0) {
+          console.log('error => ', response.translationsRegister.userErrors)
+        }
+      })
+      if (count === 3) {
+        break
+      }
+    }
     this.logger.info('translations updated')
   }
 }

@@ -95,7 +95,7 @@ RÈGLES POUR LE MÉTA-TITRE
 ● Le mot-clé principal ne doit pas être identique à celui du titre mais utiliser un synonyme ou une reformulation pour éviter la cannibalisation SEO.
 ● Apporter une information complémentaire, comme un bénéfice, une émotion, une caractéristique unique ou un support.
 ● Ne pas dépasser 60 caractères pour un affichage optimal sur Google.
-● Utiliser un langage fluide, naturel et engageant, qui évite les répétitions inutiles et capte l'attention de l'utilisateur.
+● Utiliser un langage fluide, naturel et engageant, qui évite les répétitions inutiles et capte l’attention de l’utilisateur.
 ● Finir par le nom de marque MyselfMonArt
 
 FORMAT DU MÉTA-TITRE
@@ -103,20 +103,20 @@ ${metaTitle} (Mot fixe) + Synonyme ou variation du mot-clé + Information compl�
 
 EXEMPLES DE MÉTA-TITRES DIFFÉRENCIÉS DU TITRE
 
-Titre: Tableau Murale – L'élégance mystique d'une geisha 
+Titre: Tableau Murale – L’élégance mystique d’une geisha 
 Méta-Titre: Œuvre murale - Portrait geisha japonaise raffiné - MyselfMonArt
 
 Titre: Art Contemporain – Une explosion de couleurs vibrantes 
-Méta-Titre: Peinture Moderne – Un chef-d'œuvre aux teintes éclatantes - MyselfMonArt
+Méta-Titre: Peinture Moderne – Un chef-d’œuvre aux teintes éclatantes - MyselfMonArt
 
 Titre: Tableau sur toile – Le souffle apaisant du bambou, ambiance Zen
 Méta-Titre: Tableau original – Tableau bambou pour une déco relaxante - MyselfMonArt
 
-Titre: Décor mural – L'énergie brute des vagues déchaînées 
-Méta-Titre: Toile design – L'intensité des flots en mouvement - MyselfMonArt
+Titre: Décor mural – L’énergie brute des vagues déchaînées 
+Méta-Titre: Toile design – L’intensité des flots en mouvement - MyselfMonArt
 
-Titre: Grand tableau – L'aura indomptable du lion rugissant 
-Méta-Titre: Affiche et poster – La puissance d'un lion en pleine majesté - MyselfMonArt
+Titre: Grand tableau – L’aura indomptable du lion rugissant 
+Méta-Titre: Affiche et poster – La puissance d’un lion en pleine majesté - MyselfMonArt
 
 Titre: Déco – Une touche de sérénité absolue, chic et minimaliste
 Méta-Titre: Toile – Élégance et simplicité pour un intérieur zen - MyselfMonArt

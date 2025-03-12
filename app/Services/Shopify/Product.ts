@@ -57,6 +57,7 @@ export default class Product extends Authentication {
                       title
                       description
                       handle
+                      hasOnlyDefaultVariant
                       media(first: 10, sortKey: POSITION) {
                         nodes {
                           alt
@@ -183,6 +184,7 @@ export default class Product extends Authentication {
           title
           description
           handle
+          hasOnlyDefaultVariant
           media(first: 10) {
             nodes {
               alt
@@ -192,6 +194,7 @@ export default class Product extends Authentication {
             value
           }
           options(first: 10) {
+            name
             optionValues {
               id
               name
@@ -297,6 +300,40 @@ export default class Product extends Authentication {
               value: JSON.stringify(newValues),
             },
           ],
+        },
+      },
+    }
+  }
+
+  public async updateOption(productId: string, optionId: string, newValues: any) {
+    const { query, variables } = this.getUpdateOptionQuery(productId, optionId, newValues)
+    const response = await this.fetchGraphQL(query, variables)
+    return response.productOptionUpdate
+  }
+
+  private getUpdateOptionQuery(productId: string, optionId: string, newValues: any) {
+    return {
+      query: `mutation updateOption($productId: ID!, $option: OptionUpdateInput!) {
+                productOptionUpdate(productId: $productId, option: $option) {
+                  userErrors {
+                    field
+                    message
+                    code
+                  }
+                  product {
+                    id
+                    options {
+                      id
+                      name
+                    }
+                  }
+                }
+              }`,
+      variables: {
+        productId,
+        option: {
+          id: optionId,
+          ...newValues,
         },
       },
     }

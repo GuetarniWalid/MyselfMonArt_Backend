@@ -8,7 +8,7 @@ export default class Translator extends Authentication {
   private translationHandler: ProductTranslator
 
   constructor(
-    payload: ProductToTranslate,
+    payload: Partial<ProductToTranslate>,
     resources: 'product' | 'collection',
     targetLanguage: LanguageCode
   ) {

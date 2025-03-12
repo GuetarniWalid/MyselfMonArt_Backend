@@ -108,6 +108,18 @@
       "aliases": [],
       "flags": []
     },
+    "shopify:update_default_option_names": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShopifyUpdateDefaultOptionNames",
+      "commandName": "shopify:update_default_option_names",
+      "description": "Update default option names for Shopify products",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
     "shopify:update_whebhook_subscription_callback_url": {
       "settings": {
         "loadApp": true,

@@ -136,7 +136,7 @@ export default class SVariant extends Authentication {
         productId: `gid://shopify/Product/${productId}`,
         options: [
           {
-            name: 'Title',
+            name: 'Titre',
             values: [
               {
                 name: variant.title,

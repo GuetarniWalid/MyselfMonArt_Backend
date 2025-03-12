@@ -1,11 +1,10 @@
-import { BaseTask /*, CronTimeV2 */ } from 'adonis5-scheduler/build/src/Scheduler/Task'
+import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import ChatGPT from 'App/Services/ChatGPT'
 import Shopify from 'App/Services/Shopify'
 
 export default class TranslateProduct extends BaseTask {
   public static get schedule() {
-    // Never trigger - using an invalid cron expression
-    return '0 0 31 2 *' // February 31st (which doesn't exist)
+    return CronTimeV2.everyDayAt(3, 0)
   }
 
   public static get useLock() {
@@ -13,22 +12,30 @@ export default class TranslateProduct extends BaseTask {
   }
 
   public async handle() {
-    this.logger.info('Handled')
     const shopify = new Shopify()
     const productsToTranslate = await shopify.translation.getOutdatedTranslations('product')
-
+    console.log('products to translate length:', productsToTranslate.length)
     const chatGPT = new ChatGPT()
-    // TODO: Add a loop to translate all products
-    const productTranslated = await chatGPT.translate(productsToTranslate[0], 'product', 'en')
-    const responses = await shopify.translation.updateTranslation({
-      resourceToTranslate: productsToTranslate[0],
-      resourceTranslated: productTranslated,
-      resource: 'product',
-      isoCode: 'en',
-    })
-    responses.forEach((response) => {
-      this.logger.info(response)
-    })
+
+    for (const product of productsToTranslate) {
+      console.log('============================')
+      console.log('Id product to translate => ', product.id)
+      const productTranslated = await chatGPT.translate(product, 'product', 'en')
+      const responses = await shopify.translation.updateTranslation({
+        resourceToTranslate: product,
+        resourceTranslated: productTranslated,
+        resource: 'product',
+        isoCode: 'en',
+      })
+      responses.forEach((response) => {
+        if (response.translationsRegister.userErrors.length > 0) {
+          console.log('error => ', response.translationsRegister.userErrors)
+        } else {
+          console.log('translation updated')
+        }
+      })
+      console.log('============================')
+    }
     this.logger.info('translations updated')
   }
 }
