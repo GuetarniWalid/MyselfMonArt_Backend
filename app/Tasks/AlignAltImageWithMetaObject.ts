@@ -4,7 +4,7 @@ import Product from 'App/Services/Shopify/Product'
 
 export default class AlignAltImageWithMetaObject extends BaseTask {
   public static get schedule() {
-    return CronTimeV2.everyDayAt(3, 0)
+    return CronTimeV2.everyDayAt(2, 0)
   }
 
   public static get useLock() {
@@ -17,7 +17,6 @@ export default class AlignAltImageWithMetaObject extends BaseTask {
     const productsWithAltProblem = [] as string[]
 
     for (const shopifyProduct of products) {
-      console.log('🚀 ~ Product title:', shopifyProduct.title)
       const mediaAltsWithEmptyAlt = await this.getMediaAlts(shopifyProduct)
       this.getProductsWithAltProblem(shopifyProduct, mediaAltsWithEmptyAlt, productsWithAltProblem)
       const mediaAlts = this.cleanMediaAlts(mediaAltsWithEmptyAlt)
@@ -25,10 +24,12 @@ export default class AlignAltImageWithMetaObject extends BaseTask {
       const areAltsEqual = this.compareArrays(mediaAlts, mediaAltsFromMetaObject)
 
       if (areAltsEqual) continue
+      console.log('=====================')
+      console.log('Id product to align alt texts:', shopifyProduct.id)
 
       await this.updateMediaObjectWithNewAlts(product, shopifyProduct, mediaAlts)
       console.log('🚀 ~ metaobject updated')
-      console.log('--------------------------------')
+      console.log('=====================')
     }
     console.log('🚀 ~ all metaobjects updated')
     console.log('🚀 ~ products with alt problem:', productsWithAltProblem)
