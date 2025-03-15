@@ -30,7 +30,11 @@ export default class SVariant extends Authentication {
         }
       } else {
         const { query: queryUpdate, variables: variablesUpdate } =
-          this.getVariantUpdateMutationsQuery(variantAlreadyExist.node.id, product.variant)
+          this.getVariantUpdateMutationsQuery(
+            product.productId,
+            variantAlreadyExist.node.id,
+            product.variant
+          )
         const variantMutationsOtherData = await this.fetchGraphQL(queryUpdate, variablesUpdate)
         return {
           id: this.extractIdFromGid(variantAlreadyExist.node.id),
@@ -102,14 +106,21 @@ export default class SVariant extends Authentication {
     const variantMutationsData = await this.fetchGraphQL(query, variables)
     const variantId = variantMutationsData.productOptionsCreate.product.variants.nodes[0].id
     const { query: queryUpdate, variables: variablesUpdate } = this.getVariantUpdateMutationsQuery(
+      productId,
       variantId,
       variant
     )
-    const variantMutationsOtherData = await this.fetchGraphQL(queryUpdate, variablesUpdate)
+    const { productVariantsBulkUpdate } = await this.fetchGraphQL(queryUpdate, variablesUpdate)
+    const { productVariants, userErrors } = productVariantsBulkUpdate
+
+    if (userErrors.length > 0) {
+      console.log(userErrors)
+      throw new Error(userErrors[0].message)
+    }
     return {
       id: this.extractIdFromGid(variantId),
-      price: variantMutationsOtherData.productVariantUpdate.productVariant.price,
-      title: variantMutationsOtherData.productVariantUpdate.productVariant.title,
+      price: productVariants[0].price,
+      title: productVariants[0].title,
     }
   }
 
@@ -153,45 +164,61 @@ export default class SVariant extends Authentication {
     return gidSplit[gidSplit.length - 1]
   }
 
-  private getVariantUpdateMutationsQuery(variantId: string, variant: Variant) {
+  private getVariantUpdateMutationsQuery(productId: number, variantId: string, variant: Variant) {
     return {
-      query: `mutation updateProductVariantMetafields($input: ProductVariantInput!) {
-        productVariantUpdate(input: $input) {
+      query: `mutation ProductVariantsUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+        productVariantsBulkUpdate(productId: $productId, variants: $variants) {
           userErrors {
             message
             field
           }
-          productVariant {
+          productVariants {
             price
             title
           }
         }
       }`,
       variables: {
-        input: {
-          id: variantId,
-          price: variant.price,
-          inventoryManagement: 'NOT_MANAGED',
-        },
+        productId: `gid://shopify/Product/${productId}`,
+        variants: [
+          {
+            id: variantId,
+            price: variant.price,
+            inventoryPolicy: 'CONTINUE',
+            optionValues: [
+              {
+                name: variant.title,
+                optionName: 'Titre',
+              },
+            ],
+          },
+        ],
       },
     }
   }
 
   private async createVariant(productId: number, variant: Variant) {
     const { query, variables } = this.getCreateVariantMutationsQuery(productId, variant)
-    const variantMutationsData = await this.fetchGraphQL(query, variables)
+    const { productVariantsBulkCreate } = await this.fetchGraphQL(query, variables)
+    const { productVariants, userErrors } = productVariantsBulkCreate
+
+    if (userErrors.length > 0) {
+      console.log(userErrors)
+      throw new Error(userErrors[0].message)
+    }
+
     return {
-      id: this.extractIdFromGid(variantMutationsData.productVariantCreate.productVariant.id),
-      price: variantMutationsData.productVariantCreate.productVariant.price,
-      title: variantMutationsData.productVariantCreate.productVariant.title,
+      id: this.extractIdFromGid(productVariants[0].id),
+      price: productVariants[0].price,
+      title: productVariants[0].title,
     }
   }
 
   private getCreateVariantMutationsQuery(productId: number, variant: Variant) {
     return {
-      query: `mutation productVariantCreate($input: ProductVariantInput!) {
-        productVariantCreate(input: $input) {
-          productVariant {
+      query: `mutation productVariantsCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+        productVariantsBulkCreate(productId: $productId, variants: $variants) {
+          productVariants {
             id
             title
             price
@@ -203,12 +230,19 @@ export default class SVariant extends Authentication {
         }
       }`,
       variables: {
-        input: {
-          productId: `gid://shopify/Product/${productId}`,
-          options: variant.title,
-          price: variant.price,
-          inventoryManagement: 'NOT_MANAGED',
-        },
+        productId: `gid://shopify/Product/${productId}`,
+        variants: [
+          {
+            price: variant.price,
+            inventoryPolicy: 'CONTINUE',
+            optionValues: [
+              {
+                name: variant.title,
+                optionName: 'Titre',
+              },
+            ],
+          },
+        ],
       },
     }
   }
@@ -257,7 +291,11 @@ export default class SVariant extends Authentication {
         }
       } else {
         const { query: queryUpdate, variables: variablesUpdate } =
-          this.getVariantUpdateMutationsQuery(variantAlreadyExist.node.id, product.variant)
+          this.getVariantUpdateMutationsQuery(
+            product.productId,
+            variantAlreadyExist.node.id,
+            product.variant
+          )
         const variantMutationsOtherData = await this.fetchGraphQL(queryUpdate, variablesUpdate)
         return {
           id: this.extractIdFromGid(variantAlreadyExist.node.id),

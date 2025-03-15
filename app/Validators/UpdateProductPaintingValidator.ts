@@ -1,9 +1,6 @@
 import { schema, CustomMessages } from '@ioc:Adonis/Core/Validator'
-import type { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
 
 export default class UpdateProductPaintingValidator {
-  constructor(protected ctx: HttpContextContract) {}
-
   public schema = schema.create({
     type: schema.enum(['painting'] as const),
     productId: schema.number(),

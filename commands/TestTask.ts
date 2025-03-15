@@ -1,6 +1,8 @@
 import { BaseCommand } from '@adonisjs/core/build/standalone'
-import ChatGPT from 'App/Services/ChatGPT'
 import Shopify from 'App/Services/Shopify'
+import UpdateProductPaintingValidator from 'App/Validators/UpdateProductPaintingValidator'
+import { validator } from '@ioc:Adonis/Core/Validator'
+import SearchPaintingData from 'App/Domain/Product/SearchPaintingData'
 
 export default class TestTask extends BaseCommand {
   public static commandName = 'test:task'
@@ -12,33 +14,29 @@ export default class TestTask extends BaseCommand {
   }
 
   public async run() {
-    const shopify = new Shopify()
-    const productsToTranslate = await shopify.translation.getOutdatedTranslations('product')
-    console.log('🚀 ~ productsToTranslate length:', productsToTranslate.length)
-    const chatGPT = new ChatGPT()
-    let count = 0
-
-    for (const product of productsToTranslate) {
-      count++
-      console.log('============================')
-      console.log(product)
-      console.log('============================')
-      const productTranslated = await chatGPT.translate(product, 'product', 'en')
-      const responses = await shopify.translation.updateTranslation({
-        resourceToTranslate: product,
-        resourceTranslated: productTranslated,
-        resource: 'product',
-        isoCode: 'en',
-      })
-      responses.forEach((response) => {
-        if (response.translationsRegister.userErrors.length > 0) {
-          console.log('error => ', response.translationsRegister.userErrors)
-        }
-      })
-      if (count === 3) {
-        break
-      }
+    const request = {
+      type: 'painting',
+      productId: 9525330608475,
+      ratio: 'portrait',
+      variant: {
+        title: '75x100 cm/Toile/ Sans fixation/ Chassis de 2cm/Bordure blanche/Sans cadre',
+      },
     }
-    this.logger.info('translations updated')
+
+    try {
+      const product = await validator.validate({
+        schema: new UpdateProductPaintingValidator().schema,
+        data: request,
+      })
+      const options = product.variant.title.split('/')
+      const paintingPrice = await new SearchPaintingData(product.ratio, options).getPaintingPrice()
+      product.variant.price = paintingPrice
+
+      const shopify = new Shopify()
+      const variantData = await shopify.product.updateVariant(product)
+      console.log('🚀 ~ variantData:', variantData)
+    } catch (error) {
+      console.log('🚀 ~ error:', error)
+    }
   }
 }
