@@ -15,7 +15,7 @@ import Google from '../Services/Google'
 
 export default class ShopifyFluxToMerchantCenter extends BaseTask {
   public static get schedule() {
-    return CronTimeV2.everyDayAt(3, 0)
+    return CronTimeV2.everyDayAt(5, 0)
   }
   /**
    * Set enable use .lock file for block run retry task
@@ -229,11 +229,11 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
     return images[1]?.image.url ?? images[0]?.image.url ?? ''
   }
 
-  private getAdditionalImageUrlFromImages(images: ProductFromShopify['media']['nodes']) {
-    const imagesCopy = [...images]
-    imagesCopy.splice(1, 1)
-    if (imagesCopy.length === 1) return []
-    return imagesCopy.map((image) => image.image.url)
+  private getAdditionalImageUrlFromImages(medias: ProductFromShopify['media']['nodes']) {
+    const mediasCopy = medias.filter((media) => media.mediaContentType === 'IMAGE')
+    mediasCopy.splice(1, 1)
+    if (mediasCopy.length === 1) return []
+    return mediasCopy.map((media) => media.image.url)
   }
 
   private getGoogleTaxonomyIdFromTemplateSuffix(templateSuffix: string | null) {
