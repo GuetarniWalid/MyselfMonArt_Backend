@@ -14,12 +14,12 @@ export default class TranslateProduct extends BaseTask {
   public async handle() {
     const shopify = new Shopify()
     const productsToTranslate = await shopify.translation.getOutdatedTranslations('product')
-    console.log('products to translate length:', productsToTranslate.length)
+    console.log('🚀 ~ products to translate length:', productsToTranslate.length)
     const chatGPT = new ChatGPT()
 
     for (const product of productsToTranslate) {
       console.log('============================')
-      console.log('Id product to translate => ', product.id)
+      console.log('🚀 ~ Id product to translate => ', product.id)
       const productTranslated = await chatGPT.translate(product, 'product', 'en')
       const responses = await shopify.translation.updateTranslation({
         resourceToTranslate: product,
@@ -29,13 +29,13 @@ export default class TranslateProduct extends BaseTask {
       })
       responses.forEach((response) => {
         if (response.translationsRegister.userErrors.length > 0) {
-          console.log('error => ', response.translationsRegister.userErrors)
+          console.log('🚀 ~ error => ', response.translationsRegister.userErrors)
         } else {
-          console.log('translation updated')
+          console.log('🚀 ~ translation updated')
         }
       })
       console.log('============================')
     }
-    this.logger.info('translations updated')
+    console.log('🚀 ~ translations updated')
   }
 }

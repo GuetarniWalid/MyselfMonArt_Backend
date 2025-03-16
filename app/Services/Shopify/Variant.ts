@@ -114,7 +114,7 @@ export default class SVariant extends Authentication {
     const { productVariants, userErrors } = productVariantsBulkUpdate
 
     if (userErrors.length > 0) {
-      console.log(userErrors)
+      console.log('🚀 ~ ', userErrors)
       throw new Error(userErrors[0].message)
     }
     return {
@@ -203,7 +203,7 @@ export default class SVariant extends Authentication {
     const { productVariants, userErrors } = productVariantsBulkCreate
 
     if (userErrors.length > 0) {
-      console.log(userErrors)
+      console.log('🚀 ~ ', userErrors)
       throw new Error(userErrors[0].message)
     }
 

@@ -17,10 +17,10 @@ export default class ShopifyDeleteWebHookSubscription extends BaseCommand {
     )
 
     if (userErrors.length > 0) {
-      console.log('Web hook subscription not deleted')
-      console.log(userErrors)
+      console.log('🚀 ~ Web hook subscription not deleted')
+      console.log('🚀 ~ ', userErrors)
     } else {
-      console.log('Web hook subscription deleted')
+      console.log('🚀 ~ Web hook subscription deleted')
     }
   }
 }

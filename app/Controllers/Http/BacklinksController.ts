@@ -25,7 +25,7 @@ export default class BacklinksController {
     }
 
     if (!urls || urls.length === 0) {
-      console.log('No urls to check at : ', new Date())
+      console.log('🚀 ~ No urls to check at : ', new Date())
       return
     }
 

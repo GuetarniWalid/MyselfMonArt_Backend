@@ -13,7 +13,7 @@ export default class ShopifyGetWebhookSubscriptions extends BaseCommand {
     const shopify = new Shopify()
     const webhookSubscriptions = await shopify.webhook.getSubscriptions()
     webhookSubscriptions.forEach((subscription) => {
-      console.log(subscription.node)
+      console.log('🚀 ~ ', subscription.node)
     })
   }
 }

@@ -1,10 +1,10 @@
-import type { ProductToTranslate, ProductWithOutdatedTranslations } from 'Types/Product'
+import type { CollectionToTranslate, CollectionWithOutdatedTranslations } from 'Types/Collection'
 import type { LanguageCode, TranslationsRegister, MetaobjectTranslation } from 'Types/Translation'
 import Authentication from '../../Authentication'
 import PullDataModeler from './PullDataModeler'
 import PushDataModeler from './PushDataModeler'
 
-export default class ProductTranslator extends Authentication {
+export default class CollectionTranslator extends Authentication {
   private pullDataModeler: PullDataModeler
   private pushDataModeler: PushDataModeler
 
@@ -15,61 +15,60 @@ export default class ProductTranslator extends Authentication {
   }
 
   public async getResourceOutdatedTranslations() {
-    const productToTranslate = [] as any[]
+    const collectionToTranslate = [] as any[]
     let cursor: string | null = null
     let hasNextPage = true
 
     while (hasNextPage) {
-      // Get products with outdated translations without metaobject translations
-      const { query, variables } = this.getProductsWithOutdatedTranslationsQuery(cursor)
-      const productsData = await this.fetchGraphQL(query, variables)
-      const products = productsData.products.edges as {
-        node: ProductWithOutdatedTranslations
+      // Get collections with outdated translations without metaobject translations
+      const { query, variables } = this.getCollectionsWithOutdatedTranslationsQuery(cursor)
+      const collectionsData = await this.fetchGraphQL(query, variables)
+      const collections = collectionsData.collections.edges as {
+        node: CollectionWithOutdatedTranslations
         cursor: string
       }[]
 
-      for (const product of products) {
+      for (const collection of collections) {
         // Check if alt media is outdated
         const isAltMediaOutdated = (await this.isAltMediaOutdated(
-          product.node.altTextsMetaObject?.reference?.id
+          collection.node.altTextsMetaObject?.reference?.id
         )) as boolean
 
-        const productWithOnlyKeyToTranslate = this.pullDataModeler.getProductWithOnlyKeyToTranslate(
-          product.node,
-          isAltMediaOutdated
-        )
-        if (productWithOnlyKeyToTranslate) {
-          productToTranslate.push(productWithOnlyKeyToTranslate)
+        const collectionWithOnlyKeyToTranslate =
+          this.pullDataModeler.getCollectionWithOnlyKeyToTranslate(
+            collection.node,
+            isAltMediaOutdated
+          )
+        if (collectionWithOnlyKeyToTranslate) {
+          collectionToTranslate.push(collectionWithOnlyKeyToTranslate)
         }
       }
 
-      hasNextPage = productsData.products.pageInfo.hasNextPage
+      hasNextPage = collectionsData.collections.pageInfo.hasNextPage
       if (hasNextPage) {
-        cursor = products[products.length - 1].cursor
+        cursor = collections[collections.length - 1].cursor
       }
     }
 
-    return productToTranslate
+    return collectionToTranslate
   }
 
-  private getProductsWithOutdatedTranslationsQuery(
+  private getCollectionsWithOutdatedTranslationsQuery(
     cursor: string | null = null,
     locale: LanguageCode = 'en'
   ) {
     return {
-      query: `query GetUpdatedProducts($cursor: String) {
-                products(first: 250, after: $cursor, query: "published_status:published") {
+      query: `query GetUpdatedCollections($cursor: String) {
+                collections(first: 250, after: $cursor, query: "published_status:published") {
                   edges {
                     node {
                       id
                       title
                       descriptionHtml
                       handle
-                      media(first: 10) {
-                        nodes {
-                          id
-                          alt
-                        }
+                      image {
+                        id
+                        altText
                       }
                       altTextsMetaObject: metafield(namespace: "meta_object", key: "media") {
                         reference {
@@ -81,29 +80,6 @@ export default class ProductTranslator extends Authentication {
                           }
                         }
                       }
-                      options(first: 10) {
-                        id
-                        name
-                        optionValues {
-                          id
-                          name
-                          translations(locale: "${locale}") {
-                            key
-                            locale
-                            value
-                            outdated
-                            updatedAt
-                          }
-                        }
-                        translations(locale: "${locale}") {
-                          key
-                          locale
-                          value
-                          outdated
-                          updatedAt
-                        }
-                      }
-                      productType
                       seo {
                         title
                         description
@@ -128,19 +104,19 @@ export default class ProductTranslator extends Authentication {
   }
 
   public async updateResourceTranslation({
-    resourceToTranslate: productToTranslate,
-    resourceTranslated: productTranslated,
+    resourceToTranslate: collectionToTranslate,
+    resourceTranslated: collectionTranslated,
     isoCode,
   }: {
-    resourceToTranslate: Partial<ProductToTranslate>
-    resourceTranslated: Partial<ProductToTranslate>
+    resourceToTranslate: Partial<CollectionToTranslate>
+    resourceTranslated: Partial<CollectionToTranslate>
     isoCode: LanguageCode
   }) {
     try {
       const translationsToRegister = this.pushDataModeler.formatTranslationFieldsForGraphQLMutation(
         {
-          productToTranslate,
-          productTranslated,
+          collectionToTranslate,
+          collectionTranslated,
           isoCode,
         }
       )

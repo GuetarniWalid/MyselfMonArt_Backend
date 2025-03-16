@@ -24,15 +24,15 @@ export default class ShopifyUpdateDefaultOptionNames extends BaseCommand {
         })
 
         if (userErrors.length > 0) {
-          console.log('Error updating product: ', product.title)
-          console.log(userErrors)
+          console.log('🚀 ~ Error updating product: ', product.title)
+          console.log('🚀 ~ ', userErrors)
           console.log('--------------------------------')
         } else {
-          console.log('Updated option name')
+          console.log('🚀 ~ Updated option name')
         }
       }
     }
 
-    console.log('All product option names updated')
+    console.log('🚀 ~ All product option names updated')
   }
 }

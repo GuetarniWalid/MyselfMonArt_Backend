@@ -25,7 +25,7 @@ Route.post('/', 'WebhooksController.handle')
 Route.post('/webhooks', 'WebhooksController.handle')
 
 Route.get('/test', async () => {
-  console.log('test ok')
+  console.log('🚀 ~ test ok')
   return 'test ok'
 })
 

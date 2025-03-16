@@ -16,7 +16,7 @@ export default class ShopifyCreateWebHookSubscription extends BaseCommand {
       'meta_object',
     ])
 
-    console.log('Web hook subscription created')
-    console.log(webhook)
+    console.log('🚀 ~ Web hook subscription created')
+    console.log('🚀 ~ ', webhook)
   }
 }

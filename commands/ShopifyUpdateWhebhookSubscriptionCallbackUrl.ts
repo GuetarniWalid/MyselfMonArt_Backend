@@ -17,7 +17,7 @@ export default class ShopifyUpdateWhebhookSubscriptionCallbackUrl extends BaseCo
       'gid://shopify/WebhookSubscription/1812084425051',
       Env.get('SHOPIFY_WEBHOOK_URL')
     )
-    console.log(userErrors)
-    console.log(webhookSubscription)
+    console.log('🚀 ~ ', userErrors)
+    console.log('🚀 ~ ', webhookSubscription)
   }
 }

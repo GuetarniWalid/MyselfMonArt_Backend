@@ -12,8 +12,8 @@ export default class SendMail extends BaseCommand {
   }
 
   public async run() {
-    console.log('Sending email...')
-    console.log(Env.get('MAIL_RECIPIENT'))
+    console.log('🚀 ~ Sending email...')
+    console.log('🚀 ~ ', Env.get('MAIL_RECIPIENT'))
 
     await Mail.send((message) => {
       message

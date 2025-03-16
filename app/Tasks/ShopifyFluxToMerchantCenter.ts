@@ -476,7 +476,7 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
         return
       }
 
-      console.log('Attributes to update for product:', product.id, attributesToUpdate)
+      console.log('🚀 ~ Attributes to update for product:', product.id, attributesToUpdate)
       const response = await merchantCenter.products.update({
         merchantId: merchantId,
         productId: product.id as string,
@@ -494,11 +494,11 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
     }
     if (productsToUpdateCount > 0) {
       console.log(
-        `${productsToUpdateCount} products successfully updated in Merchant Center at:`,
+        `🚀 ~ ${productsToUpdateCount} products successfully updated in Merchant Center at:`,
         new Date()
       )
     } else {
-      console.log('No products to update in Merchant Center')
+      console.log('🚀 ~ No products to update in Merchant Center')
     }
   }
 
@@ -663,7 +663,7 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
     merchantCenter: content_v2_1.Content
   ) {
     if (promotions.length === 0) {
-      console.log('No promotions to send to Merchant Center')
+      console.log('🚀 ~ No promotions to send to Merchant Center')
       return
     }
 
@@ -681,7 +681,7 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
         console.log('🚀 ~ errors:', errors)
         throw new Error(JSON.stringify(errors))
       }
-      console.log('Promotions successfully sent to Merchant Center at :', new Date())
+      console.log('🚀 ~ Promotions successfully sent to Merchant Center at :', new Date())
     } catch (error) {
       this.sendEmail(error)
     }

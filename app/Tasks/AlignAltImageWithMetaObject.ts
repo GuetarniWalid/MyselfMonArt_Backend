@@ -25,7 +25,7 @@ export default class AlignAltImageWithMetaObject extends BaseTask {
 
       if (areAltsEqual) continue
       console.log('=====================')
-      console.log('Id product to align alt texts:', shopifyProduct.id)
+      console.log('🚀 ~ Id product to align alt texts:', shopifyProduct.id)
 
       await this.updateMediaObjectWithNewAlts(product, shopifyProduct, mediaAlts)
       console.log('🚀 ~ metaobject updated')

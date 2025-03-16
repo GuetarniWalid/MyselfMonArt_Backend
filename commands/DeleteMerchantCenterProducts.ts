@@ -60,7 +60,7 @@ export default class DeleteMerchantCenterProducts extends BaseCommand {
     const products = response.data.resources ?? []
     const productIds = products.map((product) => product.id)
 
-    console.log('Produits récupérés avec succès:', products)
+    console.log('🚀 ~ Produits récupérés avec succès:', products)
     return productIds
   }
 
@@ -77,9 +77,9 @@ export default class DeleteMerchantCenterProducts extends BaseCommand {
       })
 
       await Promise.all(promises)
-      console.log('Produits supprimés avec succès')
+      console.log('🚀 ~ Produits supprimés avec succès')
     } catch (error) {
-      console.error('Erreur lors de la suppression des produits:', error)
+      console.error('🚀 ~ Erreur lors de la suppression des produits:', error)
     }
   }
 }
