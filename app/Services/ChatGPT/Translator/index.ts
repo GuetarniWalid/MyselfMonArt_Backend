@@ -1,14 +1,16 @@
 import type { LanguageCode, TranslatableContent } from 'Types/Translation'
 import type { ProductToTranslate } from 'Types/Product'
+import type { CollectionToTranslate } from 'Types/Collection'
 import { zodResponseFormat } from 'openai/helpers/zod'
 import Authentication from '../Authentication'
 import ProductTranslator from './Product'
+import CollectionTranslator from './Collection'
 
 export default class Translator extends Authentication {
-  private translationHandler: ProductTranslator
+  private translationHandler: ProductTranslator | CollectionTranslator
 
   constructor(
-    payload: Partial<ProductToTranslate>,
+    payload: Partial<ProductToTranslate> | Partial<CollectionToTranslate>,
     resources: 'product' | 'collection',
     targetLanguage: LanguageCode
   ) {
@@ -16,6 +18,9 @@ export default class Translator extends Authentication {
     switch (resources) {
       case 'product':
         this.translationHandler = new ProductTranslator(payload, targetLanguage)
+        break
+      case 'collection':
+        this.translationHandler = new CollectionTranslator(payload, targetLanguage)
         break
     }
   }
@@ -26,6 +31,13 @@ export default class Translator extends Authentication {
 
       const { responseFormat, payloadFormatted, systemPrompt } =
         this.translationHandler.prepareTranslationRequest()
+
+      if (Object.keys(payloadFormatted).length === 0) {
+        return this.translationHandler.formatTranslationResponse({
+          response: {},
+          payload,
+        })
+      }
 
       const completion = await this.openai.beta.chat.completions.parse({
         model: 'gpt-4o-2024-08-06',

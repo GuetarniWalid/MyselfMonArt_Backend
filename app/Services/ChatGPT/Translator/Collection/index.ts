@@ -1,30 +1,29 @@
 import type { LanguageCode } from 'Types/Translation'
-import type { ProductToTranslate, ProductToTranslateFormatted } from 'Types/Product'
-import ProductToTranslateValidator from 'App/Validators/ProductToTranslateValidator'
+import type { CollectionToTranslate, CollectionToTranslateFormatted } from 'Types/Collection'
+import CollectionToTranslateValidator from 'App/Validators/CollectionToTranslateValidator'
 import { validator } from '@ioc:Adonis/Core/Validator'
 import { z } from 'zod'
-import English from './English'
 
-export default class ProductTranslator {
+export default class CollectionTranslator {
   private targetLanguage: LanguageCode
-  private payload: Partial<ProductToTranslate>
+  private payload: Partial<CollectionToTranslate>
 
-  constructor(payload: Partial<ProductToTranslate>, targetLanguage: LanguageCode) {
+  constructor(payload: Partial<CollectionToTranslate>, targetLanguage: LanguageCode) {
     this.targetLanguage = targetLanguage
     this.payload = payload
   }
 
   public async verifyPayloadValidity(payload: unknown) {
-    const isValidProduct = await this.isValidProductForTranslation(payload)
-    if (!isValidProduct) {
+    const isValidCollection = await this.isValidCollectionForTranslation(payload)
+    if (!isValidCollection) {
       throw new Error('data format is not valid for translation')
     }
   }
 
-  private async isValidProductForTranslation(payload: unknown) {
+  private async isValidCollectionForTranslation(payload: unknown) {
     try {
       await validator.validate({
-        schema: new ProductToTranslateValidator().schema,
+        schema: new CollectionToTranslateValidator().schema,
         data: payload,
       })
       return true
@@ -65,27 +64,21 @@ export default class ProductTranslator {
     if (this.payload.handle) {
       schema.handle = z.string()
     }
-    if (this.payload.productType) {
-      schema.productType = z.string()
-    }
     if (this.payload.seo?.title) {
       schema.metaTitle = z.string()
     }
     if (this.payload.seo?.description) {
       schema.metaDescription = z.string()
     }
-    if (this.payload.media?.alts) {
-      schema.mediaAltTexts = z.array(z.string())
-    }
-    if (this.payload.options?.[0]?.name) {
-      schema.optionName = z.string()
+    if (this.payload.image?.altText) {
+      schema.imageAltText = z.string()
     }
 
     return z.object(schema)
   }
 
-  private getPayloadFormattedForTranslation(): ProductToTranslateFormatted {
-    const payload = {} as ProductToTranslateFormatted
+  private getPayloadFormattedForTranslation(): CollectionToTranslateFormatted {
+    const payload = {} as CollectionToTranslateFormatted
 
     if (this.payload.title) {
       payload.title = this.payload.title
@@ -96,20 +89,14 @@ export default class ProductTranslator {
     if (this.payload.handle) {
       payload.handle = this.payload.handle
     }
-    if (this.payload.productType) {
-      payload.productType = this.payload.productType
-    }
     if (this.payload.seo?.title) {
       payload.metaTitle = this.payload.seo.title
     }
     if (this.payload.seo?.description) {
       payload.metaDescription = this.payload.seo.description
     }
-    if (this.payload.media?.alts) {
-      payload.mediaAltTexts = this.payload.media.alts
-    }
-    if (this.payload.options?.[0]?.name) {
-      payload.optionName = this.payload.options[0].name
+    if (this.payload.image?.altText) {
+      payload.imageAltText = this.payload.image.altText
     }
 
     return payload
@@ -118,9 +105,9 @@ export default class ProductTranslator {
   private getTranslationSystemPrompt() {
     const language = this.getLanguageFromISOCode()
 
-    return `You are a professional translation model specializing in e-commerce product data. Your task is to translate product data accurately while maintaining the tone, context, and formatting. 
+    return `You are a professional translation model specializing in e-commerce product data. Your task is to translate collection data accurately while maintaining the tone, context, and formatting. 
 When translating, prioritize SEO optimization by using the most commonly searched keywords and phrases in ${language}, rather than direct word-for-word translation. 
-Ensure all fields, including title, description, SEO metadata, and media alt text, are optimized for search engines in ${language} while maintaining a natural, user-friendly tone. 
+Ensure all fields, including title, description, SEO metadata, and image alt text, are optimized for search engines in ${language} while maintaining a natural, user-friendly tone. 
 For the descriptionHtml field, preserve all HTML tags while translating its content. Use your knowledge of linguistic and cultural nuances to produce a high-quality translation that aligns with local search behaviors and preferences`
   }
 
@@ -128,10 +115,10 @@ For the descriptionHtml field, preserve all HTML tags while translating its cont
     response,
     payload,
   }: {
-    response: Partial<ProductToTranslateFormatted>
-    payload: Partial<ProductToTranslate>
-  }): Partial<ProductToTranslate> {
-    const responseFormatted = {} as Partial<ProductToTranslate>
+    response: Partial<CollectionToTranslateFormatted>
+    payload: Partial<CollectionToTranslate>
+  }): Partial<CollectionToTranslate> {
+    const responseFormatted = {} as Partial<CollectionToTranslate>
 
     responseFormatted.id = payload.id
     if (response.title) {
@@ -143,11 +130,8 @@ For the descriptionHtml field, preserve all HTML tags while translating its cont
     if (response.handle) {
       responseFormatted.handle = response.handle
     }
-    if (response.productType) {
-      responseFormatted.productType = response.productType
-    }
     if (response.metaTitle || response.metaDescription) {
-      responseFormatted.seo = {} as ProductToTranslate['seo']
+      responseFormatted.seo = {} as CollectionToTranslate['seo']
     }
     if (response.metaTitle) {
       responseFormatted.seo!.title = response.metaTitle
@@ -155,46 +139,13 @@ For the descriptionHtml field, preserve all HTML tags while translating its cont
     if (response.metaDescription) {
       responseFormatted.seo!.description = response.metaDescription
     }
-    if (response.mediaAltTexts) {
-      responseFormatted.media = {
-        id: payload.media!.id,
-        alts: response.mediaAltTexts,
+    if (response.imageAltText) {
+      responseFormatted.image = {
+        id: payload.image!.id,
+        altText: response.imageAltText,
       }
     }
 
-    responseFormatted.options = payload.options?.map((option) => {
-      const optionFormatted = {
-        id: option.id,
-        optionValues:
-          option.optionValues?.map((optionValue) => ({
-            id: optionValue.id,
-            name: this.translateOptionValueByLanguage(optionValue.name),
-          })) || [],
-      } as { id: string; optionValues: { id: string; name: string }[] } & Partial<
-        ProductToTranslate['options'][number]
-      >
-
-      if (response.optionName) {
-        optionFormatted.name = response.optionName
-      }
-      return optionFormatted
-    })
-
-    if (!responseFormatted.options) {
-      delete responseFormatted.options
-    }
     return responseFormatted
-  }
-
-  private translateOptionValueByLanguage(optionValue: string) {
-    const languageHandler = this.getLanguageHandler()
-    return languageHandler?.translateOptionValue(optionValue) ?? optionValue
-  }
-
-  private getLanguageHandler() {
-    switch (this.targetLanguage) {
-      case 'en':
-        return new English()
-    }
   }
 }

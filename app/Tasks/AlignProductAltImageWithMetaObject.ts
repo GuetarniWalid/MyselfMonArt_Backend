@@ -2,9 +2,9 @@ import type { Product as ShopifyProduct } from 'Types/Product'
 import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import Product from 'App/Services/Shopify/Product'
 
-export default class AlignAltImageWithMetaObject extends BaseTask {
+export default class AlignProductAltImageWithMetaObject extends BaseTask {
   public static get schedule() {
-    return CronTimeV2.everyDayAt(2, 0)
+    return CronTimeV2.everyDayAt(3, 0)
   }
 
   public static get useLock() {
@@ -130,7 +130,13 @@ export default class AlignAltImageWithMetaObject extends BaseTask {
     productsWithAltProblem: string[]
   ) {
     const hasEmptyAlt = mediaAlts.some((alt) => {
-      return !alt?.trim() || alt === 'Pas de description' || alt === null || alt.includes('\n')
+      return (
+        !alt?.trim() ||
+        alt === 'Pas de description' ||
+        alt === null ||
+        alt === undefined ||
+        alt.includes('\n')
+      )
     })
 
     if (hasEmptyAlt) {

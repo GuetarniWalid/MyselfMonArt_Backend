@@ -9,9 +9,9 @@ export default class CollectionToTranslateValidator {
       title: schema.string.optional(),
       description: schema.string.optional(),
     }),
-    media: schema.object.optional().members({
+    image: schema.object.optional().members({
       id: schema.string(),
-      alts: schema.array().members(schema.string()),
+      altText: schema.string(),
     }),
   })
 

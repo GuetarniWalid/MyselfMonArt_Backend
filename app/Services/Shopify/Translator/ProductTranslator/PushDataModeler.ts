@@ -150,21 +150,23 @@ export default class PushDataModeler {
   }): void {
     for (const [index, option] of newOptionsData.entries()) {
       const translationInputOption = [] as TranslationInput[]
-      this.utils.createTranslationEntry(
-        {
-          key: 'name',
-          isoCode,
-          newValue: option.name!,
-          oldValue: oldOptionsData[index].name!,
-        },
-        translationInputOption
-      )
+      if (option.name) {
+        this.utils.createTranslationEntry(
+          {
+            key: 'name',
+            isoCode,
+            newValue: option.name!,
+            oldValue: oldOptionsData[index].name!,
+          },
+          translationInputOption
+        )
 
-      const translationEntryForOption = {
-        resourceId: oldOptionsData[index].id,
-        translations: translationInputOption,
+        const translationEntryForOption = {
+          resourceId: oldOptionsData[index].id,
+          translations: translationInputOption,
+        }
+        translationEntriesForOptions.push(translationEntryForOption)
       }
-      translationEntriesForOptions.push(translationEntryForOption)
 
       for (const [indexOptionValue, optionValue] of option.optionValues.entries()) {
         const translationInput = [] as TranslationInput[]

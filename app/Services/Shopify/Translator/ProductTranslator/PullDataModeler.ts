@@ -44,7 +44,7 @@ export default class PullDataModeler {
     mutableProduct.media = processedMedia
 
     const cleanedProduct = this.cleanProductEmptyFields({ ...mutableProduct })
-    return cleanedProduct
+    return this.isEmptyField(cleanedProduct) ? null : cleanedProduct
   }
 
   private getKeyFromTranslationKey(key: string) {
@@ -77,9 +77,10 @@ export default class PullDataModeler {
       })
       return optionValueWithoutTranslations
     })
+
     return {
       ...option,
-      optionValues: optionValuesCleaned,
+      optionValues: optionValuesCleaned.filter((value) => !this.isEmptyField(value)),
     }
   }
 

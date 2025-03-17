@@ -15,7 +15,7 @@ import Google from '../Services/Google'
 
 export default class ShopifyFluxToMerchantCenter extends BaseTask {
   public static get schedule() {
-    return CronTimeV2.everyDayAt(5, 0)
+    return CronTimeV2.everyDayAt(1, 30)
   }
   /**
    * Set enable use .lock file for block run retry task

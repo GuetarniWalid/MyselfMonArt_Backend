@@ -113,18 +113,22 @@ export default class CollectionTranslator extends Authentication {
     isoCode: LanguageCode
   }) {
     try {
-      const translationsToRegister = this.pushDataModeler.formatTranslationFieldsForGraphQLMutation(
-        {
+      const translationsToRegister = this.pushDataModeler
+        .formatTranslationFieldsForGraphQLMutation({
           collectionToTranslate,
           collectionTranslated,
           isoCode,
-        }
-      )
+        })
+        .filter((translation) => translation.translations.length > 0)
+      console.log('🚀 ~ translationsToRegister:', translationsToRegister)
       let responses = [] as any[]
 
       for (const translations of translationsToRegister) {
         const { query, variables } = this.updateTranslationQuery(translations)
+        console.log('🚀 ~ query:', query)
+        console.log('🚀 ~ variables:', variables)
         const response = await this.fetchGraphQL(query, variables)
+        console.log('🚀 ~ response:', response)
         responses.push(response)
 
         if (!response || response.errors) {
@@ -133,7 +137,7 @@ export default class CollectionTranslator extends Authentication {
       }
       return responses
     } catch (error) {
-      throw new Error(`Failed to update product translation: ${error.message}`)
+      throw new Error(`Failed to update collection translation: ${error.message}`)
     }
   }
 

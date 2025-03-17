@@ -22,6 +22,7 @@ export default class PushDataModeler {
     const translationEntriesForMedia = [] as TranslationsRegister[]
 
     for (const key in collectionToTranslate) {
+      console.log('🚀 ~ key:', key)
       if (key === 'id') {
         continue
       }
@@ -40,7 +41,7 @@ export default class PushDataModeler {
       }
 
       // Handle nested media object
-      if (key === 'media' && typeof newValue === 'object') {
+      if (key === 'image' && typeof newValue === 'object') {
         this.createTranslationEntryForMedia({
           isoCode,
           newMediaData: newValue,

@@ -137,13 +137,13 @@ export default class ProductTranslator extends Authentication {
     isoCode: LanguageCode
   }) {
     try {
-      const translationsToRegister = this.pushDataModeler.formatTranslationFieldsForGraphQLMutation(
-        {
+      const translationsToRegister = this.pushDataModeler
+        .formatTranslationFieldsForGraphQLMutation({
           productToTranslate,
           productTranslated,
           isoCode,
-        }
-      )
+        })
+        .filter((translation) => translation.translations.length > 0)
       let responses = [] as any[]
 
       for (const translations of translationsToRegister) {
