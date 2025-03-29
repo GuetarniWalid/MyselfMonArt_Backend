@@ -27,7 +27,7 @@ export default class PullDataModeler {
 
     const processedMedia = this.getAltMediaToTranslate(collection, isAltMediaOutdated)
     delete mutableCollection.altTextsMetaObject
-    mutableCollection.media = processedMedia
+    mutableCollection.image = processedMedia
 
     const cleanedCollection = this.cleanCollectionEmptyFields({ ...mutableCollection })
     return cleanedCollection
@@ -91,7 +91,7 @@ export default class PullDataModeler {
     if (!isAltMediaOutdated || !collection.altTextsMetaObject) return null
     return {
       id: collection.altTextsMetaObject.reference?.id,
-      alts: collection.altTextsMetaObject.reference?.field?.jsonValue,
+      altText: collection.altTextsMetaObject.reference?.field?.jsonValue[0],
     }
   }
 }

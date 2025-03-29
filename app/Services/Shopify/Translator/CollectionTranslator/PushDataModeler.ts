@@ -111,10 +111,10 @@ export default class PushDataModeler {
 
     this.utils.createTranslationEntry(
       {
-        key: 'altText',
+        key: 'alts',
         isoCode,
-        newValue: JSON.stringify(newMediaData.altText),
-        oldValue: JSON.stringify(oldMediaData.altText),
+        newValue: JSON.stringify([newMediaData.altText]),
+        oldValue: JSON.stringify([oldMediaData.altText]),
       },
       translationInputImage
     )

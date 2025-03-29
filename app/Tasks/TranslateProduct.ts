@@ -29,13 +29,13 @@ export default class TranslateProduct extends BaseTask {
       })
       responses.forEach((response) => {
         if (response.translationsRegister.userErrors.length > 0) {
-          console.log('🚀 ~ error => ', response.translationsRegister.userErrors)
+          console.log('🚨 Error => ', response.translationsRegister.userErrors)
         } else {
-          console.log('🚀 ~ translation updated')
+          console.log('✅ Translation updated')
         }
       })
       console.log('============================')
     }
-    console.log('🚀 ~ translations updated')
+    console.log('✅ Products translations updated')
   }
 }

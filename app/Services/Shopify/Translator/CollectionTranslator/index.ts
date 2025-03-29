@@ -125,10 +125,7 @@ export default class CollectionTranslator extends Authentication {
 
       for (const translations of translationsToRegister) {
         const { query, variables } = this.updateTranslationQuery(translations)
-        console.log('🚀 ~ query:', query)
-        console.log('🚀 ~ variables:', variables)
         const response = await this.fetchGraphQL(query, variables)
-        console.log('🚀 ~ response:', response)
         responses.push(response)
 
         if (!response || response.errors) {
