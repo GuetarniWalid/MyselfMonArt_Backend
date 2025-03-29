@@ -176,6 +176,7 @@ export interface Product {
   options: {
     id: string
     name: string
+    values: string[]
   }[]
   seo: {
     title: string

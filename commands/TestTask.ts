@@ -17,7 +17,7 @@ export default class TestTask extends BaseCommand {
     console.log('🚀 ~ products to translate length:', productsToTranslate.length)
     const chatGPT = new ChatGPT()
 
-    for (const product of productsToTranslate.slice(0, 30)) {
+    for (const product of productsToTranslate.slice(0, 60)) {
       console.log('============================')
       console.log('🚀 ~ Id product to translate => ', product.id)
       const productTranslated = await chatGPT.translate(product, 'product', 'en')

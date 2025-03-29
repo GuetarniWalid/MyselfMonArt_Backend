@@ -95,6 +95,7 @@ export default class Product extends Authentication {
                       options(first: 3) {
                         id
                         name
+                        values
                       }
                       seo {
                         title

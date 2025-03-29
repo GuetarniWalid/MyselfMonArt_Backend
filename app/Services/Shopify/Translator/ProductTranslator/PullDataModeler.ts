@@ -96,11 +96,14 @@ export default class PullDataModeler {
           delete object[key]
         } else if (this.isEmptyField(value)) {
           delete object[key]
+        } else if (Array.isArray(value)) {
+          //remove empty items from array
+          object[key] = value.filter((item) => item !== undefined)
         }
       }
     }
 
-    // Check if the object itse is empty
+    // Check if the object itself is empty
     if (this.isEmptyField(object)) {
       return null
     }
