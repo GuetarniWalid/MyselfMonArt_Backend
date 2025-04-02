@@ -22,7 +22,6 @@ export default class PushDataModeler {
     const translationEntriesForMedia = [] as TranslationsRegister[]
 
     for (const key in collectionToTranslate) {
-      console.log('🚀 ~ key:', key)
       if (key === 'id') {
         continue
       }

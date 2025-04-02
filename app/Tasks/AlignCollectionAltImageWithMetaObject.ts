@@ -16,7 +16,7 @@ export default class AlignCollectionAltImageWithMetaObject extends BaseTask {
     const collections = await collection.getAll()
     const collectionsWithAltProblem = [] as string[]
 
-    for (const shopifyCollection of collections.slice(0, 1)) {
+    for (const shopifyCollection of collections) {
       const imageAlt = await this.getImageAlt(shopifyCollection)
       this.getCollectionsWithAltProblem(shopifyCollection, imageAlt, collectionsWithAltProblem)
       const imageAltCleaned = this.cleanImageAlt(imageAlt)
@@ -133,6 +133,7 @@ export default class AlignCollectionAltImageWithMetaObject extends BaseTask {
   ) {
     const hasEmptyAlt =
       imageAlt === 'Pas de description' ||
+      imageAlt === '' ||
       imageAlt === null ||
       imageAlt === undefined ||
       imageAlt.includes('\n')
