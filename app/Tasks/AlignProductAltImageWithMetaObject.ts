@@ -4,7 +4,7 @@ import Product from 'App/Services/Shopify/Product'
 
 export default class AlignProductAltImageWithMetaObject extends BaseTask {
   public static get schedule() {
-    return CronTimeV2.everyDayAt(3, 0)
+    return CronTimeV2.everyDayAt(2, 20)
   }
 
   public static get useLock() {

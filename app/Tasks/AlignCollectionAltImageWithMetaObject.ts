@@ -4,7 +4,7 @@ import Collection from 'App/Services/Shopify/Collection'
 
 export default class AlignCollectionAltImageWithMetaObject extends BaseTask {
   public static get schedule() {
-    return CronTimeV2.everyDayAt(2, 0)
+    return CronTimeV2.everyDayAt(2, 10)
   }
 
   public static get useLock() {

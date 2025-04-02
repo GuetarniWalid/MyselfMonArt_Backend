@@ -4,7 +4,7 @@ import Shopify from 'App/Services/Shopify'
 
 export default class TranslateCollection extends BaseTask {
   public static get schedule() {
-    return CronTimeV2.everyDayAt(2, 30)
+    return CronTimeV2.everyDayAt(3, 15)
   }
 
   public static get useLock() {
