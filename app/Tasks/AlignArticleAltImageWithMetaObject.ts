@@ -1,17 +1,17 @@
-import { BaseCommand } from '@adonisjs/core/build/standalone'
 import type { Article as ShopifyArticle } from 'Types/Article'
+import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import Article from 'App/Services/Shopify/Article'
 
-export default class TestTask extends BaseCommand {
-  public static commandName = 'test:task'
-  public static description = 'Test task logic implementation'
-
-  public static settings = {
-    loadApp: true,
-    stayAlive: false,
+export default class AlignArticleAltImageWithMetaObject extends BaseTask {
+  public static get schedule() {
+    return CronTimeV2.everyDayAt(2, 0)
   }
 
-  public async run() {
+  public static get useLock() {
+    return false
+  }
+
+  public async handle() {
     const article = new Article()
     const articles = await article.getAll()
     const articlesWithAltProblem = [] as string[]
@@ -131,7 +131,6 @@ export default class TestTask extends BaseCommand {
     imageAlt: string | null,
     articlesWithAltProblem: string[]
   ) {
-    console.log('🚀 ~ imageAlt:', imageAlt)
     const hasEmptyAlt =
       imageAlt === 'Pas de description' ||
       imageAlt === '' ||

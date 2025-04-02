@@ -18,7 +18,7 @@ export default class Authentication {
     })
   }
 
-  protected async fetchGraphQL(query, variables = {}) {
+  protected async fetchGraphQL(query: string, variables = {}) {
     const response = await fetch(this.urlGraphQL, {
       method: 'POST',
       headers: {
