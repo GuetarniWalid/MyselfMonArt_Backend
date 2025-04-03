@@ -1,6 +1,111 @@
-import { ArticleWithOutdatedTranslations } from 'Types/Article'
+import type { ArticleToTranslate, ArticleWithOutdatedTranslations } from 'Types/Article'
+import type { LanguageCode, MetaobjectTranslation } from 'Types/Translation'
+import DefaultPullDataModeler from '../PullDataModeler'
 
-export default class PullDataModeler {
+export default class PullDataModeler extends DefaultPullDataModeler {
+  public async getResourceOutdatedTranslations() {
+    const articleToTranslate = [] as Partial<ArticleToTranslate>[]
+    let cursor: string | null = null
+    let hasNextPage = true
+
+    while (hasNextPage) {
+      // Get articles with outdated translations without metaobject translations
+      const { query, variables } = this.getArticlesWithOutdatedTranslationsQuery(cursor)
+      const articlesData = await this.fetchGraphQL(query, variables)
+      const articles = articlesData.articles.edges as {
+        node: ArticleWithOutdatedTranslations
+        cursor: string
+      }[]
+
+      for (const article of articles) {
+        // Check if alt media is outdated
+        const isAltMediaOutdated = (await this.isAltMediaOutdated(
+          article.node.altTextsMetaObject?.reference?.id
+        )) as boolean
+
+        const articleWithOnlyKeyToTranslate = this.getArticleWithOnlyKeyToTranslate(
+          article.node,
+          isAltMediaOutdated
+        )
+        if (articleWithOnlyKeyToTranslate) {
+          articleToTranslate.push(articleWithOnlyKeyToTranslate)
+        }
+      }
+
+      hasNextPage = articlesData.articles.pageInfo.hasNextPage
+      if (hasNextPage) {
+        cursor = articles[articles.length - 1].cursor
+      }
+    }
+
+    return articleToTranslate
+  }
+
+  private getArticlesWithOutdatedTranslationsQuery(
+    cursor: string | null = null,
+    locale: LanguageCode = 'en'
+  ) {
+    return {
+      query: `query GetUpdatedArticles($cursor: String) {
+                articles(first: 250, after: $cursor, query: "published_status:published") {
+                  edges {
+                    node {
+                      id
+                      title
+                      body
+                      summary
+                      handle
+                      image {
+                        id
+                        altText
+                      }
+                      altTextsMetaObject: metafield(namespace: "meta_object", key: "media") {
+                        reference {
+                          ... on Metaobject {
+                            id
+                            field(key: "alts") {
+                              jsonValue
+                            }
+                          }
+                        }
+                      }
+                      translations(locale: "${locale}") {
+                        key
+                        locale
+                        value
+                        outdated
+                        updatedAt
+                      }                      
+                    }
+                    cursor
+                  }
+                  pageInfo {
+                    hasNextPage
+                  }
+                }
+              }`,
+      variables: { cursor },
+    }
+  }
+
+  private async isAltMediaOutdated(metaobjectId: string | undefined) {
+    if (!metaobjectId) return []
+
+    const { query: metaobjectQuery, variables: metaobjectVariables } = this.getMetaobjectQuery(
+      metaobjectId,
+      'en'
+    )
+    const metaobjectData = (await this.fetchGraphQL(
+      metaobjectQuery,
+      metaobjectVariables
+    )) as MetaobjectTranslation
+
+    const metaobjectEntry = metaobjectData.translatableResource.translations.filter(
+      (metaobject) => metaobject.key === 'alts'
+    )
+    return metaobjectEntry[0]?.outdated !== undefined ? metaobjectEntry[0]?.outdated : true
+  }
+
   public getArticleWithOnlyKeyToTranslate(
     article: ArticleWithOutdatedTranslations,
     isAltMediaOutdated: boolean
@@ -22,7 +127,7 @@ export default class PullDataModeler {
     delete mutableArticle.altTextsMetaObject
     mutableArticle.image = processedMedia
 
-    const cleanedArticle = this.cleanArticleEmptyFields({ ...mutableArticle })
+    const cleanedArticle = this.cleanResourceEmptyFields({ ...mutableArticle })
     return cleanedArticle
   }
 
@@ -35,42 +140,6 @@ export default class PullDataModeler {
       default:
         return key
     }
-  }
-
-  private cleanArticleEmptyFields(object: { [key: string]: any }) {
-    for (const key of Object.keys(object)) {
-      const value = object[key]
-      if (this.isEmptyField(value)) {
-        delete object[key]
-      } else if (typeof value === 'object' && value !== null) {
-        this.cleanArticleEmptyFields(value)
-
-        if (Object.keys(value).length === 0) {
-          delete object[key]
-        } else if (this.isEmptyField(value)) {
-          delete object[key]
-        }
-      }
-    }
-
-    // Check if the object itse is empty
-    if (this.isEmptyField(object)) {
-      return null
-    }
-    return object
-  }
-
-  private isEmptyField(field: any): boolean {
-    return (
-      field === undefined ||
-      field === null ||
-      field === '' ||
-      (typeof field === 'object' && field.length === 0) ||
-      (typeof field === 'object' && Object.keys(field).length === 0) ||
-      (typeof field === 'object' &&
-        Object.keys(field).length === 1 &&
-        Object.keys(field)[0] === 'id')
-    )
   }
 
   private getAltMediaToTranslate(

@@ -1,33 +1,27 @@
 import type { ProductToTranslate } from 'Types/Product'
 import type { LanguageCode, TranslationInput, TranslationsRegister } from 'Types/Translation'
-import Utils from '../Utils'
+import DefaultPushDataModeler from '../PushDataModeler'
 
-export default class PushDataModeler {
-  private utils: Utils
-
-  constructor() {
-    this.utils = new Utils()
-  }
-
+export default class PushDataModeler extends DefaultPushDataModeler {
   public formatTranslationFieldsForGraphQLMutation({
-    productToTranslate,
-    productTranslated,
+    resourceToTranslate,
+    resourceTranslated,
     isoCode,
   }: {
-    productToTranslate: Partial<ProductToTranslate>
-    productTranslated: Partial<ProductToTranslate>
+    resourceToTranslate: Partial<ProductToTranslate>
+    resourceTranslated: Partial<ProductToTranslate>
     isoCode: LanguageCode
   }): TranslationsRegister[] {
-    const productTranslationInputs = [] as TranslationInput[]
-    const translationEntriesForOptions = [] as TranslationsRegister[]
+    const collectionTranslationInputs = [] as TranslationInput[]
     const translationEntriesForMedia = [] as TranslationsRegister[]
+    const translationEntriesForOptions = [] as TranslationsRegister[]
 
-    for (const key in productToTranslate) {
+    for (const key in resourceToTranslate) {
       if (key === 'id') {
         continue
       }
-      const oldValue = productToTranslate[key]
-      const newValue = productTranslated[key]
+      const oldValue = resourceToTranslate[key]
+      const newValue = resourceTranslated[key]
 
       // Handle nested SEO object
       if (key === 'seo' && typeof newValue === 'object') {
@@ -35,7 +29,7 @@ export default class PushDataModeler {
           isoCode,
           newSeoData: newValue,
           oldSeoData: oldValue,
-          translationInputs: productTranslationInputs,
+          translationInputs: collectionTranslationInputs,
         })
         continue
       }
@@ -69,72 +63,17 @@ export default class PushDataModeler {
           newValue: newValue,
           oldValue: oldValue,
         },
-        productTranslationInputs
+        collectionTranslationInputs
       )
     }
 
     return [
       {
-        resourceId: productToTranslate.id!,
-        translations: productTranslationInputs,
+        resourceId: resourceToTranslate.id!,
+        translations: collectionTranslationInputs,
       },
-      ...translationEntriesForOptions,
       ...translationEntriesForMedia,
     ]
-  }
-
-  private createTranslationEntryForSEO({
-    isoCode,
-    newSeoData,
-    oldSeoData,
-    translationInputs,
-  }: {
-    isoCode: LanguageCode
-    newSeoData: ProductToTranslate['seo']
-    oldSeoData: ProductToTranslate['seo']
-    translationInputs: TranslationInput[]
-  }): void {
-    for (const seoKey in newSeoData) {
-      const key = seoKey === 'title' ? 'meta_title' : 'meta_description'
-      this.utils.createTranslationEntry(
-        {
-          key: key,
-          isoCode,
-          newValue: newSeoData[seoKey],
-          oldValue: oldSeoData[seoKey],
-        },
-        translationInputs
-      )
-    }
-  }
-
-  private createTranslationEntryForMedia({
-    isoCode,
-    newMediaData,
-    oldMediaData,
-    translationEntriesForMedia,
-  }: {
-    isoCode: LanguageCode
-    newMediaData: ProductToTranslate['media']
-    oldMediaData: ProductToTranslate['media']
-    translationEntriesForMedia: TranslationsRegister[]
-  }): void {
-    const translationInputMedia = [] as TranslationInput[]
-
-    this.utils.createTranslationEntry(
-      {
-        key: 'alts',
-        isoCode,
-        newValue: JSON.stringify(newMediaData.alts),
-        oldValue: JSON.stringify(oldMediaData.alts),
-      },
-      translationInputMedia
-    )
-    const translationEntryForMedia = {
-      resourceId: oldMediaData.id,
-      translations: translationInputMedia,
-    }
-    translationEntriesForMedia.push(translationEntryForMedia)
   }
 
   private createTranslationEntryForOptions({
@@ -187,17 +126,6 @@ export default class PushDataModeler {
         }
         translationEntriesForOptions.push(TranslationEntryForOptionValue)
       }
-    }
-  }
-
-  private defineTranslationKey(key: string): string {
-    switch (key) {
-      case 'descriptionHtml':
-        return 'body_html'
-      case 'productType':
-        return 'product_type'
-      default:
-        return key
     }
   }
 }

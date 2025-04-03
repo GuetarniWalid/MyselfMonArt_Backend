@@ -1,6 +1,139 @@
-import type { ProductWithOutdatedTranslations } from 'Types/Product'
+import type { ProductToTranslate, ProductWithOutdatedTranslations } from 'Types/Product'
+import type { LanguageCode, MetaobjectTranslation } from 'Types/Translation'
+import DefaultPullDataModeler from '../PullDataModeler'
 
-export default class PullDataModeler {
+export default class PullDataModeler extends DefaultPullDataModeler {
+  public async getResourceOutdatedTranslations() {
+    const productToTranslate = [] as Partial<ProductToTranslate>[]
+    let cursor: string | null = null
+    let hasNextPage = true
+
+    while (hasNextPage) {
+      // Get products with outdated translations without metaobject translations
+      const { query, variables } = this.getProductsWithOutdatedTranslationsQuery(cursor)
+      const productsData = await this.fetchGraphQL(query, variables)
+      const products = productsData.products.edges as {
+        node: ProductWithOutdatedTranslations
+        cursor: string
+      }[]
+
+      for (const product of products) {
+        // Check if alt media is outdated
+        const isAltMediaOutdated = (await this.isAltMediaOutdated(
+          product.node.altTextsMetaObject?.reference?.id
+        )) as boolean
+
+        const productWithOnlyKeyToTranslate = this.getProductWithOnlyKeyToTranslate(
+          product.node,
+          isAltMediaOutdated
+        )
+        if (productWithOnlyKeyToTranslate) {
+          productToTranslate.push(productWithOnlyKeyToTranslate)
+        }
+      }
+
+      hasNextPage = productsData.products.pageInfo.hasNextPage
+      if (hasNextPage) {
+        cursor = products[products.length - 1].cursor
+      }
+    }
+
+    return productToTranslate
+  }
+
+  private getProductsWithOutdatedTranslationsQuery(
+    cursor: string | null = null,
+    locale: LanguageCode = 'en'
+  ) {
+    return {
+      query: `query GetUpdatedProducts($cursor: String) {
+                products(first: 250, after: $cursor, query: "published_status:published") {
+                  edges {
+                    node {
+                      id
+                      title
+                      descriptionHtml
+                      handle
+                      media(first: 10) {
+                        nodes {
+                          id
+                          alt
+                        }
+                      }
+                      altTextsMetaObject: metafield(namespace: "meta_object", key: "media") {
+                        reference {
+                          ... on Metaobject {
+                            id
+                            field(key: "alts") {
+                              jsonValue
+                            }
+                          }
+                        }
+                      }
+                      options(first: 10) {
+                        id
+                        name
+                        optionValues {
+                          id
+                          name
+                          translations(locale: "${locale}") {
+                            key
+                            locale
+                            value
+                            outdated
+                            updatedAt
+                          }
+                        }
+                        translations(locale: "${locale}") {
+                          key
+                          locale
+                          value
+                          outdated
+                          updatedAt
+                        }
+                      }
+                      productType
+                      seo {
+                        title
+                        description
+                      }
+                      translations(locale: "${locale}") {
+                        key
+                        locale
+                        value
+                        outdated
+                        updatedAt
+                      }                      
+                    }
+                    cursor
+                  }
+                  pageInfo {
+                    hasNextPage
+                  }
+                }
+              }`,
+      variables: { cursor },
+    }
+  }
+
+  private async isAltMediaOutdated(metaobjectId: string | undefined) {
+    if (!metaobjectId) return []
+
+    const { query: metaobjectQuery, variables: metaobjectVariables } = this.getMetaobjectQuery(
+      metaobjectId,
+      'en'
+    )
+    const metaobjectData = (await this.fetchGraphQL(
+      metaobjectQuery,
+      metaobjectVariables
+    )) as MetaobjectTranslation
+
+    const metaobjectEntry = metaobjectData.translatableResource.translations.filter(
+      (metaobject) => metaobject.key === 'alts'
+    )
+    return metaobjectEntry[0]?.outdated !== undefined ? metaobjectEntry[0]?.outdated : true
+  }
+
   public getProductWithOnlyKeyToTranslate(
     product: ProductWithOutdatedTranslations,
     isAltMediaOutdated: boolean
@@ -43,7 +176,7 @@ export default class PullDataModeler {
     delete mutableProduct.altTextsMetaObject
     mutableProduct.media = processedMedia
 
-    const cleanedProduct = this.cleanProductEmptyFields({ ...mutableProduct })
+    const cleanedProduct = this.cleanResourceEmptyFields({ ...mutableProduct })
     return this.isEmptyField(cleanedProduct) ? null : cleanedProduct
   }
 
@@ -82,45 +215,6 @@ export default class PullDataModeler {
       ...option,
       optionValues: optionValuesCleaned.filter((value) => !this.isEmptyField(value)),
     }
-  }
-
-  private cleanProductEmptyFields(object: { [key: string]: any }) {
-    for (const key of Object.keys(object)) {
-      const value = object[key]
-      if (this.isEmptyField(value)) {
-        delete object[key]
-      } else if (typeof value === 'object' && value !== null) {
-        this.cleanProductEmptyFields(value)
-
-        if (Object.keys(value).length === 0) {
-          delete object[key]
-        } else if (this.isEmptyField(value)) {
-          delete object[key]
-        } else if (Array.isArray(value)) {
-          //remove empty items from array
-          object[key] = value.filter((item) => item !== undefined)
-        }
-      }
-    }
-
-    // Check if the object itself is empty
-    if (this.isEmptyField(object)) {
-      return null
-    }
-    return object
-  }
-
-  private isEmptyField(field: any): boolean {
-    return (
-      field === undefined ||
-      field === null ||
-      field === '' ||
-      (typeof field === 'object' && field.length === 0) ||
-      (typeof field === 'object' && Object.keys(field).length === 0) ||
-      (typeof field === 'object' &&
-        Object.keys(field).length === 1 &&
-        Object.keys(field)[0] === 'id')
-    )
   }
 
   private getAltMediaToTranslate(

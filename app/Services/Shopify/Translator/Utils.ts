@@ -1,6 +1,6 @@
 import type { LanguageCode, TranslationInput } from 'Types/Translation'
+import type { ResourceMedia, ResourceImage } from 'Types/Resource'
 import { createHash } from 'crypto'
-
 export default class Utils {
   public createTranslationEntry(
     data: {
@@ -23,5 +23,9 @@ export default class Utils {
 
   public generateContentDigest(content: string): string {
     return createHash('sha256').update(content, 'utf8').digest('hex')
+  }
+
+  public isResourceMedia(data: ResourceMedia | ResourceImage): data is ResourceMedia {
+    return 'alts' in data
   }
 }

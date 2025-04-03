@@ -15,7 +15,7 @@ export default class TranslateProduct extends BaseTask {
     logTaskBoundary(true, 'Translate product')
 
     const shopify = new Shopify()
-    const productsToTranslate = await shopify.translation.getOutdatedTranslations('product')
+    const productsToTranslate = await shopify.translator('product').getOutdatedTranslations()
     console.log('🚀 ~ products to translate length:', productsToTranslate.length)
     const chatGPT = new ChatGPT()
 
@@ -23,10 +23,9 @@ export default class TranslateProduct extends BaseTask {
       console.log('============================')
       console.log('🚀 ~ Id product to translate => ', product.id)
       const productTranslated = await chatGPT.translate(product, 'product', 'en')
-      const responses = await shopify.translation.updateTranslation({
+      const responses = await shopify.translator('product').updateTranslation({
         resourceToTranslate: product,
         resourceTranslated: productTranslated,
-        resource: 'product',
         isoCode: 'en',
       })
       responses.forEach((response) => {
