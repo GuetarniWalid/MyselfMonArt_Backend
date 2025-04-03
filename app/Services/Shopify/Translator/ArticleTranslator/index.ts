@@ -28,7 +28,7 @@ export default class ArticleTranslator extends Authentication {
         cursor: string
       }[]
 
-      for (const article of articles.slice(0, 1)) {
+      for (const article of articles) {
         // Check if alt media is outdated
         const isAltMediaOutdated = (await this.isAltMediaOutdated(
           article.node.altTextsMetaObject?.reference?.id
