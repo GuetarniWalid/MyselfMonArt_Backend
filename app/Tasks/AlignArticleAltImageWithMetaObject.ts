@@ -1,7 +1,7 @@
 import type { Article as ShopifyArticle } from 'Types/Article'
 import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import Article from 'App/Services/Shopify/Article'
-
+import { logTaskBoundary } from 'App/Utils/Logs'
 export default class AlignArticleAltImageWithMetaObject extends BaseTask {
   public static get schedule() {
     return CronTimeV2.everyDayAt(2, 0)
@@ -12,6 +12,8 @@ export default class AlignArticleAltImageWithMetaObject extends BaseTask {
   }
 
   public async handle() {
+    logTaskBoundary(true, 'Align article alt image with meta object')
+
     const article = new Article()
     const articles = await article.getAll()
     const articlesWithAltProblem = [] as string[]
@@ -28,11 +30,13 @@ export default class AlignArticleAltImageWithMetaObject extends BaseTask {
       console.log('🚀 ~ Id article to align alt texts:', shopifyArticle.id)
 
       await this.updateMediaObjectWithNewAlts(article, shopifyArticle, imageAltCleaned)
-      console.log('🚀 ~ metaobject updated')
+      console.log('✅ ~ metaobject updated')
       console.log('=====================')
     }
-    console.log('🚀 ~ all metaobjects updated')
+    console.log('✅ ~ all metaobjects updated')
     console.log('🚀 ~ articles with alt problem:', articlesWithAltProblem)
+
+    logTaskBoundary(false, 'Align article alt image with meta object')
   }
 
   private getImageAlt(article: ShopifyArticle) {

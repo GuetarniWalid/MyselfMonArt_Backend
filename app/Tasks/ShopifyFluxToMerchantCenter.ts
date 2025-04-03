@@ -11,7 +11,8 @@ import sortBy from 'lodash/sortBy'
 import omit from 'lodash/omit'
 import forOwn from 'lodash/forOwn'
 import isEmpty from 'lodash/isEmpty'
-import Google from '../Services/Google'
+import Google from 'App/Services/Google'
+import { logTaskBoundary } from 'App/Utils/Logs'
 
 export default class ShopifyFluxToMerchantCenter extends BaseTask {
   public static get schedule() {
@@ -26,6 +27,7 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
   }
 
   public async handle() {
+    logTaskBoundary(true, 'Shopify flux to merchant center')
     try {
       const oauth2Client = await new Google().authentication.getOauth2Client()
       const merchantCenter = google.content({
@@ -74,6 +76,8 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
       console.error('🚀 ~ error:', error)
       this.sendEmail(error)
     }
+
+    logTaskBoundary(false, 'Shopify flux to merchant center')
   }
 
   // Shipping

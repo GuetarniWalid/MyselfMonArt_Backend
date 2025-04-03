@@ -1,7 +1,7 @@
 import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import ChatGPT from 'App/Services/ChatGPT'
 import Shopify from 'App/Services/Shopify'
-
+import { logTaskBoundary } from 'App/Utils/Logs'
 export default class TranslateProduct extends BaseTask {
   public static get schedule() {
     return CronTimeV2.everyDayAt(3, 30)
@@ -12,6 +12,8 @@ export default class TranslateProduct extends BaseTask {
   }
 
   public async handle() {
+    logTaskBoundary(true, 'Translate product')
+
     const shopify = new Shopify()
     const productsToTranslate = await shopify.translation.getOutdatedTranslations('product')
     console.log('🚀 ~ products to translate length:', productsToTranslate.length)
@@ -37,5 +39,7 @@ export default class TranslateProduct extends BaseTask {
       console.log('============================')
     }
     console.log('✅ Products translations updated')
+
+    logTaskBoundary(false, 'Translate product')
   }
 }
