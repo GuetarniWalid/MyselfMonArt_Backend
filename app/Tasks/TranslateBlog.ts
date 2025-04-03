@@ -5,7 +5,7 @@ import { logTaskBoundary } from 'App/Utils/Logs'
 
 export default class TranslateBlog extends BaseTask {
   public static get schedule() {
-    return CronTimeV2.everyDayAt(3, 0)
+    return CronTimeV2.everyDayAt(3, 45)
   }
 
   public static get useLock() {
