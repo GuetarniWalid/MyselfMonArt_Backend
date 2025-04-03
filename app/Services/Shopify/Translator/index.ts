@@ -1,16 +1,20 @@
 import type { LanguageCode, TranslatableContent, TranslationsRegister } from 'Types/Translation'
 import type { Resource } from 'Types/Resource'
+import type { ArticleToTranslate } from 'Types/Article'
+import type { ProductToTranslate } from 'Types/Product'
+import type { CollectionToTranslate } from 'Types/Collection'
 import Authentication from '../Authentication'
 import ProductTranslator from './ProductTranslator'
 import CollectionTranslator from './CollectionTranslator'
 import ArticleTranslator from './ArticleTranslator'
-import { CollectionToTranslate } from 'Types/Collection'
-import { ArticleToTranslate } from 'Types/Article'
-import { ProductToTranslate } from 'Types/Product'
+import BlogTranslator from './BlogTranslator'
 import Utils from './Utils'
-
 export default class Translator extends Authentication {
-  private resourceHandler: ProductTranslator | CollectionTranslator | ArticleTranslator
+  private resourceHandler:
+    | ProductTranslator
+    | CollectionTranslator
+    | ArticleTranslator
+    | BlogTranslator
   protected utils: Utils
 
   constructor(resource: Resource) {
@@ -25,7 +29,7 @@ export default class Translator extends Authentication {
 
   private getTranslatorHandler(
     resource: Resource
-  ): ProductTranslator | CollectionTranslator | ArticleTranslator {
+  ): ProductTranslator | CollectionTranslator | ArticleTranslator | BlogTranslator {
     if (resource === 'product') {
       return new ProductTranslator()
     }
@@ -34,6 +38,9 @@ export default class Translator extends Authentication {
     }
     if (resource === 'article') {
       return new ArticleTranslator()
+    }
+    if (resource === 'blog') {
+      return new BlogTranslator()
     }
     throw new Error('Resource not supported')
   }

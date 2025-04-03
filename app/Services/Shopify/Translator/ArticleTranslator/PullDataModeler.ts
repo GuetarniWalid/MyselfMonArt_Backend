@@ -46,7 +46,7 @@ export default class PullDataModeler extends DefaultPullDataModeler {
     locale: LanguageCode = 'en'
   ) {
     return {
-      query: `query GetUpdatedArticles($cursor: String) {
+      query: `query AllArticles($cursor: String) {
                 articles(first: 250, after: $cursor, query: "published_status:published") {
                   edges {
                     node {

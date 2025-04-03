@@ -2,20 +2,27 @@ import type { LanguageCode, TranslatableContent } from 'Types/Translation'
 import type { ProductToTranslate } from 'Types/Product'
 import type { CollectionToTranslate } from 'Types/Collection'
 import type { ArticleToTranslate } from 'Types/Article'
+import type { Resource } from 'Types/Resource'
 import { zodResponseFormat } from 'openai/helpers/zod'
 import Authentication from '../Authentication'
 import ProductTranslator from './Product'
 import CollectionTranslator from './Collection'
 import ArticleTranslator from './Article'
+import BlogTranslator from './Blog'
+
 export default class Translator extends Authentication {
-  private translationHandler: ProductTranslator | CollectionTranslator | ArticleTranslator
+  private translationHandler:
+    | ProductTranslator
+    | CollectionTranslator
+    | ArticleTranslator
+    | BlogTranslator
 
   constructor(
     payload:
       | Partial<ProductToTranslate>
       | Partial<CollectionToTranslate>
       | Partial<ArticleToTranslate>,
-    resources: 'product' | 'collection' | 'article',
+    resources: Resource,
     targetLanguage: LanguageCode
   ) {
     super()
@@ -28,6 +35,9 @@ export default class Translator extends Authentication {
         break
       case 'article':
         this.translationHandler = new ArticleTranslator(payload, targetLanguage)
+        break
+      case 'blog':
+        this.translationHandler = new BlogTranslator(payload, targetLanguage)
         break
     }
   }

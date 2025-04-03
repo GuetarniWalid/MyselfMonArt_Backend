@@ -1,4 +1,4 @@
-export type Resource = 'product' | 'collection' | 'article'
+export type Resource = 'product' | 'collection' | 'article' | 'blog'
 
 export type ResourceSEO = {
   title: string

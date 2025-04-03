@@ -1,4 +1,4 @@
-import { ProductToTranslate } from './Product'
+import type { ProductToTranslate } from './Product'
 
 export type LanguageCode = 'es' | 'en' | 'de'
 

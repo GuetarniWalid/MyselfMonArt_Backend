@@ -21,7 +21,7 @@ export interface ArticleWithOutdatedTranslations {
   }[]
 }
 
-export interface ArticleToTranslate extends Translatable {
+export interface ArticleToTranslate {
   id: string
   body: string
   handle: string
