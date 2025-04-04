@@ -145,8 +145,6 @@ export default class PullDataModeler extends DefaultPullDataModeler {
     switch (key) {
       case 'body_html':
         return 'descriptionHtml'
-      case 'product_type':
-        return 'productType'
       case 'meta_title':
         return 'seo.title'
       case 'meta_description':

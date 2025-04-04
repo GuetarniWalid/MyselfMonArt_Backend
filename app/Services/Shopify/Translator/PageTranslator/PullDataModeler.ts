@@ -1,49 +1,50 @@
-import type { BlogToTranslate, BlogWithOutdatedTranslations } from 'Types/Blog'
+import type { PageWithOutdatedTranslations } from 'Types/Page'
 import type { LanguageCode } from 'Types/Translation'
 import DefaultPullDataModeler from '../PullDataModeler'
 
 export default class PullDataModeler extends DefaultPullDataModeler {
   public async getResourceOutdatedTranslations() {
-    const blogToTranslate = [] as Partial<BlogToTranslate>[]
+    const pageToTranslate = [] as any[]
     let cursor: string | null = null
     let hasNextPage = true
 
     while (hasNextPage) {
-      // Get blogs with outdated translations without metaobject translations
-      const { query, variables } = this.getBlogsWithOutdatedTranslationsQuery(cursor)
-      const blogsData = await this.fetchGraphQL(query, variables)
-      const blogs = blogsData.blogs.edges as {
-        node: BlogWithOutdatedTranslations
+      // Get pages with outdated translations without metaobject translations
+      const { query, variables } = this.getPagesWithOutdatedTranslationsQuery(cursor)
+      const pagesData = await this.fetchGraphQL(query, variables)
+      const pages = pagesData.pages.edges as {
+        node: PageWithOutdatedTranslations
         cursor: string
       }[]
 
-      for (const blog of blogs) {
-        const blogWithOnlyKeyToTranslate = this.getBlogWithOnlyKeyToTranslate(blog.node)
-        if (blogWithOnlyKeyToTranslate) {
-          blogToTranslate.push(blogWithOnlyKeyToTranslate)
+      for (const page of pages) {
+        const pageWithOnlyKeyToTranslate = this.getPageWithOnlyKeyToTranslate(page.node)
+        if (pageWithOnlyKeyToTranslate) {
+          pageToTranslate.push(pageWithOnlyKeyToTranslate)
         }
       }
 
-      hasNextPage = blogsData.blogs.pageInfo.hasNextPage
+      hasNextPage = pagesData.pages.pageInfo.hasNextPage
       if (hasNextPage) {
-        cursor = blogs[blogs.length - 1].cursor
+        cursor = pages[pages.length - 1].cursor
       }
     }
 
-    return blogToTranslate
+    return pageToTranslate
   }
 
-  private getBlogsWithOutdatedTranslationsQuery(
+  private getPagesWithOutdatedTranslationsQuery(
     cursor: string | null = null,
     locale: LanguageCode = 'en'
   ) {
     return {
-      query: `query AllBlogs($cursor: String) {
-                blogs(first: 250, after: $cursor) {
+      query: `query AllPages($cursor: String) {
+                pages(first: 250, after: $cursor) {
                   edges {
                     node {
                       id
                       title
+                      body
                       handle
                       translations(locale: "${locale}") {
                         key
@@ -64,25 +65,30 @@ export default class PullDataModeler extends DefaultPullDataModeler {
     }
   }
 
-  public getBlogWithOnlyKeyToTranslate(blog: BlogWithOutdatedTranslations) {
-    const { translations, ...blogWithoutTranslations } = blog
+  public getPageWithOnlyKeyToTranslate(page: PageWithOutdatedTranslations) {
+    const { translations, ...pageWithoutTranslations } = page
 
-    const mutableBlog = blogWithoutTranslations as {
+    const mutablePage = pageWithoutTranslations as {
       [key: string]: any
     }
 
     translations.forEach((translation) => {
       const key = this.getKeyFromTranslationKey(translation.key)
       if (!translation.outdated) {
-        delete mutableBlog[key]
+        delete mutablePage[key]
       }
     })
 
-    const cleanedBlog = this.cleanResourceEmptyFields({ ...mutableBlog })
-    return cleanedBlog
+    const cleanedPage = this.cleanResourceEmptyFields({ ...mutablePage })
+    return cleanedPage
   }
 
   private getKeyFromTranslationKey(key: string) {
-    return key
+    switch (key) {
+      case 'body_html':
+        return 'body'
+      default:
+        return key
+    }
   }
 }

@@ -8,6 +8,7 @@ import ProductTranslator from './ProductTranslator'
 import CollectionTranslator from './CollectionTranslator'
 import ArticleTranslator from './ArticleTranslator'
 import BlogTranslator from './BlogTranslator'
+import PageTranslator from './PageTranslator'
 import Utils from './Utils'
 export default class Translator extends Authentication {
   private resourceHandler:
@@ -15,6 +16,7 @@ export default class Translator extends Authentication {
     | CollectionTranslator
     | ArticleTranslator
     | BlogTranslator
+    | PageTranslator
   protected utils: Utils
 
   constructor(resource: Resource) {
@@ -29,7 +31,12 @@ export default class Translator extends Authentication {
 
   private getTranslatorHandler(
     resource: Resource
-  ): ProductTranslator | CollectionTranslator | ArticleTranslator | BlogTranslator {
+  ):
+    | ProductTranslator
+    | CollectionTranslator
+    | ArticleTranslator
+    | BlogTranslator
+    | PageTranslator {
     if (resource === 'product') {
       return new ProductTranslator()
     }
@@ -41,6 +48,9 @@ export default class Translator extends Authentication {
     }
     if (resource === 'blog') {
       return new BlogTranslator()
+    }
+    if (resource === 'page') {
+      return new PageTranslator()
     }
     throw new Error('Resource not supported')
   }

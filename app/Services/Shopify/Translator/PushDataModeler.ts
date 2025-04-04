@@ -1,6 +1,8 @@
 import type { ArticleToTranslate } from 'Types/Article'
 import type { CollectionToTranslate } from 'Types/Collection'
 import type { ProductToTranslate } from 'Types/Product'
+import type { PageToTranslate } from 'Types/Page'
+import type { BlogToTranslate } from 'Types/Blog'
 import type { LanguageCode, TranslationInput, TranslationsRegister } from 'Types/Translation'
 import type { ResourceSEO, ResourceMedia, ResourceImage } from 'Types/Resource'
 import Utils from './Utils'
@@ -21,10 +23,14 @@ export default class PushDataModeler {
       | Partial<ProductToTranslate>
       | Partial<CollectionToTranslate>
       | Partial<ArticleToTranslate>
+      | Partial<PageToTranslate>
+      | Partial<BlogToTranslate>
     resourceTranslated:
       | Partial<ProductToTranslate>
       | Partial<CollectionToTranslate>
       | Partial<ArticleToTranslate>
+      | Partial<PageToTranslate>
+      | Partial<BlogToTranslate>
     isoCode: LanguageCode
   }): TranslationsRegister[] {
     const collectionTranslationInputs = [] as TranslationInput[]
