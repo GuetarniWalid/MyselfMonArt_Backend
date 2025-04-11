@@ -1,4 +1,4 @@
-import type { ThemeToTranslate } from 'Types/Theme'
+import type { ModelToTranslate } from 'Types/Model'
 import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import ChatGPT from 'App/Services/ChatGPT'
 import Shopify from 'App/Services/Shopify'
@@ -17,16 +17,16 @@ export default class TranslateProduct extends BaseTask {
 
     const shopify = new Shopify()
     const contentToTranslate = (await shopify
-      .translator('theme')
-      .getOutdatedTranslations()) as ThemeToTranslate[]
+      .translator('model')
+      .getOutdatedTranslations()) as ModelToTranslate[]
 
     const chatGPT = new ChatGPT()
 
     for (const content of contentToTranslate) {
-      const themeTranslated = await chatGPT.translate(content, 'theme', 'en')
-      const responses = await shopify.translator('theme').updateTranslation({
+      const modelTranslated = await chatGPT.translate(content, 'model', 'en')
+      const responses = await shopify.translator('model').updateTranslation({
         resourceToTranslate: content,
-        resourceTranslated: themeTranslated,
+        resourceTranslated: modelTranslated,
         isoCode: 'en',
       })
       responses.forEach((response) => {
@@ -38,7 +38,7 @@ export default class TranslateProduct extends BaseTask {
       })
     }
     console.log('============================')
-    console.log('✅ Themes translations updated')
+    console.log('✅ Models translations updated')
 
     logTaskBoundary(false, 'Translate Models')
   }

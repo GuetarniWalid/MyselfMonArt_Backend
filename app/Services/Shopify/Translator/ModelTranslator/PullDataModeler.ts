@@ -1,8 +1,8 @@
 import type { LanguageCode } from 'Types/Translation'
+import type { ModelToTranslate } from 'Types/Model'
 import type {
   FileDataQueryResponse,
   ThemeWithFiles,
-  ThemeToTranslate,
   TranslatableContent,
   Translation,
 } from 'Types/Theme'
@@ -12,7 +12,7 @@ export default class PullDataModeler extends DefaultPullDataModeler {
   public async getResourceOutdatedTranslations(locale: LanguageCode = 'en') {
     const { fileNames, themeId, id } = await this.getModelsFileNames()
 
-    const translatableContent = [] as ThemeToTranslate[]
+    const translatableContent = [] as ModelToTranslate[]
 
     for (const fileName of fileNames) {
       const fileData = await this.getTranslatableFileData(id, fileName, locale)

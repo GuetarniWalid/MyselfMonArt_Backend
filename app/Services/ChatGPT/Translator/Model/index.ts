@@ -1,29 +1,29 @@
 import type { LanguageCode } from 'Types/Translation'
-import type { ThemeToTranslate } from 'Types/Theme'
-import ThemeToTranslateValidator from 'App/Validators/ThemeToTranslateValidator'
+import type { ModelToTranslate } from 'Types/Model'
+import ModelToTranslateValidator from 'App/Validators/ModelToTranslateValidator'
 import { validator } from '@ioc:Adonis/Core/Validator'
 import { z } from 'zod'
 
-export default class ThemeTranslator {
+export default class ModelTranslator {
   private targetLanguage: LanguageCode
-  private payload: ThemeToTranslate
+  private payload: ModelToTranslate
 
-  constructor(payload: ThemeToTranslate, targetLanguage: LanguageCode) {
+  constructor(payload: ModelToTranslate, targetLanguage: LanguageCode) {
     this.targetLanguage = targetLanguage
     this.payload = payload
   }
 
   public async verifyPayloadValidity(payload: unknown) {
-    const isValidTheme = await this.isValidThemeForTranslation(payload)
-    if (!isValidTheme) {
+    const isValidModel = await this.isValidModelForTranslation(payload)
+    if (!isValidModel) {
       throw new Error('data format is not valid for translation')
     }
   }
 
-  private async isValidThemeForTranslation(payload: unknown) {
+  private async isValidModelForTranslation(payload: unknown) {
     try {
       await validator.validate({
-        schema: new ThemeToTranslateValidator().schema,
+        schema: new ModelToTranslateValidator().schema,
         data: payload,
       })
       return true
@@ -89,13 +89,13 @@ Only return the translated value, no explanation, no additional formatting.
     response,
     payload,
   }: {
-    response: Partial<ThemeToTranslate>
-    payload: ThemeToTranslate
-  }): ThemeToTranslate {
+    response: Partial<ModelToTranslate>
+    payload: ModelToTranslate
+  }): ModelToTranslate {
     return {
       id: payload.id,
       key: payload.key,
       value: response.value,
-    } as ThemeToTranslate
+    } as ModelToTranslate
   }
 }

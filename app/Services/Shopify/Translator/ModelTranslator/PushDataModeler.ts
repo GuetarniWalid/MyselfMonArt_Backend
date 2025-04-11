@@ -1,4 +1,4 @@
-import type { ThemeToTranslate } from 'Types/Theme'
+import type { ModelToTranslate } from 'Types/Model'
 import type { LanguageCode, TranslationInput, TranslationsRegister } from 'Types/Translation'
 import DefaultPushDataModeler from '../PushDataModeler'
 
@@ -8,8 +8,8 @@ export default class PushDataModeler extends DefaultPushDataModeler {
     resourceTranslated,
     isoCode,
   }: {
-    resourceToTranslate: ThemeToTranslate
-    resourceTranslated: ThemeToTranslate
+    resourceToTranslate: ModelToTranslate
+    resourceTranslated: ModelToTranslate
     isoCode: LanguageCode
   }): TranslationsRegister[] {
     const translationInputs = [] as TranslationInput[]

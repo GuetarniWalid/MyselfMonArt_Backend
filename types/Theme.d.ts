@@ -23,12 +23,6 @@ export interface FileDataQueryResponse {
   }
 }
 
-export interface ThemeWithOutdatedTranslation {
-  key: string
-  value: string
-}
-export type ThemeWithOutdatedTranslations = ThemeWithOutdatedTranslation[]
-
 export interface ThemeWithFiles {
   id: string
   name: string
@@ -44,14 +38,4 @@ export interface ThemeWithFiles {
       }
     }[]
   }
-}
-
-export interface Theme {
-  id: string
-}
-
-export interface ThemeToTranslate {
-  id: string
-  key: string
-  value: string
 }

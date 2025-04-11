@@ -2,7 +2,7 @@ import Authentication from '../../Authentication'
 import PullDataModeler from './PullDataModeler'
 import PushDataModeler from './PushDataModeler'
 
-export default class ThemeTranslator extends Authentication {
+export default class ModelTranslator extends Authentication {
   public pullDataModeler: PullDataModeler
   public pushDataModeler: PushDataModeler
 

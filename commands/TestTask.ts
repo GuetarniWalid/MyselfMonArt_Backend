@@ -1,4 +1,4 @@
-import type { ThemeToTranslate } from 'Types/Theme'
+import type { ModelToTranslate } from 'Types/Model'
 import { BaseCommand } from '@adonisjs/core/build/standalone'
 import ChatGPT from 'App/Services/ChatGPT'
 import { logTaskBoundary } from 'App/Utils/Logs'
@@ -17,14 +17,14 @@ export default class TestTask extends BaseCommand {
 
     const shopify = new Shopify()
     const contentToTranslate = (await shopify
-      .translator('theme')
-      .getOutdatedTranslations()) as ThemeToTranslate[]
+      .translator('model')
+      .getOutdatedTranslations()) as ModelToTranslate[]
 
     const chatGPT = new ChatGPT()
 
     for (const content of contentToTranslate) {
-      const themeTranslated = await chatGPT.translate(content, 'theme', 'en')
-      const responses = await shopify.translator('theme').updateTranslation({
+      const themeTranslated = await chatGPT.translate(content, 'model', 'en')
+      const responses = await shopify.translator('model').updateTranslation({
         resourceToTranslate: content,
         resourceTranslated: themeTranslated,
         isoCode: 'en',

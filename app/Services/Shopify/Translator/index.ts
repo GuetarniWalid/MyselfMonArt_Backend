@@ -5,14 +5,14 @@ import type { BlogToTranslate } from 'Types/Blog'
 import type { CollectionToTranslate } from 'Types/Collection'
 import type { PageToTranslate } from 'Types/Page'
 import type { ProductToTranslate } from 'Types/Product'
-import type { ThemeToTranslate } from 'Types/Theme'
+import type { ModelToTranslate } from 'Types/Model'
 import Authentication from '../Authentication'
 import ArticleTranslator from './ArticleTranslator'
 import BlogTranslator from './BlogTranslator'
 import CollectionTranslator from './CollectionTranslator'
 import PageTranslator from './PageTranslator'
 import ProductTranslator from './ProductTranslator'
-import ThemeTranslator from './ThemeTranslator'
+import ModelTranslator from './ModelTranslator'
 import Utils from './Utils'
 export default class Translator extends Authentication {
   private resourceHandler:
@@ -21,7 +21,7 @@ export default class Translator extends Authentication {
     | CollectionTranslator
     | PageTranslator
     | ProductTranslator
-    | ThemeTranslator
+    | ModelTranslator
   protected utils: Utils
 
   constructor(resource: Resource) {
@@ -42,7 +42,7 @@ export default class Translator extends Authentication {
     | ArticleTranslator
     | BlogTranslator
     | PageTranslator
-    | ThemeTranslator {
+    | ModelTranslator {
     if (resource === 'article') {
       return new ArticleTranslator()
     }
@@ -58,8 +58,8 @@ export default class Translator extends Authentication {
     if (resource === 'product') {
       return new ProductTranslator()
     }
-    if (resource === 'theme') {
-      return new ThemeTranslator()
+    if (resource === 'model') {
+      return new ModelTranslator()
     }
     throw new Error('Resource not supported')
   }
@@ -91,14 +91,14 @@ export default class Translator extends Authentication {
       | Partial<CollectionToTranslate>
       | Partial<PageToTranslate>
       | Partial<ProductToTranslate>
-      | ThemeToTranslate
+      | ModelToTranslate
     resourceTranslated:
       | Partial<ArticleToTranslate>
       | Partial<BlogToTranslate>
       | Partial<CollectionToTranslate>
       | Partial<PageToTranslate>
       | Partial<ProductToTranslate>
-      | ThemeToTranslate
+      | ModelToTranslate
     isoCode: LanguageCode
   }) {
     try {
