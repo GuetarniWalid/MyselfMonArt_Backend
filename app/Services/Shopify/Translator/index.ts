@@ -3,16 +3,18 @@ import type { Resource } from 'Types/Resource'
 import type { ArticleToTranslate } from 'Types/Article'
 import type { BlogToTranslate } from 'Types/Blog'
 import type { CollectionToTranslate } from 'Types/Collection'
+import type { ModelToTranslate } from 'Types/Model'
 import type { PageToTranslate } from 'Types/Page'
 import type { ProductToTranslate } from 'Types/Product'
-import type { ModelToTranslate } from 'Types/Model'
+import type { StaticSectionToTranslate } from 'Types/StaticSection'
 import Authentication from '../Authentication'
 import ArticleTranslator from './ArticleTranslator'
 import BlogTranslator from './BlogTranslator'
 import CollectionTranslator from './CollectionTranslator'
+import ModelTranslator from './ModelTranslator'
 import PageTranslator from './PageTranslator'
 import ProductTranslator from './ProductTranslator'
-import ModelTranslator from './ModelTranslator'
+import StaticSectionTranslator from './StaticSectionTranslator'
 import Utils from './Utils'
 export default class Translator extends Authentication {
   private resourceHandler:
@@ -22,6 +24,7 @@ export default class Translator extends Authentication {
     | PageTranslator
     | ProductTranslator
     | ModelTranslator
+    | StaticSectionTranslator
   protected utils: Utils
 
   constructor(resource: Resource) {
@@ -42,7 +45,8 @@ export default class Translator extends Authentication {
     | ArticleTranslator
     | BlogTranslator
     | PageTranslator
-    | ModelTranslator {
+    | ModelTranslator
+    | StaticSectionTranslator {
     if (resource === 'article') {
       return new ArticleTranslator()
     }
@@ -60,6 +64,9 @@ export default class Translator extends Authentication {
     }
     if (resource === 'model') {
       return new ModelTranslator()
+    }
+    if (resource === 'static_section') {
+      return new StaticSectionTranslator()
     }
     throw new Error('Resource not supported')
   }
@@ -92,6 +99,7 @@ export default class Translator extends Authentication {
       | Partial<PageToTranslate>
       | Partial<ProductToTranslate>
       | ModelToTranslate
+      | StaticSectionToTranslate
     resourceTranslated:
       | Partial<ArticleToTranslate>
       | Partial<BlogToTranslate>
@@ -99,6 +107,7 @@ export default class Translator extends Authentication {
       | Partial<PageToTranslate>
       | Partial<ProductToTranslate>
       | ModelToTranslate
+      | StaticSectionToTranslate
     isoCode: LanguageCode
   }) {
     try {

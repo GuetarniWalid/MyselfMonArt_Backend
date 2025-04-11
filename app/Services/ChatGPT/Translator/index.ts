@@ -1,34 +1,41 @@
 import type { LanguageCode, TranslatableContent } from 'Types/Translation'
-import type { ProductToTranslate } from 'Types/Product'
-import type { CollectionToTranslate } from 'Types/Collection'
+import type { Resource } from 'Types/Resource'
 import type { ArticleToTranslate } from 'Types/Article'
+import type { BlogToTranslate } from 'Types/Blog'
+import type { CollectionToTranslate } from 'Types/Collection'
 import type { PageToTranslate } from 'Types/Page'
 import type { ModelToTranslate } from 'Types/Model'
-import type { Resource } from 'Types/Resource'
+import type { ProductToTranslate } from 'Types/Product'
 import { zodResponseFormat } from 'openai/helpers/zod'
 import Authentication from '../Authentication'
-import ProductTranslator from './Product'
-import CollectionTranslator from './Collection'
 import ArticleTranslator from './Article'
 import BlogTranslator from './Blog'
+import CollectionTranslator from './Collection'
 import PageTranslator from './Page'
+import ProductTranslator from './Product'
 import ModelTranslator from './Model'
+import StaticSectionTranslator from './StaticSection'
+import { StaticSectionToTranslate } from 'Types/StaticSection'
 
 export default class Translator extends Authentication {
   private translationHandler:
-    | ProductTranslator
-    | CollectionTranslator
     | ArticleTranslator
     | BlogTranslator
-    | PageTranslator
+    | CollectionTranslator
     | ModelTranslator
+    | PageTranslator
+    | ProductTranslator
+    | StaticSectionTranslator
 
   constructor(
     payload:
-      | Partial<ProductToTranslate>
-      | Partial<CollectionToTranslate>
       | Partial<ArticleToTranslate>
-      | Partial<PageToTranslate>,
+      | Partial<BlogToTranslate>
+      | Partial<CollectionToTranslate>
+      | Partial<PageToTranslate>
+      | Partial<ProductToTranslate>
+      | ModelToTranslate
+      | StaticSectionToTranslate,
     resources: Resource,
     targetLanguage: LanguageCode
   ) {
@@ -51,6 +58,12 @@ export default class Translator extends Authentication {
         break
       case 'model':
         this.translationHandler = new ModelTranslator(payload as ModelToTranslate, targetLanguage)
+        break
+      case 'static_section':
+        this.translationHandler = new StaticSectionTranslator(
+          payload as StaticSectionToTranslate,
+          targetLanguage
+        )
         break
     }
   }

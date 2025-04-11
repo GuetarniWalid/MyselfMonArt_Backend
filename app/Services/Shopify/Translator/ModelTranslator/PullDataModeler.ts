@@ -174,6 +174,8 @@ export default class PullDataModeler extends DefaultPullDataModeler {
   }
 
   private isTranslationMedia(content: TranslatableContent) {
-    return content.value.startsWith('shopify://')
+    const isShopifyMedia = content.value.startsWith('shopify://')
+    const isSVG = content.value.startsWith('<svg') || content.value.endsWith('</svg>')
+    return isShopifyMedia || isSVG
   }
 }

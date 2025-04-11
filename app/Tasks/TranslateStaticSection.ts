@@ -1,18 +1,18 @@
 import type { StaticSectionToTranslate } from 'Types/StaticSection'
-import { BaseCommand } from '@adonisjs/core/build/standalone'
+import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import ChatGPT from 'App/Services/ChatGPT'
-import { logTaskBoundary } from 'App/Utils/Logs'
 import Shopify from 'App/Services/Shopify'
-export default class TestTask extends BaseCommand {
-  public static commandName = 'test:task'
-  public static description = 'Test task logic implementation'
-
-  public static settings = {
-    loadApp: true,
-    stayAlive: false,
+import { logTaskBoundary } from 'App/Utils/Logs'
+export default class TranslateProduct extends BaseTask {
+  public static get schedule() {
+    return CronTimeV2.everyDayAt(4, 30)
   }
 
-  public async run() {
+  public static get useLock() {
+    return false
+  }
+
+  public async handle() {
     logTaskBoundary(true, 'Translate Static Sections')
 
     const shopify = new Shopify()
