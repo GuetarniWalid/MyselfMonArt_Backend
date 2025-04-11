@@ -1,6 +1,6 @@
 import type { ProductToTranslate } from './Product'
 
-export type LanguageCode = 'es' | 'en' | 'de'
+export type LanguageCode = 'en' | 'es' | 'de' | 'fr'
 
 export interface Translatable {}
 

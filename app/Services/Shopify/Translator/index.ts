@@ -1,22 +1,27 @@
 import type { LanguageCode, TranslatableContent, TranslationsRegister } from 'Types/Translation'
 import type { Resource } from 'Types/Resource'
 import type { ArticleToTranslate } from 'Types/Article'
-import type { ProductToTranslate } from 'Types/Product'
+import type { BlogToTranslate } from 'Types/Blog'
 import type { CollectionToTranslate } from 'Types/Collection'
+import type { PageToTranslate } from 'Types/Page'
+import type { ProductToTranslate } from 'Types/Product'
+import type { ThemeToTranslate } from 'Types/Theme'
 import Authentication from '../Authentication'
-import ProductTranslator from './ProductTranslator'
-import CollectionTranslator from './CollectionTranslator'
 import ArticleTranslator from './ArticleTranslator'
 import BlogTranslator from './BlogTranslator'
+import CollectionTranslator from './CollectionTranslator'
 import PageTranslator from './PageTranslator'
+import ProductTranslator from './ProductTranslator'
+import ThemeTranslator from './ThemeTranslator'
 import Utils from './Utils'
 export default class Translator extends Authentication {
   private resourceHandler:
-    | ProductTranslator
-    | CollectionTranslator
     | ArticleTranslator
     | BlogTranslator
+    | CollectionTranslator
     | PageTranslator
+    | ProductTranslator
+    | ThemeTranslator
   protected utils: Utils
 
   constructor(resource: Resource) {
@@ -36,21 +41,25 @@ export default class Translator extends Authentication {
     | CollectionTranslator
     | ArticleTranslator
     | BlogTranslator
-    | PageTranslator {
-    if (resource === 'product') {
-      return new ProductTranslator()
-    }
-    if (resource === 'collection') {
-      return new CollectionTranslator()
-    }
+    | PageTranslator
+    | ThemeTranslator {
     if (resource === 'article') {
       return new ArticleTranslator()
     }
     if (resource === 'blog') {
       return new BlogTranslator()
     }
+    if (resource === 'collection') {
+      return new CollectionTranslator()
+    }
     if (resource === 'page') {
       return new PageTranslator()
+    }
+    if (resource === 'product') {
+      return new ProductTranslator()
+    }
+    if (resource === 'theme') {
+      return new ThemeTranslator()
     }
     throw new Error('Resource not supported')
   }
@@ -77,23 +86,30 @@ export default class Translator extends Authentication {
     isoCode,
   }: {
     resourceToTranslate:
-      | Partial<ProductToTranslate>
-      | Partial<CollectionToTranslate>
       | Partial<ArticleToTranslate>
+      | Partial<BlogToTranslate>
+      | Partial<CollectionToTranslate>
+      | Partial<PageToTranslate>
+      | Partial<ProductToTranslate>
+      | ThemeToTranslate
     resourceTranslated:
-      | Partial<ProductToTranslate>
-      | Partial<CollectionToTranslate>
       | Partial<ArticleToTranslate>
+      | Partial<BlogToTranslate>
+      | Partial<CollectionToTranslate>
+      | Partial<PageToTranslate>
+      | Partial<ProductToTranslate>
+      | ThemeToTranslate
     isoCode: LanguageCode
   }) {
     try {
       const translationsToRegister = this.resourceHandler.pushDataModeler
         .formatTranslationFieldsForGraphQLMutation({
-          resourceToTranslate,
-          resourceTranslated,
+          resourceToTranslate: resourceToTranslate as any,
+          resourceTranslated: resourceTranslated as any,
           isoCode,
         })
         .filter((translation) => translation.translations.length > 0)
+
       console.log('🚀 ~ Translations to register:')
       translationsToRegister.forEach((translationToRegister) => {
         console.log(' 🚀 ~ resourceId:', translationToRegister.resourceId)

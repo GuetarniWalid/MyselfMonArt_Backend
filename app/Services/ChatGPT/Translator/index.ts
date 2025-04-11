@@ -3,6 +3,7 @@ import type { ProductToTranslate } from 'Types/Product'
 import type { CollectionToTranslate } from 'Types/Collection'
 import type { ArticleToTranslate } from 'Types/Article'
 import type { PageToTranslate } from 'Types/Page'
+import type { ThemeToTranslate } from 'Types/Theme'
 import type { Resource } from 'Types/Resource'
 import { zodResponseFormat } from 'openai/helpers/zod'
 import Authentication from '../Authentication'
@@ -11,6 +12,7 @@ import CollectionTranslator from './Collection'
 import ArticleTranslator from './Article'
 import BlogTranslator from './Blog'
 import PageTranslator from './Page'
+import ThemeTranslator from './Theme'
 
 export default class Translator extends Authentication {
   private translationHandler:
@@ -19,6 +21,7 @@ export default class Translator extends Authentication {
     | ArticleTranslator
     | BlogTranslator
     | PageTranslator
+    | ThemeTranslator
 
   constructor(
     payload:
@@ -46,6 +49,9 @@ export default class Translator extends Authentication {
       case 'page':
         this.translationHandler = new PageTranslator(payload, targetLanguage)
         break
+      case 'theme':
+        this.translationHandler = new ThemeTranslator(payload as ThemeToTranslate, targetLanguage)
+        break
     }
   }
 
@@ -59,7 +65,7 @@ export default class Translator extends Authentication {
       if (Object.keys(payloadFormatted).length === 0) {
         return this.translationHandler.formatTranslationResponse({
           response: {},
-          payload,
+          payload: payload as any,
         })
       }
 
@@ -88,7 +94,7 @@ export default class Translator extends Authentication {
 
       return this.translationHandler.formatTranslationResponse({
         response: response.message.parsed,
-        payload,
+        payload: payload as any,
       })
     } catch (error) {
       console.error('Error during translation: ', error)
