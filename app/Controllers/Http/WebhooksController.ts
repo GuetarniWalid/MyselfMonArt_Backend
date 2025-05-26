@@ -46,11 +46,11 @@ export default class WebhooksController {
   }
 
   private async handleProductCreate(id: string) {
+    Logger.info(`🚀 Handling painting create: ${id}`)
     await this.handlePaintingCreate(id)
   }
 
   private async handlePaintingCreate(id: string) {
-    Logger.info(`🚀 Handling painting create: ${id}`)
     Logger.info(`🚀 Filling model data on product`)
     const shopify = new Shopify()
     const product = await shopify.product.getProductById(id)
@@ -76,7 +76,8 @@ export default class WebhooksController {
   }
 
   private async handleProductUpdate(id: string) {
-    console.log('🚀 ~ handleProductUpdate:', id)
+    Logger.info(`🚀 Handling painting update: ${id}`)
+    await this.handlePaintingCreate(id)
   }
 
   private verifyWebhook(request: HttpContextContract['request'], rawBody: string): boolean {

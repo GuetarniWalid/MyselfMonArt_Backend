@@ -1,4 +1,3 @@
-import type { ProductById, ProductByTag } from 'Types/Product'
 import { BaseCommand } from '@adonisjs/core/build/standalone'
 import Logger from '@ioc:Adonis/Core/Logger'
 import Shopify from 'App/Services/Shopify'
@@ -18,7 +17,8 @@ export default class TestTask extends BaseCommand {
   }
 
   private async handleProductCreate(id: string) {
-    console.log('🚀 ~ handleProductCreate:', id)
+    Logger.info(`🚀 Handling painting create: ${id}`)
+    Logger.info(`🚀 Filling model data on product`)
     const shopify = new Shopify()
     const product = await shopify.product.getProductById(id)
     if (!product) {
@@ -38,60 +38,7 @@ export default class TestTask extends BaseCommand {
 
     const tag = shopify.product.getTagByRatio(ratio, isPersonalized)
     const model = await shopify.product.getProductByTag(tag)
-    await this.copyModelDataOnProduct(product, model)
-  }
-
-  private async copyModelDataOnProduct(product: ProductById, model: ProductByTag) {
-    await this.deleteProductOptions(product)
-    await this.copyModelOptions(product, model)
-    await this.copyModelVariants(product, model)
-    await this.copyModelMetafields(product, model)
-  }
-
-  private async deleteProductOptions(product: ProductById) {
-    const shopify = new Shopify()
-    await shopify.product.deleteAllOptions(product.id)
-  }
-
-  private async copyModelOptions(product: ProductById, model: ProductByTag) {
-    const shopify = new Shopify()
-    await shopify.product.createOptions(
-      product.id,
-      model.options.map((option) => ({
-        name: option.name,
-        values: option.values,
-      }))
-    )
-  }
-
-  private async copyModelVariants(product: ProductById, model: ProductByTag) {
-    const shopify = new Shopify()
-
-    const modelVariants = model.variants.nodes
-    if (!modelVariants) return
-
-    const variants = modelVariants.map((variant) => ({
-      price: variant.price,
-      optionValues: variant.selectedOptions.map((option) => ({
-        name: option.value,
-        optionName: option.name,
-      })),
-    }))
-    const variantsWithoutDuplicates = variants.slice(1)
-
-    await shopify.product.createVariantsBulk(product.id, variantsWithoutDuplicates)
-  }
-
-  private async copyModelMetafields(product: ProductById, model: ProductByTag) {
-    const shopify = new Shopify()
-
-    for (const metafield of model.paintingOptionsMetafields.nodes) {
-      await shopify.metafield.update(
-        product.id,
-        metafield.namespace,
-        metafield.key,
-        JSON.stringify(metafield.references.edges.map((edge) => edge.node.id))
-      )
-    }
+    await shopify.product.modelCopier.copyModelDataOnProduct(product, model)
+    Logger.info(`🚀 Data successfully copied on product ${id}`)
   }
 }
