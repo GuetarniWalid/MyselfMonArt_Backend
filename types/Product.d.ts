@@ -222,3 +222,72 @@ export interface ProductUpdate {
     type: string
   }[]
 }
+
+export interface ProductByTag {
+  id: string
+  paintingOptionsMetafields: {
+    nodes: Array<{
+      id: string
+      namespace: string
+      key: string
+      type: string
+      references: {
+        edges: Array<{
+          node: {
+            id: string
+          }
+        }>
+      }
+    }>
+  }
+  options: {
+    id: string
+    name: string
+    values: string[]
+  }[]
+  variants: {
+    nodes: Array<{
+      price: string
+      selectedOptions: {
+        name: string
+        value: string
+      }[]
+    }>
+  }
+}
+
+export interface ProductById {
+  id: string
+  title: string
+  description: string
+  handle: string
+  hasOnlyDefaultVariant: boolean
+  tags: string[]
+  templateSuffix: string | null
+  media: {
+    nodes: {
+      alt: string
+      image?: {
+        width: number
+        height: number
+      }
+    }[]
+  }
+  altTextsMetaObject: {
+    value: string
+  }
+  options: {
+    id: string
+    name: string
+    optionValues: {
+      id: string
+      name: string
+    }[]
+  }[]
+  variants: {
+    nodes: {
+      id: string
+      title: string
+    }[]
+  }
+}

@@ -4,8 +4,12 @@ services:
     image: ${DOCKERHUB_USERNAME}/app:latest
     env_file:
       - .env
+    environment:
+      - MYSQL_HOST=db
+      - MYSQL_PORT=3306
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     restart: always
 
   nginx:

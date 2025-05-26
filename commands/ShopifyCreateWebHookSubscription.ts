@@ -12,8 +12,8 @@ export default class ShopifyCreateWebHookSubscription extends BaseCommand {
 
   public async run() {
     const shopify = new Shopify()
-    const webhook = await shopify.webhook.createWebhookSubscription('PRODUCTS_UPDATE', [
-      'meta_object',
+    const webhook = await shopify.webhook.createWebhookSubscription('PRODUCTS_CREATE', [
+      'painting_options',
     ])
 
     console.log('🚀 ~ Web hook subscription created')

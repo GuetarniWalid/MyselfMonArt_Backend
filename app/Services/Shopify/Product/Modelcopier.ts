@@ -1,47 +1,8 @@
-import type { ProductById, ProductByTag } from 'Types/Product'
-import { BaseCommand } from '@adonisjs/core/build/standalone'
-import Logger from '@ioc:Adonis/Core/Logger'
-import Shopify from 'App/Services/Shopify'
+import { ProductById, ProductByTag } from 'Types/Product'
+import Shopify from '..'
 
-export default class TestTask extends BaseCommand {
-  public static commandName = 'test:task'
-  public static description = 'Test task logic implementation'
-
-  public static settings = {
-    loadApp: true,
-    stayAlive: false,
-  }
-
-  public async run() {
-    await this.handleProductCreate('gid://shopify/Product/9883853685083')
-    return 'ok'
-  }
-
-  private async handleProductCreate(id: string) {
-    console.log('🚀 ~ handleProductCreate:', id)
-    const shopify = new Shopify()
-    const product = await shopify.product.getProductById(id)
-    if (!product) {
-      Logger.warn(`Product not found: ${id}`)
-      return
-    }
-
-    if (product.templateSuffix !== 'painting') return
-    if (product.media.nodes.length < 1) return
-    if (!product.media.nodes[1].image) return
-
-    const imageWidth = product.media.nodes[1].image.width
-    const imageHeight = product.media.nodes[1].image.height
-    const ratio = imageWidth / imageHeight
-
-    const isPersonalized = product.tags.includes('personnalisé')
-
-    const tag = shopify.product.getTagByRatio(ratio, isPersonalized)
-    const model = await shopify.product.getProductByTag(tag)
-    await this.copyModelDataOnProduct(product, model)
-  }
-
-  private async copyModelDataOnProduct(product: ProductById, model: ProductByTag) {
+export default class ModelCopier {
+  public async copyModelDataOnProduct(product: ProductById, model: ProductByTag) {
     await this.deleteProductOptions(product)
     await this.copyModelOptions(product, model)
     await this.copyModelVariants(product, model)

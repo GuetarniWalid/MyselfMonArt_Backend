@@ -2,6 +2,7 @@ import { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
 import Logger from '@ioc:Adonis/Core/Logger'
 import crypto from 'crypto'
 import Env from '@ioc:Adonis/Core/Env'
+import Shopify from 'App/Services/Shopify'
 
 export default class WebhooksController {
   public async handle({ request, response }: HttpContextContract) {
@@ -45,7 +46,33 @@ export default class WebhooksController {
   }
 
   private async handleProductCreate(id: string) {
-    console.log('🚀 ~ handleProductCreate:', id)
+    await this.handlePaintingCreate(id)
+  }
+
+  private async handlePaintingCreate(id: string) {
+    Logger.info(`🚀 Handling painting create: ${id}`)
+    Logger.info(`🚀 Filling model data on product`)
+    const shopify = new Shopify()
+    const product = await shopify.product.getProductById(id)
+    if (!product) {
+      Logger.warn(`Product not found: ${id}`)
+      return
+    }
+
+    if (product.templateSuffix !== 'painting') return
+    if (product.media.nodes.length < 1) return
+    if (!product.media.nodes[1].image) return
+
+    const imageWidth = product.media.nodes[1].image.width
+    const imageHeight = product.media.nodes[1].image.height
+    const ratio = imageWidth / imageHeight
+
+    const isPersonalized = product.tags.includes('personnalisé')
+
+    const tag = shopify.product.getTagByRatio(ratio, isPersonalized)
+    const model = await shopify.product.getProductByTag(tag)
+    await shopify.product.modelCopier.copyModelDataOnProduct(product, model)
+    Logger.info(`🚀 Data successfully copied on product ${id}`)
   }
 
   private async handleProductUpdate(id: string) {

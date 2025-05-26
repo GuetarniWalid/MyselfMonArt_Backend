@@ -4,12 +4,22 @@ import type {
   UpdateProductPainting,
   UpdateProductTapestry,
   Product as ShopifyProduct,
+  ProductByTag,
+  ProductById,
 } from 'Types/Product'
-import Authentication from './Authentication'
-import Metafield from './Metafield'
-import Variant from './Variant'
+import Authentication from '../Authentication'
+import Metafield from '../Metafield'
+import Variant from '../Variant'
+import ModelCopier from './Modelcopier'
 
 export default class Product extends Authentication {
+  public modelCopier: ModelCopier
+
+  constructor() {
+    super()
+    this.modelCopier = new ModelCopier()
+  }
+
   public async create(product: CreateProduct) {
     const response = await this.client.request({
       method: 'POST',
@@ -131,12 +141,19 @@ export default class Product extends Authentication {
     productId: number
     action: 'increment' | 'decrement'
   }) {
-    const metafield = new Metafield('products', productId)
+    const metafield = new Metafield()
     const newCount =
       action === 'increment'
-        ? await metafield.increment('likes', 'number')
-        : await metafield.decrement('likes', 'number')
+        ? await metafield.increment(productId, 'likes', 'number')
+        : await metafield.decrement(productId, 'likes', 'number')
     return newCount
+  }
+
+  public async deleteAllOptions(productId: string) {
+    const product = await this.getProductById(productId)
+    const optionIds = product.options.map((option) => option.id)
+    const deletedOptionsIds = await this.deleteOptions(productId, optionIds)
+    return deletedOptionsIds
   }
 
   public async deleteOptions(productId: string, optionIds: string[]) {
@@ -174,10 +191,12 @@ export default class Product extends Authentication {
   public async getProductById(productId: string) {
     const { query, variables } = this.getProductByIdQuery(productId)
     const response = await this.fetchGraphQL(query, variables)
-    return response.product
+    return response.product as ProductById
   }
 
   private getProductByIdQuery(productId: string) {
+    const id = isNaN(Number(productId)) ? productId : `gid://shopify/Product/${productId}`
+
     return {
       query: `query Product($id: ID!) {
         product(id: $id) {
@@ -186,15 +205,43 @@ export default class Product extends Authentication {
           description
           handle
           hasOnlyDefaultVariant
+          tags
+          templateSuffix
           media(first: 10) {
             nodes {
               alt
+              ... on MediaImage {
+                image {
+                  width
+                  height
+                }
+              }
             }
           }
           altTextsMetaObject: metafield(namespace: "meta_object", key: "media") {
+            id
             value
           }
+          metafields(first: 10) {
+            edges {
+              node {
+                namespace
+                key
+                reference {
+                  ...on Metaobject {
+                    id
+                    type
+                    field(key: "alts") {
+                      key
+                      jsonValue
+                    }
+                  }
+                }
+              }
+            }
+          }
           options(first: 10) {
+            id
             name
             optionValues {
               id
@@ -209,7 +256,7 @@ export default class Product extends Authentication {
           }
         }
       }`,
-      variables: { id: `gid://shopify/Product/${productId}` },
+      variables: { id },
     }
   }
 
@@ -233,6 +280,40 @@ export default class Product extends Authentication {
           id: isNaN(Number(productId)) ? productId : `gid://shopify/Product/${productId}`,
           redirectNewHandle: true,
           ...newValues,
+        },
+      },
+    }
+  }
+
+  public async createMetaObject(type: string, key: string, value: string[]) {
+    const { query, variables } = this.getcreateMetaObjectQuery(type, key, value)
+    const response = await this.fetchGraphQL(query, variables)
+    return response.metaobjectCreate
+  }
+
+  private getcreateMetaObjectQuery(type: string, key: string, value: string[]) {
+    return {
+      query: `mutation CreateMetaobject($metaobject: MetaobjectCreateInput!) {
+        metaobjectCreate(metaobject: $metaobject) {
+          metaobject {
+            id
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }`,
+      variables: {
+        metaobject: {
+          type,
+          fields: [
+            {
+              key,
+              value: JSON.stringify(value),
+            },
+          ],
         },
       },
     }
@@ -306,36 +387,164 @@ export default class Product extends Authentication {
     }
   }
 
-  public async updateOption(productId: string, optionId: string, newValues: any) {
-    const { query, variables } = this.getUpdateOptionQuery(productId, optionId, newValues)
+  public async createOptions(
+    productId: string,
+    options: Array<{ name: string; values: string[] }>
+  ) {
+    const { query, variables } = this.getCreateOptionsQuery(productId, options)
     const response = await this.fetchGraphQL(query, variables)
-    return response.productOptionUpdate
+    return response.productOptionsCreate
   }
 
-  private getUpdateOptionQuery(productId: string, optionId: string, newValues: any) {
+  private getCreateOptionsQuery(
+    productId: string,
+    options: Array<{ name: string; values: string[] }>
+  ) {
     return {
-      query: `mutation updateOption($productId: ID!, $option: OptionUpdateInput!) {
-                productOptionUpdate(productId: $productId, option: $option) {
-                  userErrors {
-                    field
-                    message
-                    code
-                  }
-                  product {
-                    id
-                    options {
-                      id
-                      name
+      query: `mutation createOptions($productId: ID!, $options: [OptionCreateInput!]!) {
+        productOptionsCreate(productId: $productId, options: $options) {
+          userErrors {
+            field
+            message
+            code
+          }
+          product {
+            id
+            options {
+              id
+              name
+              values
+            }
+          }
+        }
+      }`,
+      variables: {
+        productId,
+        options: options.map((option) => ({
+          name: option.name,
+          values: option.values.map((value) => ({
+            name: value,
+          })),
+        })),
+        variantStrategyvariantStrategy: 'LEAVE_AS_ISLEAVE_AS_IS',
+      },
+    }
+  }
+
+  public getTagByRatio(ratio: number, isPersonalized = false) {
+    if (ratio > 1) return isPersonalized ? 'personalized paysage model' : 'paysage model'
+    if (ratio < 1) return isPersonalized ? 'personalized portrait model' : 'portrait model'
+    return isPersonalized ? 'personalized square model' : 'square model'
+  }
+
+  public async getProductByTag(tag: string) {
+    const { query, variables } = this.getProductByTagQuery(tag)
+    const response = await this.fetchGraphQL(query, variables)
+    return response.products.edges[0].node as ProductByTag
+  }
+
+  private getProductByTagQuery(tag: string) {
+    return {
+      query: `query GetProductByTag {
+        products(first: 1, query: "tag:${tag}") {
+          edges {
+            node {
+              id
+              paintingOptionsMetafields: metafields(first: 20, namespace: "painting_options") {
+                nodes {
+                  id
+                  namespace
+                  key
+                  type
+                  references(first: 30) {
+                    edges {
+                      node {
+                        ... on Metaobject {
+                          id
+                        }
+                      }
                     }
                   }
                 }
-              }`,
+              }
+              options(first: 3) {
+                id
+                name
+                values
+              }
+              variants(first: 100) {
+                nodes {
+                  price
+                  selectedOptions {
+                    name
+                    value
+                  }
+                }
+              }
+            }
+          }
+        }
+      }`,
+      variables: {},
+    }
+  }
+
+  public async createVariantsBulk(
+    productId: string,
+    variants: Array<{
+      price: string
+      optionValues: {
+        name: string
+        optionName: string
+      }[]
+    }>
+  ) {
+    const { query, variables } = this.getCreateVariantsBulkQuery(productId, variants)
+    const response = await this.fetchGraphQL(query, variables)
+
+    if (response.productVariantsBulkCreate.userErrors?.length) {
+      throw new Error(response.productVariantsBulkCreate.userErrors[0].message)
+    }
+
+    return response.productVariantsBulkCreate.productVariants
+  }
+
+  private getCreateVariantsBulkQuery(
+    productId: string,
+    variants: Array<{
+      price: string
+      optionValues: {
+        name: string
+        optionName: string
+      }[]
+    }>
+  ) {
+    return {
+      query: `mutation ProductVariantsCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+        productVariantsBulkCreate(productId: $productId, variants: $variants) {
+          productVariants {
+            id
+            title
+            selectedOptions {
+              name
+              value
+            }
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }`,
       variables: {
-        productId,
-        option: {
-          id: optionId,
-          ...newValues,
-        },
+        productId: isNaN(Number(productId)) ? productId : `gid://shopify/Product/${productId}`,
+        variants: variants.map((variant) => ({
+          ...variant,
+          inventoryItem: {
+            tracked: false,
+          },
+          inventoryPolicy: 'CONTINUE',
+        })),
       },
     }
   }

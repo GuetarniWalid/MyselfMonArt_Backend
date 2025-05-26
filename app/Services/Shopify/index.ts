@@ -1,23 +1,26 @@
 import type { Resource } from 'Types/Resource'
 import Discount from './Discount'
+import Metafield from './Metafield'
 import Product from './Product'
-import Variant from './Variant'
 import Shipping from './Shipping'
-import Webhook from './Webhook'
 import Translator from './Translator'
+import Variant from './Variant'
+import Webhook from './Webhook'
 
 export default class Shopify {
-  public product: Product
-  public variant: Variant
-  public shipping: Shipping
   public discount: Discount
+  public metafield: Metafield
+  public product: Product
+  public shipping: Shipping
+  public variant: Variant
   public webhook: Webhook
 
   constructor() {
-    this.product = new Product()
-    this.variant = new Variant()
-    this.shipping = new Shipping()
     this.discount = new Discount()
+    this.metafield = new Metafield()
+    this.product = new Product()
+    this.shipping = new Shipping()
+    this.variant = new Variant()
     this.webhook = new Webhook()
   }
 
