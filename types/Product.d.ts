@@ -183,6 +183,7 @@ export interface Product {
     description: string
   }
   templateSuffix: string | null
+  tags: string[]
   vendor: string
 }
 

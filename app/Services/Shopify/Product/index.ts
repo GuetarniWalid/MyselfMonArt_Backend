@@ -111,6 +111,7 @@ export default class Product extends Authentication {
                         title
                         description
                       }
+                      tags
                       templateSuffix
                       vendor
                     }

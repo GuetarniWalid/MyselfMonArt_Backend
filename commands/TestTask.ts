@@ -1,5 +1,4 @@
 import { BaseCommand } from '@adonisjs/core/build/standalone'
-import Logger from '@ioc:Adonis/Core/Logger'
 import Shopify from 'App/Services/Shopify'
 
 export default class TestTask extends BaseCommand {
@@ -12,33 +11,54 @@ export default class TestTask extends BaseCommand {
   }
 
   public async run() {
-    await this.handleProductCreate('gid://shopify/Product/9883853685083')
+    await this.handleProductUpdate('gid://shopify/Product/9883554906459')
     return 'ok'
   }
 
-  private async handleProductCreate(id: string) {
-    Logger.info(`🚀 Handling painting create: ${id}`)
-    Logger.info(`🚀 Filling model data on product`)
+  private async handleProductUpdate(id: string) {
+    console.info(`🚀 Handling product update: ${id}`)
+
+    await this.handlePaintingCreate(id)
+    await this.updateRelatedProductsFromModel(id)
+  }
+
+  private async updateRelatedProductsFromModel(id: string) {
     const shopify = new Shopify()
     const product = await shopify.product.getProductById(id)
-    if (!product) {
-      Logger.warn(`Product not found: ${id}`)
-      return
+    const isModel = shopify.product.modelCopier.isModelProduct(product)
+    if (!isModel) return
+
+    console.info(`🚀 Updating related products from model: ${id}`)
+    const tag = shopify.product.modelCopier.getTagFromModel(product)
+
+    const products = await shopify.product.getAll()
+    const relatedProducts = products.filter((p) => {
+      if (p.templateSuffix !== 'painting') return false
+
+      const pSecondImage = p.media.nodes[1]
+      if (!pSecondImage?.image) return false
+
+      const isModel = shopify.product.modelCopier.isModelProduct(p)
+      if (isModel) return false
+
+      const pTag = shopify.product.modelCopier.getTagFromProduct(p)
+      return pTag === tag
+    })
+
+    for (const relatedProduct of relatedProducts) {
+      await this.handlePaintingCreate(relatedProduct.id)
     }
+    console.info(`🚀 Related products updated: ${relatedProducts.length}`)
+  }
 
-    if (product.templateSuffix !== 'painting') return
-    if (product.media.nodes.length < 1) return
-    if (!product.media.nodes[1].image) return
+  private async handlePaintingCreate(id: string) {
+    const shopify = new Shopify()
+    const product = await shopify.product.getProductById(id)
+    const canProcess = shopify.product.modelCopier.canProcessPaintingCreate(product)
+    if (!canProcess) return
 
-    const imageWidth = product.media.nodes[1].image.width
-    const imageHeight = product.media.nodes[1].image.height
-    const ratio = imageWidth / imageHeight
-
-    const isPersonalized = product.tags.includes('personnalisé')
-
-    const tag = shopify.product.getTagByRatio(ratio, isPersonalized)
-    const model = await shopify.product.getProductByTag(tag)
-    await shopify.product.modelCopier.copyModelDataOnProduct(product, model)
-    Logger.info(`🚀 Data successfully copied on product ${id}`)
+    console.info(`🚀 Filling model data on product`)
+    await shopify.product.modelCopier.copyModelDataFromImageRatio(product)
+    console.info(`🚀 Data successfully copied on product ${id}`)
   }
 }

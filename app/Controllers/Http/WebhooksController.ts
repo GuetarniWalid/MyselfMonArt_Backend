@@ -1,5 +1,4 @@
 import { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
-import Logger from '@ioc:Adonis/Core/Logger'
 import crypto from 'crypto'
 import Env from '@ioc:Adonis/Core/Env'
 import Shopify from 'App/Services/Shopify'
@@ -11,7 +10,7 @@ export default class WebhooksController {
 
       const isAuthentic = this.verifyWebhook(request, rawBody)
       if (!isAuthentic && Env.get('NODE_ENV') !== 'development') {
-        Logger.warn('Invalid webhook signature received')
+        console.warn('Invalid webhook signature received')
         return response.unauthorized({ error: 'Invalid webhook signature' })
       }
 
@@ -19,11 +18,11 @@ export default class WebhooksController {
       const shop = request.header('X-Shopify-Shop-Domain')
       const webhookId = request.header('X-Shopify-Webhook-Id')
 
-      Logger.info(`Processing webhook: ${topic} from ${shop} (ID: ${webhookId})`)
+      console.info(`Processing webhook: ${topic} from ${shop} (ID: ${webhookId})`)
 
       const { id } = request.body()
       if (!id) {
-        Logger.warn('No ID found in webhook request')
+        console.warn('No ID found in webhook request')
         return response.status(200).send({ message: 'Webhook received' })
       }
 
@@ -35,49 +34,66 @@ export default class WebhooksController {
           await this.handleProductUpdate(id)
           break
         default:
-          Logger.warn(`Unhandled webhook topic: ${topic}`)
+          console.warn(`Unhandled webhook topic: ${topic}`)
       }
 
       return response.status(200).send({ message: 'Webhook received' })
     } catch (error) {
-      Logger.error('Error processing webhook:', error)
+      console.error('Error processing webhook:', error)
       return response.status(200).send({ message: 'Webhook received' })
     }
   }
 
   private async handleProductCreate(id: string) {
-    Logger.info(`🚀 Handling painting create: ${id}`)
+    console.info(`🚀 Handling painting create: ${id}`)
     await this.handlePaintingCreate(id)
   }
 
   private async handlePaintingCreate(id: string) {
-    Logger.info(`🚀 Filling model data on product`)
     const shopify = new Shopify()
     const product = await shopify.product.getProductById(id)
-    if (!product) {
-      Logger.warn(`Product not found: ${id}`)
-      return
-    }
+    const canProcess = shopify.product.modelCopier.canProcessPaintingCreate(product)
+    if (!canProcess) return
 
-    if (product.templateSuffix !== 'painting') return
-    if (product.media.nodes.length < 1) return
-    if (!product.media.nodes[1].image) return
-
-    const imageWidth = product.media.nodes[1].image.width
-    const imageHeight = product.media.nodes[1].image.height
-    const ratio = imageWidth / imageHeight
-
-    const isPersonalized = product.tags.includes('personnalisé')
-
-    const tag = shopify.product.getTagByRatio(ratio, isPersonalized)
-    const model = await shopify.product.getProductByTag(tag)
-    await shopify.product.modelCopier.copyModelDataOnProduct(product, model)
-    Logger.info(`🚀 Data successfully copied on product ${id}`)
+    console.info(`🚀 Filling model data on product`)
+    await shopify.product.modelCopier.copyModelDataFromImageRatio(product)
+    console.info(`🚀 Data successfully copied on product ${id}`)
   }
 
   private async handleProductUpdate(id: string) {
-    Logger.info(`🚀 Handling painting update: ${id}`)
+    console.info(`🚀 Handling product update: ${id}`)
+
     await this.handlePaintingCreate(id)
+    await this.updateRelatedProductsFromModel(id)
+  }
+
+  private async updateRelatedProductsFromModel(id: string) {
+    const shopify = new Shopify()
+    const product = await shopify.product.getProductById(id)
+    const isModel = shopify.product.modelCopier.isModelProduct(product)
+    if (!isModel) return
+
+    console.info(`🚀 Updating related products from model: ${id}`)
+    const tag = shopify.product.modelCopier.getTagFromModel(product)
+
+    const products = await shopify.product.getAll()
+    const relatedProducts = products.filter((p) => {
+      if (p.templateSuffix !== 'painting') return false
+
+      const pSecondImage = p.media.nodes[1]
+      if (!pSecondImage?.image) return false
+
+      const isModel = shopify.product.modelCopier.isModelProduct(p)
+      if (isModel) return false
+
+      const pTag = shopify.product.modelCopier.getTagFromProduct(p)
+      return pTag === tag
+    })
+
+    for (const relatedProduct of relatedProducts) {
+      await this.handlePaintingCreate(relatedProduct.id)
+    }
+    console.info(`🚀 Related products updated: ${relatedProducts.length}`)
   }
 
   private verifyWebhook(request: HttpContextContract['request'], rawBody: string): boolean {
@@ -87,13 +103,13 @@ export default class WebhooksController {
       const hash = crypto.createHmac('sha256', secret).update(rawBody, 'utf-8').digest('base64')
 
       if (!hmac) {
-        Logger.warn('No HMAC signature found in webhook request')
+        console.info('No HMAC signature found in webhook request')
         return false
       }
 
       return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(hmac))
     } catch (error) {
-      Logger.error('Error verifying webhook:', error)
+      console.error('Error verifying webhook:', error)
       return false
     }
   }
