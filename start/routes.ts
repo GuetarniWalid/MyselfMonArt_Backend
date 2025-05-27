@@ -71,7 +71,6 @@ Route.group(() => {
 
   Route.group(() => {
     Route.post('/create', 'ProductsController.create')
-    Route.post('/update/painting', 'ProductsController.updatePainting')
     Route.post('/update/tapestry', 'ProductsController.updateTapestry')
     Route.post('/update/metafield/likes-count', 'ProductsController.updateMetafieldLikesCount')
   }).prefix('/product')

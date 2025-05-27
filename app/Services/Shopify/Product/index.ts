@@ -126,11 +126,9 @@ export default class Product extends Authentication {
     }
   }
 
-  public async updateVariant(product: UpdateProductPainting | UpdateProductTapestry) {
+  public async updateTapestryVariant(product: UpdateProductPainting | UpdateProductTapestry) {
     const variant = new Variant()
-    if (product.type === 'painting') {
-      return variant.updatePainting(product)
-    } else if (product.type === 'tapestry') {
+    if (product.type === 'tapestry') {
       return variant.updateTapestry(product)
     }
   }
@@ -241,6 +239,23 @@ export default class Product extends Authentication {
               }
             }
           }
+          paintingOptionsMetafields: metafields(first: 20, namespace: "painting_options") {
+            nodes {
+              id
+              namespace
+              key
+              type
+              references(first: 30) {
+                edges {
+                  node {
+                    ... on Metaobject {
+                      id
+                    }
+                  }
+                }
+              }
+            }
+          }
           options(first: 10) {
             id
             name
@@ -249,10 +264,15 @@ export default class Product extends Authentication {
               name
             }
           }
-          variants(first: 10) {
+          variants(first: 100) {
             nodes {
               id
               title
+              price
+              selectedOptions {
+                name
+                value
+              }
             }
           }
         }
@@ -475,6 +495,7 @@ export default class Product extends Authentication {
               }
               variants(first: 100) {
                 nodes {
+                  id
                   price
                   selectedOptions {
                     name
@@ -546,6 +567,44 @@ export default class Product extends Authentication {
           },
           inventoryPolicy: 'CONTINUE',
         })),
+      },
+    }
+  }
+
+  public async updateVariant(productId: string, variantId: string, payload: any) {
+    console.log('🚀 ~ variantId:', variantId)
+    const { query, variables } = this.getUpdateVariantQuery(productId, variantId, payload)
+    const response = await this.fetchGraphQL(query, variables)
+
+    if (response.productVariantsBulkUpdate.userErrors?.length) {
+      throw new Error(response.productVariantsBulkUpdate.userErrors[0].message)
+    }
+
+    return response.productVariantsBulkUpdate.product
+  }
+
+  private getUpdateVariantQuery(productId: string, variantId: string, payload: any) {
+    return {
+      query: `mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+                productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+                  product {
+                    id
+                  }
+                  userErrors {
+                    field
+                    message
+                  }
+                }
+              }`,
+      variables: {
+        productId,
+        variants: [
+          {
+            id: variantId,
+            inventoryPolicy: 'CONTINUE',
+            ...payload,
+          },
+        ],
       },
     }
   }

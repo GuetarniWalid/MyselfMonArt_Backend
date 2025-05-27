@@ -11,44 +11,8 @@ export default class TestTask extends BaseCommand {
   }
 
   public async run() {
-    await this.handleProductUpdate('gid://shopify/Product/9883554906459')
+    await this.handlePaintingCreate('gid://shopify/Product/9883853685083')
     return 'ok'
-  }
-
-  private async handleProductUpdate(id: string) {
-    console.info(`🚀 Handling product update: ${id}`)
-
-    await this.handlePaintingCreate(id)
-    await this.updateRelatedProductsFromModel(id)
-  }
-
-  private async updateRelatedProductsFromModel(id: string) {
-    const shopify = new Shopify()
-    const product = await shopify.product.getProductById(id)
-    const isModel = shopify.product.modelCopier.isModelProduct(product)
-    if (!isModel) return
-
-    console.info(`🚀 Updating related products from model: ${id}`)
-    const tag = shopify.product.modelCopier.getTagFromModel(product)
-
-    const products = await shopify.product.getAll()
-    const relatedProducts = products.filter((p) => {
-      if (p.templateSuffix !== 'painting') return false
-
-      const pSecondImage = p.media.nodes[1]
-      if (!pSecondImage?.image) return false
-
-      const isModel = shopify.product.modelCopier.isModelProduct(p)
-      if (isModel) return false
-
-      const pTag = shopify.product.modelCopier.getTagFromProduct(p)
-      return pTag === tag
-    })
-
-    for (const relatedProduct of relatedProducts) {
-      await this.handlePaintingCreate(relatedProduct.id)
-    }
-    console.info(`🚀 Related products updated: ${relatedProducts.length}`)
   }
 
   private async handlePaintingCreate(id: string) {

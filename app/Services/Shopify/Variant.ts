@@ -1,4 +1,4 @@
-import type { UpdateProductPainting, UpdateProductTapestry } from 'Types/Product'
+import type { UpdateProductTapestry } from 'Types/Product'
 import Authentication from './Authentication'
 import type { Variant } from 'Types/Variant'
 
@@ -6,48 +6,6 @@ export default class SVariant extends Authentication {
   /**
    * Painting variant
    */
-
-  public async updatePainting(product: UpdateProductPainting) {
-    const optionsAndvariantsQuery = this.getOptionsAndVariantsQuery(product.productId)
-    const data = await this.fetchGraphQL(optionsAndvariantsQuery)
-
-    const nbOfOptions = data.product.options.length
-    const variants = data.product.variants.edges
-    const isDefaultOption = data.product.options[0].values.includes('Default Title')
-
-    if (nbOfOptions > 1 || isDefaultOption) {
-      await this.deleteAllVariants(product.productId, variants)
-      return this.createFirstVariant(product.productId, product.variant)
-    }
-
-    const variantAlreadyExist = variants.find((v) => v.node.title === product.variant.title)
-    if (variantAlreadyExist) {
-      if (Number(variantAlreadyExist.node.price) === Number(product.variant.price)) {
-        return {
-          id: this.extractIdFromGid(variantAlreadyExist.node.id),
-          price: variantAlreadyExist.node.price,
-          title: variantAlreadyExist.node.title,
-        }
-      } else {
-        const { query: queryUpdate, variables: variablesUpdate } =
-          this.getVariantUpdateMutationsQuery(
-            product.productId,
-            variantAlreadyExist.node.id,
-            product.variant
-          )
-        const variantMutationsOtherData = await this.fetchGraphQL(queryUpdate, variablesUpdate)
-        return {
-          id: this.extractIdFromGid(variantAlreadyExist.node.id),
-          price: variantMutationsOtherData.productVariantUpdate.productVariant.price,
-          title: variantMutationsOtherData.productVariantUpdate.productVariant.title,
-        }
-      }
-    }
-
-    // Create a new variant
-    const variantData = await this.createVariant(product.productId, product.variant)
-    return variantData
-  }
 
   private getOptionsAndVariantsQuery(productId: number) {
     return `query {
@@ -68,37 +26,6 @@ export default class SVariant extends Authentication {
         }
       }
     }`
-  }
-
-  private async deleteAllVariants(productId: number, variants: { node: { id: string } }[]) {
-    const variantIds = await this.getVariantIds(variants)
-    const { query, variables } = this.getDeleteVariantMutationsQuery(productId, variantIds)
-    await this.fetchGraphQL(query, variables)
-  }
-
-  private getDeleteVariantMutationsQuery(productId: number, variantsIds: string[]) {
-    return {
-      query: `mutation bulkDeleteProductVariants($productId: ID!, $variantsIds: [ID!]!) {
-      productVariantsBulkDelete(productId: $productId, variantsIds: $variantsIds) {
-        product {
-          id
-        }
-        userErrors {
-          field
-          message
-        }
-      }
-    }`,
-      variables: {
-        productId: `gid://shopify/Product/${productId}`,
-        variantsIds,
-      },
-    }
-  }
-
-  private async getVariantIds(variants: { node: { id: string } }[]) {
-    const variantIds = variants.map((v) => v.node.id)
-    return variantIds
   }
 
   private async createFirstVariant(productId: number, variant: Variant) {

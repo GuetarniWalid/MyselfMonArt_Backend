@@ -31,6 +31,7 @@ export default class ModelCopier {
     const modelVariants = model.variants.nodes
     if (!modelVariants) return
 
+    const defaultVariant = product.variants.nodes[0]
     const variants = modelVariants.map((variant) => ({
       price: variant.price,
       optionValues: variant.selectedOptions.map((option) => ({
@@ -38,9 +39,12 @@ export default class ModelCopier {
         optionName: option.name,
       })),
     }))
-    const variantsWithoutDuplicates = variants.slice(1)
 
-    await shopify.product.createVariantsBulk(product.id, variantsWithoutDuplicates)
+    const [defaultModelVariant, ...variantsWithoutDefault] = variants
+    await shopify.product.updateVariant(product.id, defaultVariant.id, {
+      price: defaultModelVariant.price,
+    })
+    await shopify.product.createVariantsBulk(product.id, variantsWithoutDefault)
   }
 
   private async copyModelMetafields(product: ProductById, model: ProductByTag) {
@@ -67,13 +71,20 @@ export default class ModelCopier {
   public canProcessPaintingCreate(product: ProductById | Product): boolean {
     if (!product) return false
     if (this.isModelProduct(product)) return false
-    if (product.templateSuffix !== 'painting') return false
+    if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'personalized')
+      return false
     if (product.media.nodes.length < 1) return false
     if (!product.media.nodes[1].image) return false
     return true
   }
 
   public async copyModelDataFromImageRatio(product: ProductById) {
+    const model = await this.getModelFromProduct(product)
+    if (!model) return
+    await this.copyModelDataOnProduct(product, model)
+  }
+
+  public async getModelFromProduct(product: ProductById) {
     const image = product.media.nodes[1]?.image
     if (!image) return
 
@@ -86,7 +97,7 @@ export default class ModelCopier {
     const shopify = new Shopify()
     const tag = shopify.product.getTagByRatio(ratio, isPersonalized)
     const model = await shopify.product.getProductByTag(tag)
-    await this.copyModelDataOnProduct(product, model)
+    return model
   }
 
   public getTagFromModel(product: ProductById | Product) {
@@ -112,5 +123,71 @@ export default class ModelCopier {
     const isPersonalized = product.tags.includes('personnalisé')
     const tag = shopify.product.getTagByRatio(ratio, isPersonalized)
     return tag
+  }
+
+  public areOptionsSimilar(product: ProductById, model: ProductByTag): boolean {
+    if (!product.options || !model.options) return false
+    if (product.options.length !== model.options.length) return false
+
+    return product.options.every((productOption, index) => {
+      const modelOption = model.options[index]
+
+      if (productOption.name !== modelOption.name) return false
+      if (productOption.optionValues.length !== modelOption.values.length) return false
+
+      return productOption.optionValues.every((value) => modelOption.values.includes(value.name))
+    })
+  }
+
+  public areVariantsSimilar(product: ProductById, model: ProductByTag): boolean {
+    if (!product.variants?.nodes || !model.variants?.nodes) return false
+    if (product.variants.nodes.length !== model.variants.nodes.length) return false
+
+    return product.variants.nodes.every((productVariant) => {
+      const matchingModelVariant = model.variants.nodes.find((modelVariant) => {
+        if (productVariant.price !== modelVariant.price) return false
+
+        const optionsMatch = productVariant.selectedOptions.every((productOption) => {
+          const hasMatchingOption = modelVariant.selectedOptions.some(
+            (modelOption) =>
+              modelOption.name === productOption.name && modelOption.value === productOption.value
+          )
+          if (!hasMatchingOption) return false
+          return hasMatchingOption
+        })
+
+        return optionsMatch
+      })
+
+      return !!matchingModelVariant
+    })
+  }
+
+  public areMetafieldsSimilar(product: ProductById, model: ProductByTag): boolean {
+    if (!product.paintingOptionsMetafields?.nodes || !model.paintingOptionsMetafields?.nodes)
+      return false
+    if (
+      product.paintingOptionsMetafields.nodes.length !==
+      model.paintingOptionsMetafields.nodes.length
+    )
+      return false
+
+    return product.paintingOptionsMetafields.nodes.every((productMetafield) => {
+      const matchingModelMetafield = model.paintingOptionsMetafields.nodes.find(
+        (modelMetafield) => {
+          if (productMetafield.namespace !== modelMetafield.namespace) return false
+          if (productMetafield.key !== modelMetafield.key) return false
+
+          const productReferences = productMetafield.references.edges.map((edge) => edge.node.id)
+          const modelReferences = modelMetafield.references.edges.map((edge) => edge.node.id)
+
+          if (productReferences.length !== modelReferences.length) return false
+
+          return productReferences.every((id) => modelReferences.includes(id))
+        }
+      )
+
+      return !!matchingModelMetafield
+    })
   }
 }

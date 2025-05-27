@@ -248,6 +248,7 @@ export interface ProductByTag {
   }[]
   variants: {
     nodes: Array<{
+      id: string
       price: string
       selectedOptions: {
         name: string
@@ -277,6 +278,37 @@ export interface ProductById {
   altTextsMetaObject: {
     value: string
   }
+  metafields: {
+    edges: {
+      node: {
+        namespace: string
+        key: string
+        reference?: {
+          id?: string
+          type?: string
+          field?: {
+            key: string
+            jsonValue: string
+          }
+        }
+      }
+    }[]
+  }
+  paintingOptionsMetafields: {
+    nodes: {
+      id: string
+      namespace: string
+      key: string
+      type: string
+      references: {
+        edges: {
+          node: {
+            id: string
+          }
+        }[]
+      }
+    }[]
+  }
   options: {
     id: string
     name: string
@@ -288,6 +320,11 @@ export interface ProductById {
   variants: {
     nodes: {
       id: string
+      price: string
+      selectedOptions: {
+        name: string
+        value: string
+      }[]
       title: string
     }[]
   }
