@@ -1,5 +1,6 @@
 import { Product, ProductById, ProductByTag } from 'Types/Product'
 import Shopify from '..'
+import ChatGPT from 'App/Services/ChatGPT'
 
 export default class ModelCopier {
   public async copyModelDataOnProduct(product: ProductById, model: ProductByTag) {
@@ -7,6 +8,7 @@ export default class ModelCopier {
     await this.copyModelOptions(product, model)
     await this.copyModelVariants(product, model)
     await this.copyModelMetafields(product, model)
+    await this.translateProductOptions(product)
   }
 
   private async deleteProductOptions(product: ProductById) {
@@ -58,6 +60,42 @@ export default class ModelCopier {
         JSON.stringify(metafield.references.edges.map((edge) => edge.node.id))
       )
     }
+  }
+
+  private async translateProductOptions(product: ProductById) {
+    console.info(`🚀 Translating product options: ${product.id}`)
+    const shopify = new Shopify()
+    const chatGPT = new ChatGPT()
+
+    const updatedProduct = await shopify.product.getProductById(product.id)
+
+    const productToTranslate = {
+      id: updatedProduct.id,
+      options: updatedProduct.options.map((option) => ({
+        id: option.id,
+        name: option.name,
+        optionValues: option.optionValues.map((value) => ({
+          id: value.id,
+          name: value.name,
+        })),
+      })),
+    }
+
+    const productTranslated = await chatGPT.translate(productToTranslate, 'product', 'en')
+
+    const responses = await shopify.translator('product').updateTranslation({
+      resourceToTranslate: productToTranslate,
+      resourceTranslated: productTranslated,
+      isoCode: 'en',
+    })
+
+    responses.forEach((response) => {
+      if (response.translationsRegister.userErrors.length > 0) {
+        console.log('🚨 Error => ', response.translationsRegister.userErrors)
+      } else {
+        console.log('✅ Translation updated')
+      }
+    })
   }
 
   public isModelProduct(product: ProductById | Product): boolean {
