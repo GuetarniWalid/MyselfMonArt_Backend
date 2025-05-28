@@ -138,7 +138,9 @@ export interface ProductToTranslateFormatted {
   metaTitle: string
   metaDescription: string
   mediaAltTexts: string[]
-  optionName: string
+  option1Name: string
+  option2Name: string
+  option3Name: string
 }
 
 export interface Product {

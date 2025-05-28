@@ -78,7 +78,13 @@ export default class ProductTranslator {
       schema.mediaAltTexts = z.array(z.string())
     }
     if (this.payload.options?.[0]?.name) {
-      schema.optionName = z.string()
+      schema.option1Name = z.string()
+    }
+    if (this.payload.options?.[1]?.name) {
+      schema.option2Name = z.string()
+    }
+    if (this.payload.options?.[2]?.name) {
+      schema.option3Name = z.string()
     }
 
     return z.object(schema)
@@ -109,7 +115,13 @@ export default class ProductTranslator {
       payload.mediaAltTexts = this.payload.media.alts
     }
     if (this.payload.options?.[0]?.name) {
-      payload.optionName = this.payload.options[0].name
+      payload.option1Name = this.payload.options[0].name
+    }
+    if (this.payload.options?.[1]?.name) {
+      payload.option2Name = this.payload.options[1].name
+    }
+    if (this.payload.options?.[2]?.name) {
+      payload.option3Name = this.payload.options[2].name
     }
 
     return payload
@@ -162,7 +174,7 @@ For the descriptionHtml field, preserve all HTML tags while translating its cont
       }
     }
 
-    responseFormatted.options = payload.options?.map((option) => {
+    responseFormatted.options = payload.options?.map((option, index) => {
       const optionFormatted = {
         id: option.id,
         optionValues:
@@ -174,8 +186,14 @@ For the descriptionHtml field, preserve all HTML tags while translating its cont
         ProductToTranslate['options'][number]
       >
 
-      if (response.optionName) {
-        optionFormatted.name = response.optionName
+      if (response.option1Name && index === 0) {
+        optionFormatted.name = response.option1Name
+      }
+      if (response.option2Name && index === 1) {
+        optionFormatted.name = response.option2Name
+      }
+      if (response.option3Name && index === 2) {
+        optionFormatted.name = response.option3Name
       }
       return optionFormatted
     })

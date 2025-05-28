@@ -73,6 +73,7 @@ export default class PushDataModeler extends DefaultPushDataModeler {
         translations: collectionTranslationInputs,
       },
       ...translationEntriesForMedia,
+      ...translationEntriesForOptions,
     ]
   }
 
