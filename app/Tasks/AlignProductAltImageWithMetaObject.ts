@@ -2,6 +2,7 @@ import type { Product as ShopifyProduct } from 'Types/Product'
 import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import Product from 'App/Services/Shopify/Product'
 import { logTaskBoundary } from 'App/Utils/Logs'
+import Metaobject from 'App/Services/Shopify/Metaobject'
 export default class AlignProductAltImageWithMetaObject extends BaseTask {
   public static get schedule() {
     return CronTimeV2.everyDayAt(2, 20)
@@ -80,7 +81,7 @@ export default class AlignProductAltImageWithMetaObject extends BaseTask {
     const metaObjectId = await this.getMetaObjectIdFromProduct(shopifyProduct)
 
     if (metaObjectId) {
-      await this.updateExistingMediaMetaObject(product, metaObjectId, mediaAlts)
+      await this.updateExistingMediaMetaObject(metaObjectId, mediaAlts)
     } else {
       await this.createAndBindMediaMetaObjectToProduct(product, shopifyProduct, mediaAlts)
     }
@@ -92,12 +93,9 @@ export default class AlignProductAltImageWithMetaObject extends BaseTask {
     )?.node.reference?.id
   }
 
-  private async updateExistingMediaMetaObject(
-    product: Product,
-    metaObjectId: string,
-    mediaAlts: string[]
-  ) {
-    const { userErrors } = await product.updateAltTextsMetaObject(metaObjectId, mediaAlts)
+  private async updateExistingMediaMetaObject(metaObjectId: string, mediaAlts: string[]) {
+    const metaobjectService = new Metaobject()
+    const { userErrors } = await metaobjectService.updateAltTextsMetaObject(metaObjectId, mediaAlts)
 
     if (userErrors.length > 0) {
       console.log('🚀 ~ userErrors:', userErrors)
@@ -109,7 +107,8 @@ export default class AlignProductAltImageWithMetaObject extends BaseTask {
     shopifyProduct: ShopifyProduct,
     mediaAlts: string[]
   ) {
-    const { metaobject, userErrors } = await product.createMediaMetaObject(mediaAlts)
+    const metaobjectService = new Metaobject()
+    const { metaobject, userErrors } = await metaobjectService.createMediaMetaObject(mediaAlts)
     if (userErrors.length > 0) {
       console.log('🚀 ~ userErrors:', userErrors)
       console.log('🚀 ~ mediaAlts:', mediaAlts)

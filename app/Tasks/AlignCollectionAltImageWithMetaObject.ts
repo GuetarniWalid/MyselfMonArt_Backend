@@ -1,6 +1,7 @@
 import type { Collection as ShopifyCollection } from 'Types/Collection'
 import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import Collection from 'App/Services/Shopify/Collection'
+import Metaobject from 'App/Services/Shopify/Metaobject'
 import { logTaskBoundary } from 'App/Utils/Logs'
 
 export default class AlignCollectionAltImageWithMetaObject extends BaseTask {
@@ -74,7 +75,7 @@ export default class AlignCollectionAltImageWithMetaObject extends BaseTask {
     const metaObjectId = await this.getMetaObjectIdFromCollection(shopifyCollection)
 
     if (metaObjectId) {
-      await this.updateExistingMediaMetaObject(collection, metaObjectId, imageAlt)
+      await this.updateExistingMediaMetaObject(metaObjectId, imageAlt)
     } else {
       await this.createAndBindMediaMetaObjectToCollection(collection, shopifyCollection, imageAlt)
     }
@@ -87,17 +88,15 @@ export default class AlignCollectionAltImageWithMetaObject extends BaseTask {
     )?.node.reference?.id
   }
 
-  private async updateExistingMediaMetaObject(
-    collection: Collection,
-    metaObjectId: string,
-    imageAlt: string | null
-  ) {
+  private async updateExistingMediaMetaObject(metaObjectId: string, imageAlt: string | null) {
     if (!imageAlt) {
       console.log('🚀 ~ updateExistingMediaMetaObject => imageAlt is null')
       return
     }
-    const { userErrors } = await collection.updateAltTextsMetaObject(metaObjectId, [imageAlt])
-
+    const metaobjectService = new Metaobject()
+    const { userErrors } = await metaobjectService.updateAltTextsMetaObject(metaObjectId, [
+      imageAlt,
+    ])
     if (userErrors.length > 0) {
       console.log('🚀 ~ userErrors:', userErrors)
     }
@@ -112,7 +111,8 @@ export default class AlignCollectionAltImageWithMetaObject extends BaseTask {
       console.log('🚀 ~ createAndBindMediaMetaObjectToCollection => imageAlt is null')
       return
     }
-    const { metaobject, userErrors } = await collection.createMediaMetaObject([imageAlt])
+    const metaobjectService = new Metaobject()
+    const { metaobject, userErrors } = await metaobjectService.createMediaMetaObject([imageAlt])
     if (userErrors.length > 0) {
       console.log('🚀 ~ userErrors:', userErrors)
       console.log('🚀 ~ imageAlt:', imageAlt)
