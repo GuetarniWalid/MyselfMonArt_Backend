@@ -51,13 +51,17 @@ export default class English {
     if (value === '75x100 cm') return { translation: '29.5x39.4 in' }
     if (value === '90x120 cm') return { translation: '35.4x47.2 in' }
 
-    //landscape*
+    //landscape
     if (value === '30x20 cm') return { translation: '11.8x7.9 in' }
     if (value === '40x30 cm') return { translation: '15.7x11.8 in' }
     if (value === '60x40 cm') return { translation: '23.6x15.7 in' }
     if (value === '80x60 cm') return { translation: '31.5x23.6 in' }
     if (value === '100x75 cm') return { translation: '39.4x29.5 in' }
     if (value === '120x90 cm') return { translation: '47.2x35.4 in' }
+
+    //others
+    if (value === '2 cm') return { translation: '0.8 in' }
+    if (value === '4 cm') return { translation: '1.6 in' }
     else return value
   }
 
@@ -106,5 +110,30 @@ export default class English {
     if (value === 'Cadre chêne clair') return { translation: 'Light oak frame' }
     if (value === 'Cadre noyer') return { translation: 'Walnut frame' }
     else return value
+  }
+
+  public translateSizeInText(text: string): string {
+    // Regular expression to match both single number (2 cm) and double number (30x40 cm) patterns
+    const sizePattern = /(\d+)(?:\s*x\s*(\d+))?\s*cm/gi
+
+    return text.replace(sizePattern, (match) => {
+      // Extract numbers
+      const numbers = match.match(/\d+/g)
+      if (!numbers) return match
+
+      // Handle single number case (e.g., "2 cm")
+      if (numbers.length === 1) {
+        const normalizedSize = `${numbers[0]} cm`
+        return this.translateOptionValue(normalizedSize)
+      }
+
+      // Handle double number case (e.g., "30x40 cm")
+      if (numbers.length === 2) {
+        const normalizedSize = `${numbers[0]}x${numbers[1]} cm`
+        return this.translateOptionValue(normalizedSize)
+      }
+
+      return match
+    })
   }
 }

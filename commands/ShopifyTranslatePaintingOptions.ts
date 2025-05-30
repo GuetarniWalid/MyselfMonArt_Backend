@@ -4,9 +4,9 @@ import Shopify from 'App/Services/Shopify'
 import { logTaskBoundary } from 'App/Utils/Logs'
 import { MetaobjectToTranslate } from 'Types/Metaobject'
 
-export default class TestTask extends BaseCommand {
-  public static commandName = 'test:task'
-  public static description = 'Test task logic implementation'
+export default class ShopifyTranslatePaintingOptions extends BaseCommand {
+  public static commandName = 'shopify:translate_painting_options'
+  public static description = 'Translate painting options'
 
   public static settings = {
     loadApp: true,

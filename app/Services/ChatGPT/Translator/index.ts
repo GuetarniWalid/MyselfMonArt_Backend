@@ -11,17 +11,20 @@ import Authentication from '../Authentication'
 import ArticleTranslator from './Article'
 import BlogTranslator from './Blog'
 import CollectionTranslator from './Collection'
+import MetaobjectTranslator from './Metaobject'
+import ModelTranslator from './Model'
 import PageTranslator from './Page'
 import ProductTranslator from './Product'
-import ModelTranslator from './Model'
 import StaticSectionTranslator from './StaticSection'
 import { StaticSectionToTranslate } from 'Types/StaticSection'
+import { MetaobjectToTranslate } from 'Types/Metaobject'
 
 export default class Translator extends Authentication {
   private translationHandler:
     | ArticleTranslator
     | BlogTranslator
     | CollectionTranslator
+    | MetaobjectTranslator
     | ModelTranslator
     | PageTranslator
     | ProductTranslator
@@ -32,32 +35,38 @@ export default class Translator extends Authentication {
       | Partial<ArticleToTranslate>
       | Partial<BlogToTranslate>
       | Partial<CollectionToTranslate>
-      | Partial<PageToTranslate>
-      | Partial<ProductToTranslate>
+      | MetaobjectToTranslate
       | ModelToTranslate
-      | StaticSectionToTranslate,
+      | Partial<PageToTranslate>
+      | Partial<ProductToTranslate>,
     resources: Resource,
     targetLanguage: LanguageCode
   ) {
     super()
     switch (resources) {
-      case 'product':
-        this.translationHandler = new ProductTranslator(payload, targetLanguage)
-        break
-      case 'collection':
-        this.translationHandler = new CollectionTranslator(payload, targetLanguage)
-        break
       case 'article':
         this.translationHandler = new ArticleTranslator(payload, targetLanguage)
         break
       case 'blog':
         this.translationHandler = new BlogTranslator(payload, targetLanguage)
         break
-      case 'page':
-        this.translationHandler = new PageTranslator(payload, targetLanguage)
+      case 'collection':
+        this.translationHandler = new CollectionTranslator(payload, targetLanguage)
         break
       case 'model':
         this.translationHandler = new ModelTranslator(payload as ModelToTranslate, targetLanguage)
+        break
+      case 'metaobject':
+        this.translationHandler = new MetaobjectTranslator(
+          payload as MetaobjectToTranslate,
+          targetLanguage
+        )
+        break
+      case 'page':
+        this.translationHandler = new PageTranslator(payload, targetLanguage)
+        break
+      case 'product':
+        this.translationHandler = new ProductTranslator(payload, targetLanguage)
         break
       case 'static_section':
         this.translationHandler = new StaticSectionTranslator(

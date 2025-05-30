@@ -209,7 +209,7 @@ For the descriptionHtml field, preserve all HTML tags while translating its cont
     return languageHandler?.translateOptionValue(optionValue) ?? optionValue
   }
 
-  private getLanguageHandler() {
+  public getLanguageHandler() {
     switch (this.targetLanguage) {
       case 'en':
         return new English()

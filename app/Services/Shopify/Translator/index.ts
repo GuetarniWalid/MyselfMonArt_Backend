@@ -11,6 +11,7 @@ import Authentication from '../Authentication'
 import ArticleTranslator from './ArticleTranslator'
 import BlogTranslator from './BlogTranslator'
 import CollectionTranslator from './CollectionTranslator'
+import MetaobjectTranslator from './MetaobjectTranslator'
 import ModelTranslator from './ModelTranslator'
 import PageTranslator from './PageTranslator'
 import ProductTranslator from './ProductTranslator'
@@ -21,6 +22,7 @@ export default class Translator extends Authentication {
     | ArticleTranslator
     | BlogTranslator
     | CollectionTranslator
+    | MetaobjectTranslator
     | PageTranslator
     | ProductTranslator
     | ModelTranslator
@@ -40,12 +42,13 @@ export default class Translator extends Authentication {
   private getTranslatorHandler(
     resource: Resource
   ):
-    | ProductTranslator
-    | CollectionTranslator
     | ArticleTranslator
     | BlogTranslator
-    | PageTranslator
+    | CollectionTranslator
+    | MetaobjectTranslator
     | ModelTranslator
+    | PageTranslator
+    | ProductTranslator
     | StaticSectionTranslator {
     if (resource === 'article') {
       return new ArticleTranslator()
@@ -56,14 +59,17 @@ export default class Translator extends Authentication {
     if (resource === 'collection') {
       return new CollectionTranslator()
     }
+    if (resource === 'metaobject') {
+      return new MetaobjectTranslator()
+    }
+    if (resource === 'model') {
+      return new ModelTranslator()
+    }
     if (resource === 'page') {
       return new PageTranslator()
     }
     if (resource === 'product') {
       return new ProductTranslator()
-    }
-    if (resource === 'model') {
-      return new ModelTranslator()
     }
     if (resource === 'static_section') {
       return new StaticSectionTranslator()

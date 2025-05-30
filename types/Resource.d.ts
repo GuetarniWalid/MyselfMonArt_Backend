@@ -1,10 +1,11 @@
 export type Resource =
-  | 'product'
-  | 'collection'
   | 'article'
   | 'blog'
-  | 'page'
+  | 'collection'
+  | 'metaobject'
   | 'model'
+  | 'page'
+  | 'product'
   | 'static_section'
 
 export type ResourceSEO = {
