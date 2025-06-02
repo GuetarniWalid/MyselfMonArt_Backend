@@ -23,6 +23,8 @@ export default class TranslateProduct extends BaseTask {
     const chatGPT = new ChatGPT()
 
     for (const content of contentToTranslate) {
+      if (content.file && !content.file.alt) continue
+
       const modelTranslated = await chatGPT.translate(content, 'model', 'en')
       const responses = await shopify.translator('model').updateTranslation({
         resourceToTranslate: content,

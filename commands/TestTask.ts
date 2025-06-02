@@ -1,8 +1,8 @@
 import { BaseCommand } from '@adonisjs/core/build/standalone'
+import type { ModelToTranslate } from 'Types/Model'
 import ChatGPT from 'App/Services/ChatGPT'
 import Shopify from 'App/Services/Shopify'
 import { logTaskBoundary } from 'App/Utils/Logs'
-import { MetaobjectToTranslate } from 'Types/Metaobject'
 
 export default class TestTask extends BaseCommand {
   public static commandName = 'test:task'
@@ -14,20 +14,22 @@ export default class TestTask extends BaseCommand {
   }
 
   public async run() {
-    logTaskBoundary(true, 'Translate Painting Option Metaobjects')
+    logTaskBoundary(true, 'Translate Models')
 
     const shopify = new Shopify()
     const contentToTranslate = (await shopify
-      .translator('metaobject')
-      .getOutdatedTranslations()) as MetaobjectToTranslate[]
+      .translator('model')
+      .getOutdatedTranslations()) as ModelToTranslate[]
 
     const chatGPT = new ChatGPT()
 
     for (const content of contentToTranslate) {
-      const metaobjectTranslated = await chatGPT.translate(content, 'metaobject', 'en')
-      const responses = await shopify.translator('metaobject').updateTranslation({
+      if (content.file && !content.file.alt) continue
+
+      const modelTranslated = await chatGPT.translate(content, 'model', 'en')
+      const responses = await shopify.translator('model').updateTranslation({
         resourceToTranslate: content,
-        resourceTranslated: metaobjectTranslated,
+        resourceTranslated: modelTranslated,
         isoCode: 'en',
       })
       responses.forEach((response) => {
@@ -39,8 +41,8 @@ export default class TestTask extends BaseCommand {
       })
     }
     console.log('============================')
-    console.log('✅ Metaobjects translations updated')
+    console.log('✅ Models translations updated')
 
-    logTaskBoundary(false, 'Translate Painting Option Metaobjects')
+    logTaskBoundary(false, 'Translate Models')
   }
 }

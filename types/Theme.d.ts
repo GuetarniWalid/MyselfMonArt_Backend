@@ -39,3 +39,20 @@ export interface ThemeWithFiles {
     }[]
   }
 }
+
+export interface MediaAltResponse {
+  files: {
+    edges: {
+      node: {
+        alt?: string
+        preview: {
+          image?: {
+            id: string
+            altText?: string
+            url: string
+          }
+        }
+      }
+    }[]
+  }
+}

@@ -5,6 +5,7 @@ import type {
   ThemeWithFiles,
   TranslatableContent,
   Translation,
+  MediaAltResponse,
 } from 'Types/Theme'
 import DefaultPullDataModeler from '../PullDataModeler'
 
@@ -17,22 +18,35 @@ export default class PullDataModeler extends DefaultPullDataModeler {
     for (const fileName of fileNames) {
       const fileData = await this.getTranslatableFileData(id, fileName, locale)
       if (!fileData) continue
-      fileData.translatableContent.forEach((content) => {
+
+      for (const content of fileData.translatableContent) {
         const { isTranslationExists, translation } = this.isTranslationExists(
           content,
           fileData.translations
         )
         const isTranslationOutdated = this.isTranslationOutdated(isTranslationExists, translation)
+
+        const isTranslationSvg = this.isTranslationSvg(content)
+        if (isTranslationSvg) continue
+
         const isTranslationMedia = this.isTranslationMedia(content)
 
-        if ((!isTranslationExists || isTranslationOutdated) && !isTranslationMedia) {
+        if (!isTranslationExists || isTranslationOutdated) {
           translatableContent.push({
             id: themeId,
             key: content.key,
-            value: content.value,
+            value: isTranslationMedia ? undefined : content.value,
+            file: isTranslationMedia
+              ? {
+                  alt: await this.getMediaAlt(content),
+                  fileName: this.getMediaName(content),
+                  oldUrl: content.value,
+                  url: await this.getMediaPath(content),
+                }
+              : undefined,
           })
         }
-      })
+      }
     }
 
     return translatableContent
@@ -174,8 +188,70 @@ export default class PullDataModeler extends DefaultPullDataModeler {
   }
 
   private isTranslationMedia(content: TranslatableContent) {
-    const isShopifyMedia = content.value.startsWith('shopify://')
-    const isSVG = content.value.startsWith('<svg') || content.value.endsWith('</svg>')
-    return isShopifyMedia || isSVG
+    return content.value.startsWith('shopify://')
+  }
+
+  private isTranslationSvg(content: TranslatableContent) {
+    return content.value.startsWith('<svg') || content.value.endsWith('</svg>')
+  }
+
+  private async getMediaPath(content: TranslatableContent) {
+    const mediaPathSplitted = content.value.split('/')
+    const mediaPathLength = mediaPathSplitted.length
+    const mediaPathEnd = mediaPathSplitted[mediaPathLength - 1]
+    return `https://www.myselfmonart.com/cdn/shop/files/${mediaPathEnd}`
+  }
+
+  private async getMediaAlt(content: TranslatableContent) {
+    const filename = content.value.split('/').at(-1)
+    if (!filename) return undefined
+
+    const { query, variables } = this.getMediaAltQuery(filename)
+    const response = (await this.fetchGraphQL(query, variables)) as MediaAltResponse
+
+    const matchingFile = response.files.edges.find((edge) => {
+      const url = edge.node.preview?.image?.url
+      if (!url) return false
+
+      const type = url.split('/').at(-2)
+      if (type !== 'files') return false
+
+      const urlFilename = url.split('/').at(-1)?.split('?')[0]
+      return urlFilename === filename
+    })
+
+    return matchingFile?.node.alt
+  }
+
+  private getMediaAltQuery(filename: string) {
+    return {
+      query: `query {
+        files(first: 250, query: "filename:${filename}") {
+          edges {
+            node {
+              ... on MediaImage {
+                alt
+                preview {
+                  image {
+                    id
+                    altText
+                    url
+                  }
+                }
+              }
+              ... on Video {
+                id
+                alt
+              }
+            }
+          }
+        }
+      }`,
+      variables: {},
+    }
+  }
+
+  private getMediaName(content: TranslatableContent) {
+    return content.value.split('/').at(-1) as string
   }
 }

@@ -3,7 +3,7 @@ import type { LanguageCode, TranslationInput, TranslationsRegister } from 'Types
 import DefaultPushDataModeler from '../PushDataModeler'
 
 export default class PushDataModeler extends DefaultPushDataModeler {
-  public formatTranslationFieldsForGraphQLMutation({
+  public async formatTranslationFieldsForGraphQLMutation({
     resourceToTranslate,
     resourceTranslated,
     isoCode,
@@ -11,15 +11,15 @@ export default class PushDataModeler extends DefaultPushDataModeler {
     resourceToTranslate: ModelToTranslate
     resourceTranslated: ModelToTranslate
     isoCode: LanguageCode
-  }): TranslationsRegister[] {
+  }): Promise<TranslationsRegister[]> {
     const translationInputs = [] as TranslationInput[]
 
     this.utils.createTranslationEntry(
       {
         key: resourceToTranslate.key,
         isoCode,
-        newValue: resourceTranslated.value,
-        oldValue: resourceToTranslate.value,
+        newValue: resourceTranslated.value as string,
+        oldValue: resourceToTranslate.value as string,
       },
       translationInputs
     )

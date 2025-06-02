@@ -3,7 +3,7 @@ import type { LanguageCode, TranslationInput, TranslationsRegister } from 'Types
 import DefaultPushDataModeler from '../PushDataModeler'
 
 export default class PushDataModeler extends DefaultPushDataModeler {
-  public formatTranslationFieldsForGraphQLMutation({
+  public async formatTranslationFieldsForGraphQLMutation({
     resourceToTranslate,
     resourceTranslated,
     isoCode,
@@ -11,7 +11,7 @@ export default class PushDataModeler extends DefaultPushDataModeler {
     resourceToTranslate: MetaobjectToTranslate
     resourceTranslated: MetaobjectToTranslate
     isoCode: LanguageCode
-  }): TranslationsRegister[] {
+  }): Promise<TranslationsRegister[]> {
     const translationInputs = [] as TranslationInput[]
 
     // Handle painting option, radio container and popup

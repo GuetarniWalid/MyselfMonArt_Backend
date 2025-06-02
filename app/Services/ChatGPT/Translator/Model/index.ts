@@ -53,9 +53,17 @@ export default class ModelTranslator {
   }
 
   private getTranslationResponseFormat() {
-    return z.object({
-      value: z.string(),
-    })
+    const schema: Record<string, any> = {}
+
+    if (this.payload.file) {
+      schema.file = z.object({
+        alt: z.string(),
+        fileName: z.string(),
+      })
+    } else {
+      schema.value = z.string()
+    }
+    return z.object(schema)
   }
 
   private getTranslationSystemPrompt() {
@@ -73,6 +81,7 @@ Your translations must:
 - Be **concise**, friendly, and **action-oriented** where applicable (especially for buttons or CTAs).
 - Respect variables and code placeholders such as "{{ count }}", "{{ quantity }}", or "{{ amount }}". **Do not translate or alter these.**
 - Maintain **HTML structure** if present (e.g. "<strong>", "<em>", "<a>").
+- Translate the file name if it is a media file and eliminate the extension.
 
 If the meaning is ambiguous, choose the **most likely interpretation in an e-commerce store context**.
 
@@ -80,6 +89,7 @@ Example:
 - "Réinitialiser le mot de passe" → "Reset password"
 - "Voir mon panier ({{ count }})" → "View my cart ({{ count }})"
 - "<p class="pagination md-4">Navigation entre les pages</p>" → "<p class="pagination md-4">Pagination</p>"
+- "Quelle-est-la-couleur-la-moins-salissante-pour-une-cuisine.jpg" → "What-is-the-least-dirty-color-for-a-kitchen"
 
 Only return the translated value, no explanation, no additional formatting.
 `
@@ -92,6 +102,18 @@ Only return the translated value, no explanation, no additional formatting.
     response: Partial<ModelToTranslate>
     payload: ModelToTranslate
   }): ModelToTranslate {
+    if (payload.file) {
+      return {
+        ...payload,
+        file: {
+          alt: response.file?.alt as string,
+          fileName: response.file?.fileName as string,
+          oldUrl: payload.file.oldUrl,
+          url: payload.file.url,
+        },
+      }
+    }
+
     return {
       id: payload.id,
       key: payload.key,

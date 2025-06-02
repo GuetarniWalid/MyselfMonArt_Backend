@@ -117,13 +117,13 @@ export default class Translator extends Authentication {
     isoCode: LanguageCode
   }) {
     try {
-      const translationsToRegister = this.resourceHandler.pushDataModeler
-        .formatTranslationFieldsForGraphQLMutation({
+      const translationsToRegister = (
+        await this.resourceHandler.pushDataModeler.formatTranslationFieldsForGraphQLMutation({
           resourceToTranslate: resourceToTranslate as any,
           resourceTranslated: resourceTranslated as any,
           isoCode,
         })
-        .filter((translation) => translation.translations.length > 0)
+      ).filter((translation) => translation.translations.length > 0)
 
       console.log('🚀 ~ Translations to register:')
       translationsToRegister.forEach((translationToRegister) => {

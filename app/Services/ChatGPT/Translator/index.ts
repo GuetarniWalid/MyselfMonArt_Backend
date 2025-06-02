@@ -91,6 +91,13 @@ export default class Translator extends Authentication {
         })
       }
 
+      if (!responseFormat) {
+        return this.translationHandler.formatTranslationResponse({
+          response: {},
+          payload: payload as any,
+        })
+      }
+
       const completion = await this.openai.beta.chat.completions.parse({
         model: 'gpt-4o-2024-08-06',
         messages: [

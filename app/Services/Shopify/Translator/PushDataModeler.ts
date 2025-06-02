@@ -6,16 +6,18 @@ import type { BlogToTranslate } from 'Types/Blog'
 import type { LanguageCode, TranslationInput, TranslationsRegister } from 'Types/Translation'
 import type { ResourceSEO, ResourceMedia, ResourceImage } from 'Types/Resource'
 import type { ModelToTranslate } from 'Types/Model'
+import Authentication from 'App/Services/Shopify/Authentication'
 import Utils from './Utils'
 
-export default class PushDataModeler {
+export default class PushDataModeler extends Authentication {
   protected utils: Utils
 
   constructor() {
+    super()
     this.utils = new Utils()
   }
 
-  public formatTranslationFieldsForGraphQLMutation({
+  public async formatTranslationFieldsForGraphQLMutation({
     resourceToTranslate,
     resourceTranslated,
     isoCode,
@@ -35,7 +37,7 @@ export default class PushDataModeler {
       | Partial<BlogToTranslate>
       | ModelToTranslate
     isoCode: LanguageCode
-  }): TranslationsRegister[] {
+  }): Promise<TranslationsRegister[]> {
     const collectionTranslationInputs = [] as TranslationInput[]
     const translationEntriesForMedia = [] as TranslationsRegister[]
 
