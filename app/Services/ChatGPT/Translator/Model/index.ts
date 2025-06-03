@@ -117,7 +117,14 @@ Only return the translated value, no explanation, no additional formatting.
     return {
       id: payload.id,
       key: payload.key,
-      value: response.value,
+      value: this.changeLanguageHrefs(response.value as string),
     } as ModelToTranslate
+  }
+
+  private changeLanguageHrefs(value: string) {
+    return value.replace(
+      /href="https:\/\/www\.myselfmonart\.com\/([^"]+)"/g,
+      `href="https://www.myselfmonart.com/${this.targetLanguage}/$1"`
+    )
   }
 }
