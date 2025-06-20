@@ -76,10 +76,11 @@ Route.group(() => {
   }).prefix('/tapestry')
 
   Route.group(() => {
-    Route.post('/create', 'ProductsController.create')
     Route.post('/update/tapestry', 'ProductsController.updateTapestry')
     Route.post('/update/metafield/likes-count', 'ProductsController.updateMetafieldLikesCount')
   }).prefix('/product')
 
   Route.post('/webhooks', 'WebhooksController.handle')
+
+  Route.post('/midjourney/publish', 'MidjourneysController.publishOnShopify')
 }).prefix('/api')

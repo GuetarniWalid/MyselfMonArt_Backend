@@ -1,6 +1,4 @@
 import type {
-  CreateProduct,
-  ProductCreated,
   UpdateProductPainting,
   UpdateProductTapestry,
   Product as ShopifyProduct,
@@ -18,18 +16,6 @@ export default class Product extends Authentication {
   constructor() {
     super()
     this.modelCopier = new ModelCopier()
-  }
-
-  public async create(product: CreateProduct) {
-    const response = await this.client.request({
-      method: 'POST',
-      url: 'products.json',
-      data: { product },
-    })
-    const productCreated = response.data.product as ProductCreated
-    return {
-      variantID: productCreated.variants[0].id,
-    }
   }
 
   public async getAll(): Promise<ShopifyProduct[]> {

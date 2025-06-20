@@ -1,31 +1,9 @@
-export type CreateProduct = {
-  title: string
-  body_html?: string
-  vendor?: string
-  product_type?: string
-  status: 'draft' | 'active' | 'archived'
-  tags?: string
-  handle?: string
-  published_scope?: 'global' | 'web'
-  variants?: Variant[]
-  images: Image[]
-}
-
 export type Image = {
   src: string
   filename: string
   alt: string
   position: number
   product_id?: number
-}
-
-export type ProductCreated = {
-  id: number
-  variants: [
-    {
-      id: number
-    },
-  ]
 }
 
 export type Ratio = 'square' | 'portrait' | 'landscape' | 'personalized portrait'
