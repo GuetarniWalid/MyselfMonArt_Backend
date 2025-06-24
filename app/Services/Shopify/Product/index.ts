@@ -102,6 +102,7 @@ export default class Product extends Authentication {
                           }
                         }
                       }
+                      onlineStoreUrl
                       options(first: 3) {
                         id
                         name

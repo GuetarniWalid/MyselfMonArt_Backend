@@ -12,6 +12,18 @@
       "aliases": [],
       "flags": []
     },
+    "pinterest:get_boards": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/PinterestGetBoards",
+      "commandName": "pinterest:get_boards",
+      "description": "Get all public boards from Pinterest",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
     "send:mail": {
       "settings": {
         "loadApp": true,

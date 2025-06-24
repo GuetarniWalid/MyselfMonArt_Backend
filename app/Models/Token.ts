@@ -13,7 +13,13 @@ export default class Token extends BaseModel {
   public name: string
 
   @column()
+  public accessToken: string | null
+
+  @column()
   public refreshToken: string | null
+
+  @column.dateTime()
+  public expiresAt: DateTime | null
 
   @column.dateTime({ autoCreate: true })
   public createdAt: DateTime

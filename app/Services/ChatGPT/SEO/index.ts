@@ -2,6 +2,7 @@ import type { Product } from 'Types/Product'
 import Authentication from '../Authentication'
 import { zodResponseFormat } from 'openai/helpers/zod'
 import PreventSeoCannibalisation from './PreventSeoCannibalisation'
+import Env from '@ioc:Adonis/Core/Env'
 
 export default class SEO extends Authentication {
   private preventSeoCannibalisation: PreventSeoCannibalisation
@@ -19,7 +20,7 @@ export default class SEO extends Authentication {
         this.preventSeoCannibalisation.prepareRequest(product)
 
       const completion = await this.openai.beta.chat.completions.parse({
-        model: 'gpt-4o-2024-08-06',
+        model: Env.get('OPENAI_MODEL'),
         messages: [
           {
             role: 'system',

@@ -2,25 +2,25 @@
   "entrypoints": {
     "app": {
       "css": [
-        "http://localhost:8080/assets/app.css"
+        "/assets/app.css"
       ],
       "js": [
-        "http://localhost:8080/assets/app.js"
+        "/assets/app.js"
       ]
     },
     "backlinks": {
       "js": [
-        "http://localhost:8080/assets/backlinks.js"
+        "/assets/backlinks.js"
       ]
     },
     "painting-options": {
       "js": [
-        "http://localhost:8080/assets/painting-options.js"
+        "/assets/painting-options.js"
       ]
     },
     "tapestry-options": {
       "js": [
-        "http://localhost:8080/assets/tapestry-options.js"
+        "/assets/tapestry-options.js"
       ]
     }
   }

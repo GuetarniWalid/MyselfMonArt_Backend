@@ -230,14 +230,14 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
     return 'https://www.myselfmonart.com/products/' + handle
   }
   private getMainImageUrlFromImages(images: ProductFromShopify['media']['nodes']) {
-    return images[1]?.image.url ?? images[0]?.image.url ?? ''
+    return images[1]?.image?.url ?? images[0]?.image?.url ?? ''
   }
 
   private getAdditionalImageUrlFromImages(medias: ProductFromShopify['media']['nodes']) {
     const mediasCopy = medias.filter((media) => media.mediaContentType === 'IMAGE')
     mediasCopy.splice(1, 1)
     if (mediasCopy.length === 1) return []
-    return mediasCopy.map((media) => media.image.url)
+    return mediasCopy.map((media) => media.image?.url).filter(Boolean)
   }
 
   private getGoogleTaxonomyIdFromTemplateSuffix(templateSuffix: string | null) {
@@ -307,7 +307,8 @@ export default class ShopifyFluxToMerchantCenter extends BaseTask {
     } else if (templateSuffix === 'personalized') {
       return 'personalized portrait' as const
     } else {
-      const image = images[1].image
+      const image = images[1]?.image
+      if (!image) return 'square' as const
       return image.height > image.width
         ? ('portrait' as const)
         : image.height < image.width

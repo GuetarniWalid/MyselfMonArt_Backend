@@ -18,6 +18,7 @@ import ProductTranslator from './Product'
 import StaticSectionTranslator from './StaticSection'
 import { StaticSectionToTranslate } from 'Types/StaticSection'
 import { MetaobjectToTranslate } from 'Types/Metaobject'
+import Env from '@ioc:Adonis/Core/Env'
 
 export default class Translator extends Authentication {
   private translationHandler:
@@ -99,7 +100,7 @@ export default class Translator extends Authentication {
       }
 
       const completion = await this.openai.beta.chat.completions.parse({
-        model: 'gpt-4o-2024-08-06',
+        model: Env.get('OPENAI_MODEL'),
         messages: [
           {
             role: 'system',

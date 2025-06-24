@@ -45,6 +45,9 @@ export default Env.rules({
   MAIL_RECIPIENT: Env.schema.string(),
   GOOGLE_API_KEY: Env.schema.string(),
   OPENAI_API_KEY: Env.schema.string(),
+  OPENAI_MODEL: Env.schema.enum(['gpt-4o-2024-08-06', 'gpt-4o-mini-2024-07-18'] as const),
   SHOPIFY_WEBHOOK_URL: Env.schema.string(),
   SHOPIFY_CLIENT_SECRET: Env.schema.string(),
+  PINTEREST_CLIENT_ID: Env.schema.string(),
+  PINTEREST_CLIENT_SECRET: Env.schema.string(),
 })

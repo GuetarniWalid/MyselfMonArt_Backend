@@ -152,7 +152,7 @@ export interface Product {
     nodes: {
       alt: string
       mediaContentType: string
-      image: {
+      image?: {
         height: number
         width: number
         url: string
@@ -175,6 +175,7 @@ export interface Product {
       }
     }[]
   }
+  onlineStoreUrl: string
   options: {
     id: string
     name: string

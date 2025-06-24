@@ -4,6 +4,7 @@ coverage
 .vscode
 .DS_STORE
 .env
+.env.test
 .env.production
 tmp
 copy-env.sh

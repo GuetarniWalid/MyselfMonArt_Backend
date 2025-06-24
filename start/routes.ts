@@ -36,7 +36,13 @@ Route.group(() => {
   Route.get('/callback', 'SocialAuthsController.index')
   Route.get('/merchant-center', 'SocialAuthsController.redirectToGoogle')
   Route.get('/merchant-center/callback', 'SocialAuthsController.handleGoogleCallback')
+  Route.get('/pinterest', 'SocialAuthsController.redirectToPinterest')
+  Route.get('/pinterest/callback', 'SocialAuthsController.handlePinterestCallback')
 }).prefix('/login')
+
+Route.group(() => {
+  Route.get('/check', 'PinterestAuthController.checkAuth')
+}).prefix('/pinterest')
 
 Route.group(() => {
   Route.get('/backlinks', async ({ view }) => {
