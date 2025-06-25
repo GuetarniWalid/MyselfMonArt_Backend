@@ -24,6 +24,18 @@
       "aliases": [],
       "flags": []
     },
+    "pinterest:get_pins": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/PinterestGetPins",
+      "commandName": "pinterest:get_pins",
+      "description": "Get all pins from Pinterest",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
     "send:mail": {
       "settings": {
         "loadApp": true,

@@ -10,6 +10,10 @@ process.env.NODE_ENV = 'test'
 
 test.group('PinFormatter', () => {
   const mockProduct = {
+    id: 'gid://shopify/Product/123456789',
+    title: 'Test Product',
+    description: 'A test product for testing',
+    onlineStoreUrl: 'https://example.com/products/test-product',
     media: {
       nodes: [
         {
@@ -194,7 +198,10 @@ test.group('PinFormatter', () => {
     assert.equal(pinPayload.board_id, board.id)
     assert.exists(pinPayload.title)
     assert.exists(pinPayload.description)
-    assert.equal(pinPayload.link, mockProduct.onlineStoreUrl)
+    assert.equal(
+      pinPayload.link,
+      'https://example.com/products/test-product?shopify_product_id=gid%3A%2F%2Fshopify%2FProduct%2F123456789'
+    )
     assert.exists(pinPayload.alt_text)
     assert.exists(pinPayload.media_source)
     assert.equal(pinPayload.media_source.source_type, 'image_url')
@@ -323,5 +330,146 @@ test.group('PinFormatter', () => {
       b: 3,
       alpha: 1,
     })
+  })
+
+  test('should generate product link with product ID for simple URL', ({ assert }) => {
+    const formatter = new PinFormatter()
+    const shopifyProduct = {
+      id: 'gid://shopify/Product/123456789',
+      onlineStoreUrl: 'https://example.com/product',
+    } as ShopifyProduct
+
+    const result = formatter['getProductLinkWithProductId'](shopifyProduct)
+
+    assert.equal(
+      result,
+      'https://example.com/product?shopify_product_id=gid%3A%2F%2Fshopify%2FProduct%2F123456789'
+    )
+  })
+
+  test('should generate product link with product ID for URL with existing query parameters', ({
+    assert,
+  }) => {
+    const formatter = new PinFormatter()
+    const shopifyProduct = {
+      id: 'gid://shopify/Product/987654321',
+      onlineStoreUrl: 'https://example.com/product?existing=param&another=value',
+    } as ShopifyProduct
+
+    const result = formatter['getProductLinkWithProductId'](shopifyProduct)
+
+    assert.equal(
+      result,
+      'https://example.com/product?existing=param&another=value&shopify_product_id=gid%3A%2F%2Fshopify%2FProduct%2F987654321'
+    )
+  })
+
+  test('should generate product link with product ID for URL with hash fragment', ({ assert }) => {
+    const formatter = new PinFormatter()
+    const shopifyProduct = {
+      id: 'gid://shopify/Product/555666777',
+      onlineStoreUrl: 'https://example.com/product#section',
+    } as ShopifyProduct
+
+    const result = formatter['getProductLinkWithProductId'](shopifyProduct)
+
+    assert.equal(
+      result,
+      'https://example.com/product?shopify_product_id=gid%3A%2F%2Fshopify%2FProduct%2F555666777#section'
+    )
+  })
+
+  test('should generate product link with product ID for URL with both query parameters and hash fragment', ({
+    assert,
+  }) => {
+    const formatter = new PinFormatter()
+    const shopifyProduct = {
+      id: 'gid://shopify/Product/111222333',
+      onlineStoreUrl: 'https://example.com/product?param=value#section',
+    } as ShopifyProduct
+
+    const result = formatter['getProductLinkWithProductId'](shopifyProduct)
+
+    assert.equal(
+      result,
+      'https://example.com/product?param=value&shopify_product_id=gid%3A%2F%2Fshopify%2FProduct%2F111222333#section'
+    )
+  })
+
+  test('should handle URL with trailing slash', ({ assert }) => {
+    const formatter = new PinFormatter()
+    const shopifyProduct = {
+      id: 'gid://shopify/Product/777888999',
+      onlineStoreUrl: 'https://example.com/product/',
+    } as ShopifyProduct
+
+    const result = formatter['getProductLinkWithProductId'](shopifyProduct)
+
+    assert.equal(
+      result,
+      'https://example.com/product/?shopify_product_id=gid%3A%2F%2Fshopify%2FProduct%2F777888999'
+    )
+  })
+
+  test('should handle product ID with special characters', ({ assert }) => {
+    const formatter = new PinFormatter()
+    const shopifyProduct = {
+      id: 'gid://shopify/Product/123-456_789',
+      onlineStoreUrl: 'https://example.com/product',
+    } as ShopifyProduct
+
+    const result = formatter['getProductLinkWithProductId'](shopifyProduct)
+
+    assert.equal(
+      result,
+      'https://example.com/product?shopify_product_id=gid%3A%2F%2Fshopify%2FProduct%2F123-456_789'
+    )
+  })
+
+  test('should verify getProductLinkWithProductId is used in buildPinPayload', async ({
+    assert,
+  }) => {
+    const formatter = new PinFormatter()
+    const board = {
+      id: '123',
+      name: 'Test Board',
+      privacy: 'PUBLIC' as const,
+      created_at: new Date().toISOString(),
+      board_pins_modified_at: new Date().toISOString(),
+      pin_count: 0,
+      follower_count: 0,
+      collaborator_count: 0,
+      is_ads_only: false,
+      owner: { username: 'test' },
+      media: { pin_thumbnail_urls: [], image_cover_url: null },
+    }
+
+    // Create a mock product with a specific onlineStoreUrl and id
+    const mockProductWithUrl = {
+      ...mockProduct,
+      id: 'gid://shopify/Product/123456789',
+      onlineStoreUrl: 'https://myselfmonart.com/products/test-product',
+    } as ShopifyProduct
+
+    const pinPayload = await formatter.buildPinPayload(mockProductWithUrl, board)
+
+    // Verify that the link contains the product ID as a query parameter
+    assert.equal(
+      pinPayload.link,
+      'https://myselfmonart.com/products/test-product?shopify_product_id=gid%3A%2F%2Fshopify%2FProduct%2F123456789'
+    )
+
+    // Cleanup
+    await formatter.removeImage(pinPayload.media_source.url)
+  })
+
+  test('should throw error for empty onlineStoreUrl', ({ assert }) => {
+    const formatter = new PinFormatter()
+    const shopifyProduct = {
+      id: 'gid://shopify/Product/444555666',
+      onlineStoreUrl: '',
+    } as ShopifyProduct
+
+    assert.throws(() => formatter['getProductLinkWithProductId'](shopifyProduct), 'Invalid URL')
   })
 })

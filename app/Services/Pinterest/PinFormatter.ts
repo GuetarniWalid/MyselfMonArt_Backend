@@ -21,7 +21,7 @@ export default class PinFormatter {
       board_id: board.id,
       title: pinPayload.title || shopifyProduct.title,
       description: pinPayload.description || shopifyProduct.description,
-      link: shopifyProduct.onlineStoreUrl,
+      link: this.getProductLinkWithProductId(shopifyProduct),
       alt_text: pinPayload.alt_text || imageAlt,
       media_source: {
         url: publicUrl,
@@ -164,5 +164,11 @@ export default class PinFormatter {
       // If file doesn't exist or can't be removed, log error but don't throw
       console.error(`Failed to remove image ${imageUrl}:`, error)
     }
+  }
+
+  private getProductLinkWithProductId(shopifyProduct: ShopifyProduct): string {
+    const url = new URL(shopifyProduct.onlineStoreUrl)
+    url.searchParams.set('shopify_product_id', shopifyProduct.id)
+    return url.toString()
   }
 }

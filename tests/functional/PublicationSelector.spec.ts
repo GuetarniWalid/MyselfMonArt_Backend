@@ -342,4 +342,605 @@ test.group('PublicationSelector', (group) => {
 
     assert.include(['board2', 'board3'], randomBoard.id)
   })
+
+  test('should return true when pin link contains matching product ID', ({ assert }) => {
+    const selector = new PublicationSelector(mockBoards, mockPins, mockShopifyProducts)
+    const pin: PinterestPin = {
+      id: 'test-pin',
+      board_id: 'board1',
+      link: 'https://example.com/products/test?shopify_product_id=product1',
+      alt_text: '',
+      is_removable: false,
+      creative_type: 'REGULAR',
+      board_owner: { username: 'test', full_name: 'Test User', id: '1' },
+      pin_metrics: null,
+      is_owner: true,
+      title: 'Test Pin',
+      product_tags: [],
+      created_at: new Date().toISOString(),
+      media: { type: 'image', url: '', width: 0, height: 0 },
+      board_section_id: null,
+      description: '',
+      dominant_color: '#000000',
+      is_standard: true,
+      parent_pin_id: null,
+      has_been_promoted: false,
+      note: '',
+    }
+
+    const result = selector['isPinForProduct'](pin, 'product1')
+    assert.isTrue(result)
+  })
+
+  test('should return false when pin link contains different product ID', ({ assert }) => {
+    const selector = new PublicationSelector(mockBoards, mockPins, mockShopifyProducts)
+    const pin: PinterestPin = {
+      id: 'test-pin',
+      board_id: 'board1',
+      link: 'https://example.com/products/test?shopify_product_id=product1',
+      alt_text: '',
+      is_removable: false,
+      creative_type: 'REGULAR',
+      board_owner: { username: 'test', full_name: 'Test User', id: '1' },
+      pin_metrics: null,
+      is_owner: true,
+      title: 'Test Pin',
+      product_tags: [],
+      created_at: new Date().toISOString(),
+      media: { type: 'image', url: '', width: 0, height: 0 },
+      board_section_id: null,
+      description: '',
+      dominant_color: '#000000',
+      is_standard: true,
+      parent_pin_id: null,
+      has_been_promoted: false,
+      note: '',
+    }
+
+    const result = selector['isPinForProduct'](pin, 'product2')
+    assert.isFalse(result)
+  })
+
+  test('should return false when pin link has no shopify_product_id parameter', ({ assert }) => {
+    const selector = new PublicationSelector(mockBoards, mockPins, mockShopifyProducts)
+    const pin: PinterestPin = {
+      id: 'test-pin',
+      board_id: 'board1',
+      link: 'https://example.com/products/test',
+      alt_text: '',
+      is_removable: false,
+      creative_type: 'REGULAR',
+      board_owner: { username: 'test', full_name: 'Test User', id: '1' },
+      pin_metrics: null,
+      is_owner: true,
+      title: 'Test Pin',
+      product_tags: [],
+      created_at: new Date().toISOString(),
+      media: { type: 'image', url: '', width: 0, height: 0 },
+      board_section_id: null,
+      description: '',
+      dominant_color: '#000000',
+      is_standard: true,
+      parent_pin_id: null,
+      has_been_promoted: false,
+      note: '',
+    }
+
+    const result = selector['isPinForProduct'](pin, 'product1')
+    assert.isFalse(result)
+  })
+
+  test('should return false when pin link has empty shopify_product_id parameter', ({ assert }) => {
+    const selector = new PublicationSelector(mockBoards, mockPins, mockShopifyProducts)
+    const pin: PinterestPin = {
+      id: 'test-pin',
+      board_id: 'board1',
+      link: 'https://example.com/products/test?shopify_product_id=',
+      alt_text: '',
+      is_removable: false,
+      creative_type: 'REGULAR',
+      board_owner: { username: 'test', full_name: 'Test User', id: '1' },
+      pin_metrics: null,
+      is_owner: true,
+      title: 'Test Pin',
+      product_tags: [],
+      created_at: new Date().toISOString(),
+      media: { type: 'image', url: '', width: 0, height: 0 },
+      board_section_id: null,
+      description: '',
+      dominant_color: '#000000',
+      is_standard: true,
+      parent_pin_id: null,
+      has_been_promoted: false,
+      note: '',
+    }
+
+    const result = selector['isPinForProduct'](pin, 'product1')
+    assert.isFalse(result)
+  })
+
+  test('should return false when pin link is invalid URL', ({ assert }) => {
+    const selector = new PublicationSelector(mockBoards, mockPins, mockShopifyProducts)
+    const pin: PinterestPin = {
+      id: 'test-pin',
+      board_id: 'board1',
+      link: 'invalid-url',
+      alt_text: '',
+      is_removable: false,
+      creative_type: 'REGULAR',
+      board_owner: { username: 'test', full_name: 'Test User', id: '1' },
+      pin_metrics: null,
+      is_owner: true,
+      title: 'Test Pin',
+      product_tags: [],
+      created_at: new Date().toISOString(),
+      media: { type: 'image', url: '', width: 0, height: 0 },
+      board_section_id: null,
+      description: '',
+      dominant_color: '#000000',
+      is_standard: true,
+      parent_pin_id: null,
+      has_been_promoted: false,
+      note: '',
+    }
+
+    const result = selector['isPinForProduct'](pin, 'product1')
+    assert.isFalse(result)
+  })
+
+  test('should return false when pin link is empty string', ({ assert }) => {
+    const selector = new PublicationSelector(mockBoards, mockPins, mockShopifyProducts)
+    const pin: PinterestPin = {
+      id: 'test-pin',
+      board_id: 'board1',
+      link: '',
+      alt_text: '',
+      is_removable: false,
+      creative_type: 'REGULAR',
+      board_owner: { username: 'test', full_name: 'Test User', id: '1' },
+      pin_metrics: null,
+      is_owner: true,
+      title: 'Test Pin',
+      product_tags: [],
+      created_at: new Date().toISOString(),
+      media: { type: 'image', url: '', width: 0, height: 0 },
+      board_section_id: null,
+      description: '',
+      dominant_color: '#000000',
+      is_standard: true,
+      parent_pin_id: null,
+      has_been_promoted: false,
+      note: '',
+    }
+
+    const result = selector['isPinForProduct'](pin, 'product1')
+    assert.isFalse(result)
+  })
+
+  test('should handle URL with multiple query parameters', ({ assert }) => {
+    const selector = new PublicationSelector(mockBoards, mockPins, mockShopifyProducts)
+    const pin: PinterestPin = {
+      id: 'test-pin',
+      board_id: 'board1',
+      link: 'https://example.com/products/test?param1=value1&shopify_product_id=product1&param2=value2',
+      alt_text: '',
+      is_removable: false,
+      creative_type: 'REGULAR',
+      board_owner: { username: 'test', full_name: 'Test User', id: '1' },
+      pin_metrics: null,
+      is_owner: true,
+      title: 'Test Pin',
+      product_tags: [],
+      created_at: new Date().toISOString(),
+      media: { type: 'image', url: '', width: 0, height: 0 },
+      board_section_id: null,
+      description: '',
+      dominant_color: '#000000',
+      is_standard: true,
+      parent_pin_id: null,
+      has_been_promoted: false,
+      note: '',
+    }
+
+    const result = selector['isPinForProduct'](pin, 'product1')
+    assert.isTrue(result)
+  })
+
+  test('should handle URL with hash fragment', ({ assert }) => {
+    const selector = new PublicationSelector(mockBoards, mockPins, mockShopifyProducts)
+    const pin: PinterestPin = {
+      id: 'test-pin',
+      board_id: 'board1',
+      link: 'https://example.com/products/test?shopify_product_id=product1#section',
+      alt_text: '',
+      is_removable: false,
+      creative_type: 'REGULAR',
+      board_owner: { username: 'test', full_name: 'Test User', id: '1' },
+      pin_metrics: null,
+      is_owner: true,
+      title: 'Test Pin',
+      product_tags: [],
+      created_at: new Date().toISOString(),
+      media: { type: 'image', url: '', width: 0, height: 0 },
+      board_section_id: null,
+      description: '',
+      dominant_color: '#000000',
+      is_standard: true,
+      parent_pin_id: null,
+      has_been_promoted: false,
+      note: '',
+    }
+
+    const result = selector['isPinForProduct'](pin, 'product1')
+    assert.isTrue(result)
+  })
+
+  test('should handle URL-encoded product IDs', ({ assert }) => {
+    const selector = new PublicationSelector(mockBoards, mockPins, mockShopifyProducts)
+    const pin: PinterestPin = {
+      id: 'test-pin',
+      board_id: 'board1',
+      link: 'https://example.com/products/test?shopify_product_id=gid%3A%2F%2Fshopify%2FProduct%2F123456789',
+      alt_text: '',
+      is_removable: false,
+      creative_type: 'REGULAR',
+      board_owner: { username: 'test', full_name: 'Test User', id: '1' },
+      pin_metrics: null,
+      is_owner: true,
+      title: 'Test Pin',
+      product_tags: [],
+      created_at: new Date().toISOString(),
+      media: { type: 'image', url: '', width: 0, height: 0 },
+      board_section_id: null,
+      description: '',
+      dominant_color: '#000000',
+      is_standard: true,
+      parent_pin_id: null,
+      has_been_promoted: false,
+      note: '',
+    }
+
+    const result = selector['isPinForProduct'](pin, 'gid://shopify/Product/123456789')
+    assert.isTrue(result)
+  })
+
+  test('should return false for null product ID', ({ assert }) => {
+    const selector = new PublicationSelector(mockBoards, mockPins, mockShopifyProducts)
+    const pin: PinterestPin = {
+      id: 'test-pin',
+      board_id: 'board1',
+      link: 'https://example.com/products/test?shopify_product_id=product1',
+      alt_text: '',
+      is_removable: false,
+      creative_type: 'REGULAR',
+      board_owner: { username: 'test', full_name: 'Test User', id: '1' },
+      pin_metrics: null,
+      is_owner: true,
+      title: 'Test Pin',
+      product_tags: [],
+      created_at: new Date().toISOString(),
+      media: { type: 'image', url: '', width: 0, height: 0 },
+      board_section_id: null,
+      description: '',
+      dominant_color: '#000000',
+      is_standard: true,
+      parent_pin_id: null,
+      has_been_promoted: false,
+      note: '',
+    }
+
+    const result = selector['isPinForProduct'](pin, null as any)
+    assert.isFalse(result)
+  })
+
+  test('should return false for undefined product ID', ({ assert }) => {
+    const selector = new PublicationSelector(mockBoards, mockPins, mockShopifyProducts)
+    const pin: PinterestPin = {
+      id: 'test-pin',
+      board_id: 'board1',
+      link: 'https://example.com/products/test?shopify_product_id=product1',
+      alt_text: '',
+      is_removable: false,
+      creative_type: 'REGULAR',
+      board_owner: { username: 'test', full_name: 'Test User', id: '1' },
+      pin_metrics: null,
+      is_owner: true,
+      title: 'Test Pin',
+      product_tags: [],
+      created_at: new Date().toISOString(),
+      media: { type: 'image', url: '', width: 0, height: 0 },
+      board_section_id: null,
+      description: '',
+      dominant_color: '#000000',
+      is_standard: true,
+      parent_pin_id: null,
+      has_been_promoted: false,
+      note: '',
+    }
+
+    const result = selector['isPinForProduct'](pin, undefined as any)
+    assert.isFalse(result)
+  })
+
+  test('should return product with least pins when multiple products have different pin counts', ({
+    assert,
+  }) => {
+    const selector = new PublicationSelector(mockBoards, mockPins, mockShopifyProducts)
+
+    // Create recommendations for testing
+    const recommendations = [
+      { productId: 'product1', boardIds: ['board1', 'board2'] },
+      { productId: 'product2', boardIds: ['board1', 'board2'] },
+      { productId: 'product3', boardIds: ['board1', 'board2'] },
+    ] as PinterestBoardRecommendation[]
+
+    const result = selector['getLeastPublishedProduct'](recommendations)
+
+    // product1 has 2 pins, product2 has 2 pins, product3 has 0 pins
+    // So product3 should be selected as it has the least pins
+    assert.equal(result.productId, 'product3')
+  })
+
+  test('should return first product when multiple products have same pin count', ({ assert }) => {
+    const selector = new PublicationSelector(mockBoards, mockPins, mockShopifyProducts)
+
+    // Create recommendations for testing
+    const recommendations = [
+      { productId: 'product1', boardIds: ['board1', 'board2'] },
+      { productId: 'product2', boardIds: ['board1', 'board2'] },
+    ] as PinterestBoardRecommendation[]
+
+    const result = selector['getLeastPublishedProduct'](recommendations)
+
+    // Both product1 and product2 have 2 pins, so the first one should be returned
+    assert.equal(result.productId, 'product1')
+  })
+
+  test('should return single product when only one product is provided', ({ assert }) => {
+    const selector = new PublicationSelector(mockBoards, mockPins, mockShopifyProducts)
+
+    const recommendations = [
+      { productId: 'product1', boardIds: ['board1', 'board2'] },
+    ] as PinterestBoardRecommendation[]
+
+    const result = selector['getLeastPublishedProduct'](recommendations)
+
+    assert.equal(result.productId, 'product1')
+  })
+
+  test('should return undefined when no products are provided', ({ assert }) => {
+    const selector = new PublicationSelector(mockBoards, mockPins, mockShopifyProducts)
+
+    const recommendations: PinterestBoardRecommendation[] = []
+
+    const result = selector['getLeastPublishedProduct'](recommendations)
+
+    assert.isUndefined(result)
+  })
+
+  test('should handle products with zero pins', ({ assert }) => {
+    const selector = new PublicationSelector(mockBoards, mockPins, mockShopifyProducts)
+
+    const recommendations = [
+      { productId: 'product1', boardIds: ['board1', 'board2'] }, // 2 pins
+      { productId: 'product2', boardIds: ['board1', 'board2'] }, // 2 pins
+      { productId: 'product3', boardIds: ['board1', 'board2'] }, // 0 pins
+      { productId: 'product4', boardIds: ['board1', 'board2'] }, // 0 pins
+    ] as PinterestBoardRecommendation[]
+
+    const result = selector['getLeastPublishedProduct'](recommendations)
+
+    // Should return the first product with 0 pins
+    assert.equal(result.productId, 'product3')
+  })
+
+  test('should handle products with many pins', ({ assert }) => {
+    // Add more pins for product1 to test with higher numbers
+    const pinsWithManyPins = [
+      ...mockPins,
+      {
+        id: 'pin5',
+        board_id: 'board3',
+        link: 'https://example.com?shopify_product_id=product1',
+        alt_text: '',
+        is_removable: false,
+        creative_type: 'REGULAR',
+        board_owner: { username: 'test', full_name: 'Test User', id: '1' },
+        pin_metrics: null,
+        is_owner: true,
+        title: 'Test Pin',
+        product_tags: [],
+        created_at: new Date().toISOString(),
+        media: { type: 'image', url: '', width: 0, height: 0 },
+        board_section_id: null,
+        description: '',
+        dominant_color: '#000000',
+        is_standard: true,
+        parent_pin_id: null,
+        has_been_promoted: false,
+        note: '',
+      },
+      {
+        id: 'pin6',
+        board_id: 'board3',
+        link: 'https://example.com?shopify_product_id=product1',
+        alt_text: '',
+        is_removable: false,
+        creative_type: 'REGULAR',
+        board_owner: { username: 'test', full_name: 'Test User', id: '1' },
+        pin_metrics: null,
+        is_owner: true,
+        title: 'Test Pin',
+        product_tags: [],
+        created_at: new Date().toISOString(),
+        media: { type: 'image', url: '', width: 0, height: 0 },
+        board_section_id: null,
+        description: '',
+        dominant_color: '#000000',
+        is_standard: true,
+        parent_pin_id: null,
+        has_been_promoted: false,
+        note: '',
+      },
+    ]
+
+    const selectorWithManyPins = new PublicationSelector(
+      mockBoards,
+      pinsWithManyPins,
+      mockShopifyProducts
+    )
+
+    const recommendations = [
+      { productId: 'product1', boardIds: ['board1', 'board2'] }, // 4 pins
+      { productId: 'product2', boardIds: ['board1', 'board2'] }, // 2 pins
+      { productId: 'product3', boardIds: ['board1', 'board2'] }, // 0 pins
+    ] as PinterestBoardRecommendation[]
+
+    const result = selectorWithManyPins['getLeastPublishedProduct'](recommendations)
+
+    // product3 should be selected as it has the least pins (0)
+    assert.equal(result.productId, 'product3')
+  })
+
+  test('should handle products with pins that have invalid URLs', ({ assert }) => {
+    // Add a pin with invalid URL for product1
+    const pinsWithInvalidUrls = [
+      ...mockPins,
+      {
+        id: 'pin5',
+        board_id: 'board3',
+        link: 'invalid-url', // This will cause isPinForProduct to return false
+        alt_text: '',
+        is_removable: false,
+        creative_type: 'REGULAR',
+        board_owner: { username: 'test', full_name: 'Test User', id: '1' },
+        pin_metrics: null,
+        is_owner: true,
+        title: 'Test Pin',
+        product_tags: [],
+        created_at: new Date().toISOString(),
+        media: { type: 'image', url: '', width: 0, height: 0 },
+        board_section_id: null,
+        description: '',
+        dominant_color: '#000000',
+        is_standard: true,
+        parent_pin_id: null,
+        has_been_promoted: false,
+        note: '',
+      },
+    ]
+
+    const selectorWithInvalidUrls = new PublicationSelector(
+      mockBoards,
+      pinsWithInvalidUrls,
+      mockShopifyProducts
+    )
+
+    const recommendations = [
+      { productId: 'product1', boardIds: ['board1', 'board2'] }, // Still 2 valid pins
+      { productId: 'product2', boardIds: ['board1', 'board2'] }, // 2 pins
+      { productId: 'product3', boardIds: ['board1', 'board2'] }, // 0 pins
+    ] as PinterestBoardRecommendation[]
+
+    const result = selectorWithInvalidUrls['getLeastPublishedProduct'](recommendations)
+
+    // product3 should still be selected as it has the least pins (0)
+    assert.equal(result.productId, 'product3')
+  })
+
+  test('should handle products with pins that have no shopify_product_id parameter', ({
+    assert,
+  }) => {
+    // Add a pin without shopify_product_id parameter for product1
+    const pinsWithoutProductId = [
+      ...mockPins,
+      {
+        id: 'pin5',
+        board_id: 'board3',
+        link: 'https://example.com/products/test', // No shopify_product_id parameter
+        alt_text: '',
+        is_removable: false,
+        creative_type: 'REGULAR',
+        board_owner: { username: 'test', full_name: 'Test User', id: '1' },
+        pin_metrics: null,
+        is_owner: true,
+        title: 'Test Pin',
+        product_tags: [],
+        created_at: new Date().toISOString(),
+        media: { type: 'image', url: '', width: 0, height: 0 },
+        board_section_id: null,
+        description: '',
+        dominant_color: '#000000',
+        is_standard: true,
+        parent_pin_id: null,
+        has_been_promoted: false,
+        note: '',
+      },
+    ]
+
+    const selectorWithoutProductId = new PublicationSelector(
+      mockBoards,
+      pinsWithoutProductId,
+      mockShopifyProducts
+    )
+
+    const recommendations = [
+      { productId: 'product1', boardIds: ['board1', 'board2'] }, // Still 2 valid pins
+      { productId: 'product2', boardIds: ['board1', 'board2'] }, // 2 pins
+      { productId: 'product3', boardIds: ['board1', 'board2'] }, // 0 pins
+    ] as PinterestBoardRecommendation[]
+
+    const result = selectorWithoutProductId['getLeastPublishedProduct'](recommendations)
+
+    // product3 should still be selected as it has the least pins (0)
+    assert.equal(result.productId, 'product3')
+  })
+
+  test('should handle products with pins that have different shopify_product_id values', ({
+    assert,
+  }) => {
+    // Add a pin with different shopify_product_id for product1
+    const pinsWithDifferentProductId = [
+      ...mockPins,
+      {
+        id: 'pin5',
+        board_id: 'board3',
+        link: 'https://example.com?shopify_product_id=product4', // Different product ID
+        alt_text: '',
+        is_removable: false,
+        creative_type: 'REGULAR',
+        board_owner: { username: 'test', full_name: 'Test User', id: '1' },
+        pin_metrics: null,
+        is_owner: true,
+        title: 'Test Pin',
+        product_tags: [],
+        created_at: new Date().toISOString(),
+        media: { type: 'image', url: '', width: 0, height: 0 },
+        board_section_id: null,
+        description: '',
+        dominant_color: '#000000',
+        is_standard: true,
+        parent_pin_id: null,
+        has_been_promoted: false,
+        note: '',
+      },
+    ]
+
+    const selectorWithDifferentProductId = new PublicationSelector(
+      mockBoards,
+      pinsWithDifferentProductId,
+      mockShopifyProducts
+    )
+
+    const recommendations = [
+      { productId: 'product1', boardIds: ['board1', 'board2'] }, // Still 2 valid pins
+      { productId: 'product2', boardIds: ['board1', 'board2'] }, // 2 pins
+      { productId: 'product3', boardIds: ['board1', 'board2'] }, // 0 pins
+    ] as PinterestBoardRecommendation[]
+
+    const result = selectorWithDifferentProductId['getLeastPublishedProduct'](recommendations)
+
+    // product3 should still be selected as it has the least pins (0)
+    assert.equal(result.productId, 'product3')
+  })
 })
