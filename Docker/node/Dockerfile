@@ -24,13 +24,18 @@ RUN npm run build
 # Utilisez l'image officielle Node.js avec une version alpine pour la légèreté
 FROM node:20-alpine
 
+# Set timezone to France
+ENV TZ=Europe/Paris
+
 # Installez dockerize pour attendre que la base de données soit prête
 ENV DOCKERIZE_VERSION v0.7.0
 
 RUN apk update --no-cache \
-    && apk add --no-cache wget openssl \
+    && apk add --no-cache wget openssl tzdata \
     && wget -O - https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz | tar xzf - -C /usr/local/bin \
-    && apk del wget
+    && apk del wget \
+    && cp /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone
 
 # Définissez le répertoire de travail dans le conteneur
 WORKDIR /usr/src/app

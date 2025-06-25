@@ -1,8 +1,13 @@
 # Utilisez l'image officielle Nginx Alpine pour la légèreté et la sécurité
 FROM nginx:alpine
 
-# Install inotify-tools for watching certificate changes
-RUN apk add --no-cache inotify-tools
+# Set timezone to France
+ENV TZ=Europe/Paris
+
+# Install inotify-tools for watching certificate changes and timezone data
+RUN apk add --no-cache inotify-tools tzdata \
+    && cp /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone
 
 # Supprimez le fichier de configuration par défaut fourni par Nginx
 RUN rm /etc/nginx/conf.d/default.conf

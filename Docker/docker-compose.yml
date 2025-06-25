@@ -7,6 +7,7 @@ services:
     environment:
       - MYSQL_HOST=db
       - MYSQL_PORT=3306
+      - TZ=Europe/Paris
     depends_on:
       db:
         condition: service_healthy
@@ -14,6 +15,8 @@ services:
 
   nginx:
     image: ${DOCKERHUB_USERNAME}/nginx:latest
+    environment:
+      - TZ=Europe/Paris
     ports:
       - '80:80'
       - '443:443' 
@@ -27,6 +30,8 @@ services:
 
   certbot:
     image: certbot/certbot
+    environment:
+      - TZ=Europe/Paris
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt
       - /var/lib/letsencrypt:/var/lib/letsencrypt
@@ -40,6 +45,7 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DB_NAME}
       MYSQL_INIT_COMMAND: "SET GLOBAL host_cache_size=0"
+      TZ: Europe/Paris
     volumes:
       - db-data:/var/lib/mysql
     ports:
