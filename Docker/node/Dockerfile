@@ -28,7 +28,7 @@ FROM node:20-alpine
 ENV TZ=Europe/Paris
 
 # Installez dockerize pour attendre que la base de données soit prête
-ENV DOCKERIZE_VERSION v0.7.0
+ENV DOCKERIZE_VERSION=v0.7.0
 
 RUN apk update --no-cache \
     && apk add --no-cache wget openssl tzdata \
@@ -46,7 +46,7 @@ COPY --from=builder /usr/src/app/ecosystem.config.js .
 COPY --from=builder /usr/src/app/init.sh .
 
 # Installez les dépendances en utilisant npm ci pour une installation plus rapide et fiable
-RUN npm ci --production --legacy-peer-deps
+RUN npm ci --omit=dev --legacy-peer-deps
 RUN npm install pm2 -g
 
 # Exposez le port sur lequel votre app va tourner
