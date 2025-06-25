@@ -14,27 +14,31 @@ export default class PublishPinterestPin extends BaseTask {
   }
 
   public async handle() {
-    logTaskBoundary(true, 'Publish Pinterest Pin')
+    try {
+      logTaskBoundary(true, 'Publish Pinterest Pin')
 
-    const shopify = new Shopify()
-    const products = await shopify.product.getAll()
+      const shopify = new Shopify()
+      const products = await shopify.product.getAll()
 
-    const pinterest = new Pinterest(products)
-    await pinterest.initialize()
+      const pinterest = new Pinterest(products)
+      await pinterest.initialize()
 
-    await pinterest.newProductHandler.processNewProducts()
-    await pinterest.updateProductHandler.refreshBoardRecommendations()
-    const { product, board } = await pinterest.publicationSelector.selectNextProductToPublish()
+      await pinterest.newProductHandler.processNewProducts()
+      await pinterest.updateProductHandler.refreshBoardRecommendations()
+      const { product, board } = await pinterest.publicationSelector.selectNextProductToPublish()
 
-    const pinPayload = await pinterest.pinFormatter.buildPinPayload(product, board)
-    const pin = await pinterest.poster.publishPin(pinPayload)
+      const pinPayload = await pinterest.pinFormatter.buildPinPayload(product, board)
+      const pin = await pinterest.poster.publishPin(pinPayload)
 
-    await pinterest.pinFormatter.removeImage(pinPayload.media_source.url)
+      await pinterest.pinFormatter.removeImage(pinPayload.media_source.url)
 
-    console.log('🚀 ~ pin published:', pin)
-    console.log('============================')
-    console.log('✅ Pinterest Pin published')
-
-    logTaskBoundary(false, 'Publish Pinterest Pin')
+      console.log('🚀 ~ pin published:', pin)
+      console.log('============================')
+      console.log('✅ Pinterest Pin published')
+    } catch (error) {
+      console.log('❌ Pinterest Pin no published')
+    } finally {
+      logTaskBoundary(false, 'Publish Pinterest Pin')
+    }
   }
 }

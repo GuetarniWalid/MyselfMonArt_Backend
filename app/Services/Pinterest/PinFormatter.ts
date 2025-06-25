@@ -71,8 +71,8 @@ export default class PinFormatter {
 
   private async addBorder(imageBuffer: Buffer, board: Board): Promise<Buffer> {
     const borderColor = this.chooseBorderColor(board)
-    const offsetRatio = 0.035
-    const strokeRatio = 0.01
+    const offset = 50
+    const strokeWidth = 15
 
     // Load image from buffer
     const image = sharp(imageBuffer)
@@ -81,9 +81,6 @@ export default class PinFormatter {
     if (!width || !height) {
       throw new Error('Invalid image dimensions')
     }
-
-    const offset = width * offsetRatio
-    const strokeWidth = width * strokeRatio
 
     const svg = `
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
