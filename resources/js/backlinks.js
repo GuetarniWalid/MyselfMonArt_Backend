@@ -195,23 +195,19 @@ async function updateGridData(payload) {
 }
 
 function isValidUrl(url) {
-  const pattern = new RegExp(
-    '^(https?:\\/\\/)' + // protocole (obligatoire)
-      '((([a-z\\d]([a-z\\d-]*[a-z\\d])*)\\.)+[a-z]{2,}|' + // nom de domaine
-      '((\\d{1,3}\\.){3}\\d{1,3}))' + // OU une adresse IP (v4)
-      '(\\:\\d+)?(\\/[-a-z\\d%_.~+]*)*' + // port et chemin
-      '(\\?[;&a-z\\d%_.~+=-]*)?' + // query string
-      '(\\#[-a-z\\d_]*)?$',
-    'i'
-  ) // fragment locator
-  return !!pattern.test(url)
+  try {
+    new URL(url)
+    return true
+  } catch {
+    return false
+  }
 }
 
 async function copyLinkElement(e, content) {
   try {
     const elemClicked = e.target
     const isCellUrl = elemClicked.classList.contains('url')
-    const isCopyButton = elemClicked.closest('.copy-content') !== undefined
+    const isCopyButton = !!elemClicked.closest('.copy-content')
 
     if (isCellUrl) {
       window.open(content)
@@ -226,8 +222,8 @@ async function copyLinkElement(e, content) {
 async function deleteLinkElement(e, cells) {
   try {
     const elemClicked = e.target
-    const deleteButton = elemClicked.closest('.delete')
-    const isdeleteButton = deleteButton !== undefined
+    const deleteButton = elemClicked?.closest('.delete')
+    const isdeleteButton = !!deleteButton
 
     if (isdeleteButton) {
       const cell = deleteButton.closest('td')

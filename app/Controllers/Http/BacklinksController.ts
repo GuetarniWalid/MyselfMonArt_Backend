@@ -35,17 +35,13 @@ export default class BacklinksController {
     await this.analyseLinksOnSite(urls)
   }
 
-  private isValidUrl(url) {
-    const pattern = new RegExp(
-      '^(https?:\\/\\/)' + // protocole (obligatoire)
-        '((([a-z\\d]([a-z\\d-]*[a-z\\d])*)\\.)+[a-z]{2,}|' + // nom de domaine
-        '((\\d{1,3}\\.){3}\\d{1,3}))' + // OU une adresse IP (v4)
-        '(\\:\\d+)?(\\/[-a-z\\d%_.~+]*)*' + // port et chemin
-        '(\\?[;&a-z\\d%_.~+=-]*)?' + // query string
-        '(\\#[-a-z\\d_]*)?$',
-      'i'
-    ) // fragment locator
-    return !!pattern.test(url)
+  private isValidUrl(url: string): boolean {
+    try {
+      new URL(url)
+      return true
+    } catch {
+      return false
+    }
   }
 
   private async analyseLinksOnSite(urls: string[]) {

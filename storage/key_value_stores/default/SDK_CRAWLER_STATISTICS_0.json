@@ -1,25 +1,52 @@
 {
   "requestsFinished": 0,
-  "requestsFailed": 0,
-  "requestsRetries": 0,
-  "requestsFailedPerMinute": 0,
+  "requestsFailed": 1,
+  "requestsRetries": 1,
+  "requestsFailedPerMinute": 4,
   "requestsFinishedPerMinute": 0,
   "requestMinDurationMillis": null,
   "requestMaxDurationMillis": 0,
-  "requestTotalFailedDurationMillis": 0,
+  "requestTotalFailedDurationMillis": 358,
   "requestTotalFinishedDurationMillis": 0,
-  "crawlerStartedAt": "2024-10-23T19:32:30.124Z",
-  "crawlerFinishedAt": "2024-10-23T19:32:30.351Z",
-  "statsPersistedAt": "2024-10-23T19:32:30.351Z",
-  "crawlerRuntimeMillis": 251,
-  "crawlerLastStartTimestamp": 1729711950100,
-  "requestRetryHistogram": [],
+  "crawlerStartedAt": "2025-06-29T14:24:21.976Z",
+  "crawlerFinishedAt": "2025-06-29T14:24:34.404Z",
+  "statsPersistedAt": "2025-06-29T14:24:34.404Z",
+  "crawlerRuntimeMillis": 12536,
+  "crawlerLastStartTimestamp": 1751207061868,
+  "requestRetryHistogram": [
+    null,
+    null,
+    null,
+    1
+  ],
   "statsId": 0,
-  "requestAvgFailedDurationMillis": null,
+  "requestAvgFailedDurationMillis": 358,
   "requestAvgFinishedDurationMillis": null,
-  "requestTotalDurationMillis": 0,
-  "requestsTotal": 0,
-  "requestsWithStatusCode": {},
-  "errors": {},
-  "retryErrors": {}
+  "requestTotalDurationMillis": 358,
+  "requestsTotal": 1,
+  "requestsWithStatusCode": {
+    "401": 4
+  },
+  "errors": {
+    "C:\\Users\\gueta\\Documents\\Mes_projets\\MyselfMonArt_Backend\\node_modules\\@crawlee\\src\\internals\\basic-crawler.ts:1051:19": {
+      "missing error code": {
+        "Error": {
+          "Request blocked - received 401 status code.": {
+            "count": 1
+          }
+        }
+      }
+    }
+  },
+  "retryErrors": {
+    "C:\\Users\\gueta\\Documents\\Mes_projets\\MyselfMonArt_Backend\\node_modules\\@crawlee\\src\\internals\\basic-crawler.ts:1051:19": {
+      "missing error code": {
+        "Error": {
+          "Request blocked - received 401 status code.": {
+            "count": 3
+          }
+        }
+      }
+    }
+  }
 }
