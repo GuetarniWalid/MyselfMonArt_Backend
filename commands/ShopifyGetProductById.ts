@@ -16,10 +16,7 @@ export default class ShopifyGetProductById extends BaseCommand {
     try {
       const productId = await this.askForProductId()
       const product = await shopify.product.getProductById(productId)
-      product.options[0].optionValues.forEach((option) => {
-        console.log('🚀 ~ Option id : ' + option.id)
-        console.log('🚀 ~ Option name : ' + option.name)
-      })
+      console.dir(product, { depth: null })
     } catch (error) {
       console.error('🚀 ~ Error getting product by ID', error)
     }
