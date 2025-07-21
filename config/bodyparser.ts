@@ -30,7 +30,7 @@ const bodyParserConfig: BodyParserConfig = {
   */
   json: {
     encoding: 'utf-8',
-    limit: '1mb',
+    limit: '50mb', // Increased from '1mb' to handle large base64 images
     strict: true,
     types: [
       'application/json',

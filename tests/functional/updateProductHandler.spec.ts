@@ -27,6 +27,7 @@ test.group('UpdateProductHandler', (group) => {
         templateSuffix: '',
         vendor: 'Test Vendor',
         onlineStoreUrl: '',
+        productType: '',
       },
     ]
 
@@ -84,6 +85,7 @@ test.group('UpdateProductHandler', (group) => {
         templateSuffix: '',
         vendor: 'Test Vendor',
         onlineStoreUrl: '',
+        productType: '',
       },
     ]
 
@@ -153,6 +155,7 @@ test.group('UpdateProductHandler', (group) => {
         templateSuffix: '',
         vendor: 'Test Vendor',
         onlineStoreUrl: '',
+        productType: '',
       },
     ]
 
@@ -225,6 +228,7 @@ test.group('UpdateProductHandler', (group) => {
         templateSuffix: '',
         vendor: 'Test Vendor',
         onlineStoreUrl: '',
+        productType: '',
       },
     ]
 

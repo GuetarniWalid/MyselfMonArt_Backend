@@ -47,7 +47,7 @@ const corsConfig: CorsConfig = {
   */
   origin:
     Env.get('NODE_ENV') === 'production'
-      ? [Env.get('FRONTEND_URL'), Env.get('SHOPIFY_SHOP_URL')]
+      ? [Env.get('FRONTEND_URL'), Env.get('SHOPIFY_SHOP_URL'), 'https://www.midjourney.com']
       : '*',
 
   /*

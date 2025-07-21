@@ -1,3 +1,26 @@
+export type CreateProduct = {
+  title: string
+  descriptionHtml: string
+  handle: string
+  productType: string
+  tags: string[]
+  seo?: {
+    title: string
+    description: string
+  }
+  media?: {
+    src: string
+    alt: string
+  }[]
+  metafields: {
+    namespace: string
+    key: string
+    value: string
+    type: string
+  }[]
+  templateSuffix?: 'painting' | 'tapestry'
+}
+
 export type Image = {
   src: string
   filename: string
@@ -126,6 +149,7 @@ export interface Product {
   title: string
   description: string
   handle: string
+  productType: string
   media: {
     nodes: {
       alt: string

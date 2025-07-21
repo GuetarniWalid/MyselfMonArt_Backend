@@ -74,6 +74,7 @@ test.group('NewProductHandler', (group) => {
       templateSuffix: '',
       vendor: 'Vendor',
       onlineStoreUrl: 'https://test.com/product1',
+      productType: '',
     },
     {
       id: 'product2',
@@ -88,6 +89,7 @@ test.group('NewProductHandler', (group) => {
       templateSuffix: '',
       vendor: 'Vendor',
       onlineStoreUrl: 'https://test.com/product2',
+      productType: '',
     },
   ]
 

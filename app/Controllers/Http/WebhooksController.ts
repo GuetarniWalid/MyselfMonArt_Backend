@@ -149,7 +149,7 @@ export default class WebhooksController {
     await this.handlePaintingCreate(id)
   }
 
-  private async handlePaintingCreate(id: string) {
+  public async handlePaintingCreate(id: string) {
     const shopify = new Shopify()
     const product = await shopify.product.getProductById(id)
     const canProcess = shopify.product.modelCopier.canProcessPaintingCreate(product)

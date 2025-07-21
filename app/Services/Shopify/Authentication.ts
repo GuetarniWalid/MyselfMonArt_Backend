@@ -19,22 +19,45 @@ export default class Authentication {
   }
 
   protected async fetchGraphQL(query: string, variables = {}) {
-    const response = await fetch(this.urlGraphQL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': this.accessToken,
-      },
-      body: JSON.stringify({ query, variables }),
-    })
+    try {
+      // Validate required environment variables
+      if (!this.shopUrl || !this.apiVersion || !this.accessToken) {
+        throw new Error(
+          `Missing Shopify configuration: shopUrl=${!!this.shopUrl}, apiVersion=${!!this.apiVersion}, accessToken=${!!this.accessToken}`
+        )
+      }
 
-    const responseBody = await response.json()
+      console.log(`Making GraphQL request to: ${this.urlGraphQL}`)
 
-    if (responseBody.errors) {
-      console.error('Shopify GraphQL errors:', responseBody.errors)
-      throw new Error('Failed to fetch Shopify GraphQL API')
+      const response = await fetch(this.urlGraphQL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Access-Token': this.accessToken,
+        },
+        body: JSON.stringify({ query, variables }),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`HTTP ${response.status}: ${errorText}`)
+      }
+
+      const responseBody = await response.json()
+
+      if (responseBody.errors) {
+        console.error('Shopify GraphQL errors:', JSON.stringify(responseBody.errors, null, 2))
+        const errorMessages = responseBody.errors.map((error: any) => error.message).join(', ')
+        throw new Error(`Shopify GraphQL API errors: ${errorMessages}`)
+      }
+
+      return responseBody.data
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error('GraphQL request failed:', error.message)
+        throw error
+      }
+      throw new Error(`Unexpected error in GraphQL request: ${error}`)
     }
-
-    return responseBody.data
   }
 }

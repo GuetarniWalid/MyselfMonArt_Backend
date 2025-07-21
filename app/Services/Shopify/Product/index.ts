@@ -4,6 +4,7 @@ import type {
   Product as ShopifyProduct,
   ProductByTag,
   ProductById,
+  CreateProduct,
 } from 'Types/Product'
 import Authentication from '../Authentication'
 import Metafield from '../Metafield'
@@ -16,6 +17,130 @@ export default class Product extends Authentication {
   constructor() {
     super()
     this.modelCopier = new ModelCopier()
+  }
+
+  public async create(product: CreateProduct) {
+    const { query, variables } = this.getCreateQuery(product)
+    const response = await this.fetchGraphQL(query, variables)
+
+    if (response.productCreate.userErrors?.length) {
+      throw new Error(response.productCreate.userErrors[0].message)
+    }
+
+    return response.productCreate.product as ShopifyProduct
+  }
+
+  private getCreateQuery(product: CreateProduct) {
+    return {
+      query: `mutation ProductCreate($product: ProductCreateInput!, $media: [CreateMediaInput!]) {
+        productCreate(product: $product, media: $media) {
+          product {
+            id
+            title
+            descriptionHtml
+            handle
+            tags
+            seo {
+              title
+              description
+            }
+            media(first: 10) {
+              nodes {
+                id
+                alt
+                mediaContentType
+                ... on MediaImage {
+                  image {
+                    width
+                    height
+                    url
+                  }
+                }
+              }
+            }
+            metafields(first: 10) {
+              edges {
+                node {
+                  id
+                  namespace
+                  key
+                  value
+                  type
+                }
+              }
+            }
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }`,
+      variables: {
+        product: {
+          title: product.title,
+          descriptionHtml: product.descriptionHtml,
+          handle: product.handle,
+          metafields:
+            product.metafields?.map((metafield) => ({
+              namespace: metafield.namespace,
+              key: metafield.key,
+              value: metafield.value,
+              type: metafield.type,
+            })) || [],
+          seo: product.seo,
+          status: 'ACTIVE',
+          productType: product.productType,
+          tags: product.tags,
+          templateSuffix: product.templateSuffix,
+        },
+        media:
+          product.media?.map((mediaItem) => ({
+            originalSource: mediaItem.src,
+            alt: mediaItem.alt,
+            mediaContentType: 'IMAGE',
+          })) || [],
+      },
+    }
+  }
+
+  public async deleteAllOptions(productId: string) {
+    const product = await this.getProductById(productId)
+    const optionIds = product.options.map((option) => option.id)
+    const deletedOptionsIds = await this.deleteOptions(productId, optionIds)
+    return deletedOptionsIds
+  }
+
+  public async deleteOptions(productId: string, optionIds: string[]) {
+    const { query, variables } = this.getDeleteOptionsQuery(productId, optionIds)
+    const response = await this.fetchGraphQL(query, variables)
+
+    if (response.userErrors?.length) {
+      throw new Error(response.userErrors[0].message)
+    }
+
+    return response.productOptionsDelete.deletedOptionsIds
+  }
+
+  private getDeleteOptionsQuery(productId: string, optionIds: string[]) {
+    return {
+      query: `
+        mutation productOptionsDelete($productId: ID!, $options: [ID!]!, $strategy: ProductOptionDeleteStrategy!) {
+          productOptionsDelete(productId: $productId, options: $options, strategy: $strategy) {
+            deletedOptionsIds
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+      `,
+      variables: {
+        productId,
+        options: optionIds,
+        strategy: 'POSITION',
+      },
+    }
   }
 
   public async getAll(): Promise<ShopifyProduct[]> {
@@ -53,6 +178,7 @@ export default class Product extends Authentication {
                       title
                       description
                       handle
+                      productType
                       hasOnlyDefaultVariant
                       media(first: 10, sortKey: POSITION) {
                         nodes {
@@ -113,65 +239,19 @@ export default class Product extends Authentication {
     }
   }
 
-  public async updateTapestryVariant(product: UpdateProductPainting | UpdateProductTapestry) {
-    const variant = new Variant()
-    if (product.type === 'tapestry') {
-      return variant.updateTapestry(product)
-    }
+  public async getAllProductTypes(): Promise<string[]> {
+    const allProducts = await this.getAll()
+    const allProductTypes = allProducts.map((product) => product.productType).filter(Boolean)
+    const uniqueProductTypes = [...new Set(allProductTypes)]
+    return uniqueProductTypes
   }
 
-  public async updateMetafieldLikesCount({
-    productId,
-    action,
-  }: {
-    productId: number
-    action: 'increment' | 'decrement'
-  }) {
-    const metafield = new Metafield()
-    const newCount =
-      action === 'increment'
-        ? await metafield.increment(productId, 'likes', 'number')
-        : await metafield.decrement(productId, 'likes', 'number')
-    return newCount
-  }
-
-  public async deleteAllOptions(productId: string) {
-    const product = await this.getProductById(productId)
-    const optionIds = product.options.map((option) => option.id)
-    const deletedOptionsIds = await this.deleteOptions(productId, optionIds)
-    return deletedOptionsIds
-  }
-
-  public async deleteOptions(productId: string, optionIds: string[]) {
-    const { query, variables } = this.getDeleteOptionsQuery(productId, optionIds)
-    const response = await this.fetchGraphQL(query, variables)
-
-    if (response.userErrors?.length) {
-      throw new Error(response.userErrors[0].message)
-    }
-
-    return response.productOptionsDelete.deletedOptionsIds
-  }
-
-  private getDeleteOptionsQuery(productId: string, optionIds: string[]) {
-    return {
-      query: `
-        mutation productOptionsDelete($productId: ID!, $options: [ID!]!, $strategy: ProductOptionDeleteStrategy!) {
-          productOptionsDelete(productId: $productId, options: $options, strategy: $strategy) {
-            deletedOptionsIds
-            userErrors {
-              field
-              message
-            }
-          }
-        }
-      `,
-      variables: {
-        productId,
-        options: optionIds,
-        strategy: 'POSITION',
-      },
-    }
+  public async getAllTags() {
+    const allProducts = await this.getAll()
+    const allProductTags = allProducts.map((product) => product.tags)
+    const flattenedTags = allProductTags.flat()
+    const uniqueTags = [...new Set(flattenedTags)]
+    return uniqueTags
   }
 
   public async getProductById(productId: string) {
@@ -490,8 +570,29 @@ export default class Product extends Authentication {
     }
   }
 
+  public async updateMetafieldLikesCount({
+    productId,
+    action,
+  }: {
+    productId: number
+    action: 'increment' | 'decrement'
+  }) {
+    const metafield = new Metafield()
+    const newCount =
+      action === 'increment'
+        ? await metafield.increment(productId, 'likes', 'number')
+        : await metafield.decrement(productId, 'likes', 'number')
+    return newCount
+  }
+
+  public async updateTapestryVariant(product: UpdateProductPainting | UpdateProductTapestry) {
+    const variant = new Variant()
+    if (product.type === 'tapestry') {
+      return variant.updateTapestry(product)
+    }
+  }
+
   public async updateVariant(productId: string, variantId: string, payload: any) {
-    console.log('🚀 ~ variantId:', variantId)
     const { query, variables } = this.getUpdateVariantQuery(productId, variantId, payload)
     const response = await this.fetchGraphQL(query, variables)
 

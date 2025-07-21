@@ -199,7 +199,7 @@
       },
       "commandPath": "./commands/TestTask",
       "commandName": "test:task",
-      "description": "Test task logic implementation",
+      "description": "Test image composition with background and shadow",
       "args": [],
       "aliases": [],
       "flags": []

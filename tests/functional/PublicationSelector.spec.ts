@@ -69,6 +69,7 @@ test.group('PublicationSelector', (group) => {
       templateSuffix: '',
       vendor: 'Test Vendor',
       onlineStoreUrl: '',
+      productType: '',
     },
     {
       id: 'product2',
@@ -83,6 +84,7 @@ test.group('PublicationSelector', (group) => {
       templateSuffix: '',
       vendor: 'Test Vendor',
       onlineStoreUrl: '',
+      productType: '',
     },
     {
       id: 'product3',
@@ -97,6 +99,7 @@ test.group('PublicationSelector', (group) => {
       templateSuffix: '',
       vendor: 'Test Vendor',
       onlineStoreUrl: '',
+      productType: '',
     },
   ]
 
