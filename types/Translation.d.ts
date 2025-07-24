@@ -2,8 +2,6 @@ import type { ProductToTranslate } from './Product'
 
 export type LanguageCode = 'en' | 'es' | 'de' | 'fr'
 
-export interface Translatable {}
-
 export type TranslatableContent = Partial<ProductToTranslate>
 
 export interface TranslationsRegister {

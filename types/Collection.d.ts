@@ -24,7 +24,7 @@ export interface CollectionWithOutdatedTranslations {
   }[]
 }
 
-export interface CollectionToTranslate extends Translatable {
+export interface CollectionToTranslate {
   id: string
   title: string
   descriptionHtml: string
@@ -73,6 +73,13 @@ export interface Collection {
       }
     }[]
   }
+  translations: {
+    key: string
+    locale: string
+    value: string
+    outdated: boolean
+    updatedAt: string
+  }[]
   seo: {
     title: string
     description: string

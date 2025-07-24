@@ -107,7 +107,7 @@ export interface Media {
   }[]
 }
 
-export interface ProductToTranslate extends Translatable {
+export interface ProductToTranslate {
   id: string
   title: string
   descriptionHtml: string
@@ -166,6 +166,8 @@ export interface Product {
       node: {
         namespace: string
         key: string
+        value: string
+        type: string
         reference?: {
           id?: string
           title?: string
@@ -187,8 +189,15 @@ export interface Product {
     title: string
     description: string
   }
-  templateSuffix: string | null
   tags: string[]
+  templateSuffix: string | null
+  translations: {
+    key: string
+    locale: string
+    value: string
+    outdated: boolean
+    updatedAt: string
+  }[]
   vendor: string
 }
 
@@ -321,6 +330,13 @@ export interface ProductById {
       id: string
       name: string
     }[]
+  }[]
+  translations: {
+    key: string
+    locale: string
+    value: string
+    outdated: boolean
+    updatedAt: string
   }[]
   variants: {
     nodes: {

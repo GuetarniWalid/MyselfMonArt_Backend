@@ -41,11 +41,13 @@ export default class Collection extends Authentication {
                         id
                         altText
                       }
-                      metafields(first: 10) {
+                      metafields(first: 250) {
                         edges {
                           node {
                             namespace
                             key
+                            value
+                            type
                             reference {
                               ... on Collection {
                                 title
@@ -55,12 +57,19 @@ export default class Collection extends Authentication {
                                 type
                                 field(key: "alts") {
                                   key
-                                  jsonValue
+                                  value
                                 }
                               }
                             }
                           }
                         }
+                      }
+                      translations(locale: "en") {
+                        key
+                        locale
+                        value
+                        outdated
+                        updatedAt
                       }
                       seo {
                         title

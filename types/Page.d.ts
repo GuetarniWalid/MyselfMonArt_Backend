@@ -12,7 +12,7 @@ export interface PageWithOutdatedTranslations {
   }[]
 }
 
-export interface PageToTranslate extends Translatable {
+export interface PageToTranslate {
   id: string
   title: string
   body: string
@@ -30,4 +30,27 @@ export interface Page {
   title: string
   body: string
   handle: string
+  metafields: {
+    edges: {
+      node: {
+        namespace: string
+        key: string
+        reference?: {
+          id?: string
+          title?: string
+          field?: {
+            key: string
+            jsonValue: string[]
+          }
+        }
+      }
+    }[]
+  }
+  translations: {
+    key: string
+    locale: string
+    value: string
+    outdated: boolean
+    updatedAt: string
+  }[]
 }

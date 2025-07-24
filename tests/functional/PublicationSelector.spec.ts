@@ -70,6 +70,7 @@ test.group('PublicationSelector', (group) => {
       vendor: 'Test Vendor',
       onlineStoreUrl: '',
       productType: '',
+      translations: [],
     },
     {
       id: 'product2',
@@ -85,6 +86,7 @@ test.group('PublicationSelector', (group) => {
       vendor: 'Test Vendor',
       onlineStoreUrl: '',
       productType: '',
+      translations: [],
     },
     {
       id: 'product3',
@@ -100,6 +102,7 @@ test.group('PublicationSelector', (group) => {
       vendor: 'Test Vendor',
       onlineStoreUrl: '',
       productType: '',
+      translations: [],
     },
   ]
 

@@ -3,6 +3,7 @@ import Collection from './Collection'
 import Discount from './Discount'
 import Metafield from './Metafield'
 import Metaobject from './Metaobject'
+import Page from './Page'
 import Product from './Product'
 import Publications from './Publications'
 import Shipping from './Shipping'
@@ -15,6 +16,7 @@ export default class Shopify {
   public discount: Discount
   public metafield: Metafield
   public metaobject: Metaobject
+  public page: Page
   public product: Product
   public publications: Publications
   public shipping: Shipping
@@ -26,6 +28,7 @@ export default class Shopify {
     this.discount = new Discount()
     this.metafield = new Metafield()
     this.metaobject = new Metaobject()
+    this.page = new Page()
     this.product = new Product()
     this.publications = new Publications()
     this.shipping = new Shipping()

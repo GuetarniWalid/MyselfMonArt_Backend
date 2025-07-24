@@ -193,11 +193,13 @@ export default class Product extends Authentication {
                           }
                         }
                       }
-                      metafields(first: 10) {
+                      metafields(first: 250) {
                         edges {
                           node {
                             namespace
                             key
+                            value
+                            type
                             reference {
                               ... on Collection {
                                 title
@@ -226,6 +228,13 @@ export default class Product extends Authentication {
                       }
                       tags
                       templateSuffix
+                      translations(locale: "en") {
+                        key
+                        locale
+                        value
+                        outdated
+                        updatedAt
+                      }
                       vendor
                     }
                     cursor
@@ -288,11 +297,13 @@ export default class Product extends Authentication {
             id
             value
           }
-          metafields(first: 10) {
+          metafields(first: 250) {
             edges {
               node {
                 namespace
                 key
+                value
+                type
                 reference {
                   ...on Metaobject {
                     id
@@ -331,6 +342,13 @@ export default class Product extends Authentication {
               name
             }
           }
+          translations(locale: "en") {
+            key
+            locale
+            value
+            outdated
+            updatedAt
+          }
           variants(first: 100) {
             nodes {
               id
@@ -351,7 +369,12 @@ export default class Product extends Authentication {
   public async update(productId: string, newValues: any) {
     const { query, variables } = this.getUpdateQuery(productId, newValues)
     const response = await this.fetchGraphQL(query, variables)
-    return response.productUpdate.product
+
+    if (response.productUpdate.userErrors?.length) {
+      throw new Error(response.productUpdate.userErrors[0].message)
+    }
+
+    return response.productUpdate.product as { id: string }
   }
 
   private getUpdateQuery(productId: string, newValues: any) {
@@ -360,6 +383,10 @@ export default class Product extends Authentication {
         productUpdate(input: $input) {
           product {
             id
+          }
+          userErrors {
+            field
+            message
           }
         }
       }`,

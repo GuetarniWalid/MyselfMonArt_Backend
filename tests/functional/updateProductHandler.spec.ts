@@ -28,6 +28,7 @@ test.group('UpdateProductHandler', (group) => {
         vendor: 'Test Vendor',
         onlineStoreUrl: '',
         productType: '',
+        translations: [],
       },
     ]
 
@@ -86,6 +87,7 @@ test.group('UpdateProductHandler', (group) => {
         vendor: 'Test Vendor',
         onlineStoreUrl: '',
         productType: '',
+        translations: [],
       },
     ]
 
@@ -156,6 +158,7 @@ test.group('UpdateProductHandler', (group) => {
         vendor: 'Test Vendor',
         onlineStoreUrl: '',
         productType: '',
+        translations: [],
       },
     ]
 
@@ -229,6 +232,7 @@ test.group('UpdateProductHandler', (group) => {
         vendor: 'Test Vendor',
         onlineStoreUrl: '',
         productType: '',
+        translations: [],
       },
     ]
 

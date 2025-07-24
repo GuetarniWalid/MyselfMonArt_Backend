@@ -75,6 +75,7 @@ test.group('NewProductHandler', (group) => {
       vendor: 'Vendor',
       onlineStoreUrl: 'https://test.com/product1',
       productType: '',
+      translations: [],
     },
     {
       id: 'product2',
@@ -90,6 +91,7 @@ test.group('NewProductHandler', (group) => {
       vendor: 'Vendor',
       onlineStoreUrl: 'https://test.com/product2',
       productType: '',
+      translations: [],
     },
   ]
 

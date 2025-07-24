@@ -3,20 +3,20 @@ import type { LanguageCode } from 'Types/Translation'
 import type { Page } from 'Types/Page'
 import type { Product } from 'Types/Product'
 import type { Resource as ResourceType } from 'Types/Resource'
-import { BaseCommand } from '@adonisjs/core/build/standalone'
 import { logTaskBoundary } from 'App/Utils/Logs'
 import Shopify from 'App/Services/Shopify'
+import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 
-export default class TestTask extends BaseCommand {
-  public static commandName = 'test:task'
-  public static description = 'Test task'
-
-  public static settings = {
-    loadApp: true,
-    stayAlive: false,
+export default class AddTranslationHandleMetafields extends BaseTask {
+  public static get schedule() {
+    return CronTimeV2.everyDayAt(1, 30)
   }
 
-  public async run() {
+  public static get useLock() {
+    return false
+  }
+
+  public async handle() {
     logTaskBoundary(true, 'Fill metafield translation handle')
     const languages: LanguageCode[] = ['fr', 'en']
 
