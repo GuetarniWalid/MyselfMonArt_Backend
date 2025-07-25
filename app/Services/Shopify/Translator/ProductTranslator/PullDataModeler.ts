@@ -1,16 +1,27 @@
 import type { ProductToTranslate, ProductWithOutdatedTranslations } from 'Types/Product'
-import type { LanguageCode, MetaobjectTranslation } from 'Types/Translation'
+import type { LanguageCode, MetaobjectTranslation, RegionCode } from 'Types/Translation'
 import DefaultPullDataModeler from '../PullDataModeler'
+import Utils from '../Utils'
 
 export default class PullDataModeler extends DefaultPullDataModeler {
-  public async getResourceOutdatedTranslations() {
+  private utils: Utils
+
+  constructor() {
+    super()
+    this.utils = new Utils()
+  }
+  public async getResourceOutdatedTranslations(locale: LanguageCode = 'en', region?: RegionCode) {
     const productToTranslate = [] as Partial<ProductToTranslate>[]
     let cursor: string | null = null
     let hasNextPage = true
 
     while (hasNextPage) {
       // Get products with outdated translations without metaobject translations
-      const { query, variables } = this.getProductsWithOutdatedTranslationsQuery(cursor)
+      const { query, variables } = this.getProductsWithOutdatedTranslationsQuery(
+        cursor,
+        locale,
+        region
+      )
       const productsData = await this.fetchGraphQL(query, variables)
       const products = productsData.products.edges as {
         node: ProductWithOutdatedTranslations
@@ -43,8 +54,11 @@ export default class PullDataModeler extends DefaultPullDataModeler {
 
   private getProductsWithOutdatedTranslationsQuery(
     cursor: string | null = null,
-    locale: LanguageCode = 'en'
+    locale: LanguageCode,
+    region?: RegionCode
   ) {
+    const marketId = region ? this.utils.getMarketId(region) : undefined
+
     return {
       query: `query AllProducts($cursor: String) {
                 products(first: 250, after: $cursor, query: "published_status:published") {
@@ -76,7 +90,7 @@ export default class PullDataModeler extends DefaultPullDataModeler {
                         optionValues {
                           id
                           name
-                          translations(locale: "${locale}") {
+                          translations(locale: "${locale}"${marketId ? `, marketId: "${marketId}"` : ''}) {
                             key
                             locale
                             value

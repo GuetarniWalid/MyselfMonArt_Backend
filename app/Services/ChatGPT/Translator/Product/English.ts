@@ -1,4 +1,8 @@
+import type { RegionCode } from 'Types/Translation'
+
 export default class English {
+  constructor(private region?: RegionCode) {}
+
   public translateOptionValue(optionValue: string) {
     const values = optionValue.split('/')
     const translatedValues = values.map((value) => this.translateByType(value))
@@ -37,6 +41,17 @@ export default class English {
   }
 
   private translateIfIsOfTypeLength(value: string) {
+    // Only return untranslated for UK if value matches 'N cm' or 'NxM cm'
+    const singleNumberPattern = /^\d+\s*cm$/
+    const doubleNumberPattern = /^\d+\s*x\s*\d+\s*cm$/
+
+    if (
+      this.region === 'UK' &&
+      (singleNumberPattern.test(value) || doubleNumberPattern.test(value))
+    ) {
+      return { translation: value }
+    }
+
     //square
     if (value === '40x40 cm') return { translation: '15.7x15.7 in' }
     if (value === '60x60 cm') return { translation: '23.6x23.6 in' }
@@ -82,9 +97,21 @@ export default class English {
   }
 
   private translateIfIsOfTypeChassis(value: string) {
-    if (value === 'Chassis de 2cm') return { translation: '0.8 in stretcher frame' }
-    if (value === 'Chassis de 4cm') return { translation: '1.6 in stretcher frame' }
-    else return value
+    if (value === 'Chassis de 2cm') {
+      if (this.region === 'UK') {
+        return { translation: '2 cm stretcher frame' }
+      } else {
+        return { translation: '0.8 in stretcher frame' }
+      }
+    }
+
+    if (value === 'Chassis de 4cm') {
+      if (this.region === 'UK') {
+        return { translation: '4 cm stretcher frame' }
+      } else {
+        return { translation: '1.6 in stretcher frame' }
+      }
+    } else return value
   }
 
   private translateIfIsOfTypeBorder(value: string) {

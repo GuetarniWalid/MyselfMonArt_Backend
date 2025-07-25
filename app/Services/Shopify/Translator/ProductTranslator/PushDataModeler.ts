@@ -1,5 +1,10 @@
 import type { ProductToTranslate } from 'Types/Product'
-import type { LanguageCode, TranslationInput, TranslationsRegister } from 'Types/Translation'
+import type {
+  LanguageCode,
+  RegionCode,
+  TranslationInput,
+  TranslationsRegister,
+} from 'Types/Translation'
 import DefaultPushDataModeler from '../PushDataModeler'
 
 export default class PushDataModeler extends DefaultPushDataModeler {
@@ -7,10 +12,12 @@ export default class PushDataModeler extends DefaultPushDataModeler {
     resourceToTranslate,
     resourceTranslated,
     isoCode,
+    region,
   }: {
     resourceToTranslate: Partial<ProductToTranslate>
     resourceTranslated: Partial<ProductToTranslate>
     isoCode: LanguageCode
+    region?: RegionCode
   }): Promise<TranslationsRegister[]> {
     const collectionTranslationInputs = [] as TranslationInput[]
     const translationEntriesForMedia = [] as TranslationsRegister[]
@@ -52,6 +59,7 @@ export default class PushDataModeler extends DefaultPushDataModeler {
           newOptionsData: newValue,
           oldOptionsData: oldValue,
           translationEntriesForOptions,
+          region,
         })
         continue
       }
@@ -82,11 +90,13 @@ export default class PushDataModeler extends DefaultPushDataModeler {
     newOptionsData,
     oldOptionsData,
     translationEntriesForOptions,
+    region,
   }: {
     isoCode: LanguageCode
     newOptionsData: ProductToTranslate['options']
     oldOptionsData: ProductToTranslate['options']
     translationEntriesForOptions: TranslationsRegister[]
+    region?: RegionCode
   }): void {
     for (const [index, option] of newOptionsData.entries()) {
       const translationInputOption = [] as TranslationInput[]
@@ -98,7 +108,8 @@ export default class PushDataModeler extends DefaultPushDataModeler {
             newValue: option.name!,
             oldValue: oldOptionsData[index].name!,
           },
-          translationInputOption
+          translationInputOption,
+          region
         )
 
         const translationEntryForOption = {
@@ -118,7 +129,8 @@ export default class PushDataModeler extends DefaultPushDataModeler {
             newValue: optionValue.name,
             oldValue: oldOptionsData[index].optionValues[indexOptionValue].name,
           },
-          translationInput
+          translationInput,
+          region
         )
 
         const TranslationEntryForOptionValue = {

@@ -24,11 +24,12 @@ export default class ShopifyTranslatePaintingOptions extends BaseCommand {
     const chatGPT = new ChatGPT()
 
     for (const content of contentToTranslate) {
-      const metaobjectTranslated = await chatGPT.translate(content, 'metaobject', 'en')
+      const metaobjectTranslated = await chatGPT.translate(content, 'metaobject', 'en', 'UK')
       const responses = await shopify.translator('metaobject').updateTranslation({
         resourceToTranslate: content,
         resourceTranslated: metaobjectTranslated,
         isoCode: 'en',
+        region: 'UK',
       })
       responses.forEach((response) => {
         if (response.translationsRegister.userErrors.length > 0) {

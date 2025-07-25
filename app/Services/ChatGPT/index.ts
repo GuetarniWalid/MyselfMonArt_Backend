@@ -1,4 +1,4 @@
-import type { LanguageCode, TranslatableContent } from 'Types/Translation'
+import type { LanguageCode, RegionCode, TranslatableContent } from 'Types/Translation'
 import type { Resource } from 'Types/Resource'
 import Translator from './Translator'
 import Pinterest from './Pinterest'
@@ -13,9 +13,10 @@ export default class ChatGPT {
   public async translate(
     payload: TranslatableContent,
     resources: Resource,
-    targetLanguage: LanguageCode
+    targetLanguage: LanguageCode,
+    targetRegion?: RegionCode
   ) {
-    const translator = new Translator(payload, resources, targetLanguage)
+    const translator = new Translator(payload, resources, targetLanguage, targetRegion)
     return translator.translate(payload)
   }
 }

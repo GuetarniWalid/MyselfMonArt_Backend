@@ -1,4 +1,4 @@
-import type { LanguageCode, TranslatableContent } from 'Types/Translation'
+import type { LanguageCode, RegionCode, TranslatableContent } from 'Types/Translation'
 import type { Resource } from 'Types/Resource'
 import type { ArticleToTranslate } from 'Types/Article'
 import type { BlogToTranslate } from 'Types/Blog'
@@ -41,7 +41,8 @@ export default class Translator extends Authentication {
       | Partial<PageToTranslate>
       | Partial<ProductToTranslate>,
     resources: Resource,
-    targetLanguage: LanguageCode
+    targetLanguage: LanguageCode,
+    targetRegion?: RegionCode
   ) {
     super()
     switch (resources) {
@@ -60,14 +61,15 @@ export default class Translator extends Authentication {
       case 'metaobject':
         this.translationHandler = new MetaobjectTranslator(
           payload as MetaobjectToTranslate,
-          targetLanguage
+          targetLanguage,
+          targetRegion
         )
         break
       case 'page':
         this.translationHandler = new PageTranslator(payload, targetLanguage)
         break
       case 'product':
-        this.translationHandler = new ProductTranslator(payload, targetLanguage)
+        this.translationHandler = new ProductTranslator(payload, targetLanguage, targetRegion)
         break
       case 'static_section':
         this.translationHandler = new StaticSectionTranslator(

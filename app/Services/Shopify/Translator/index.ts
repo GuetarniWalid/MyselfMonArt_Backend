@@ -1,4 +1,9 @@
-import type { LanguageCode, TranslatableContent, TranslationsRegister } from 'Types/Translation'
+import type {
+  LanguageCode,
+  RegionCode,
+  TranslatableContent,
+  TranslationsRegister,
+} from 'Types/Translation'
 import type { Resource } from 'Types/Resource'
 import type { ArticleToTranslate } from 'Types/Article'
 import type { BlogToTranslate } from 'Types/Blog'
@@ -35,8 +40,11 @@ export default class Translator extends Authentication {
     this.resourceHandler = this.getTranslatorHandler(resource)
   }
 
-  public async getOutdatedTranslations() {
-    return await this.resourceHandler.pullDataModeler.getResourceOutdatedTranslations()
+  public async getOutdatedTranslations(locale: LanguageCode = 'en', region?: RegionCode) {
+    return await this.resourceHandler.pullDataModeler.getResourceOutdatedTranslations(
+      locale,
+      region
+    )
   }
 
   private getTranslatorHandler(
@@ -81,15 +89,18 @@ export default class Translator extends Authentication {
     resourceToTranslate,
     resourceTranslated,
     isoCode,
+    region,
   }: {
     resourceToTranslate: TranslatableContent
     resourceTranslated: TranslatableContent
     isoCode: LanguageCode
+    region?: RegionCode
   }) {
     return await this.updateResourceTranslation({
       resourceToTranslate,
       resourceTranslated,
       isoCode,
+      region,
     })
   }
 
@@ -97,6 +108,7 @@ export default class Translator extends Authentication {
     resourceToTranslate,
     resourceTranslated,
     isoCode,
+    region,
   }: {
     resourceToTranslate:
       | Partial<ArticleToTranslate>
@@ -115,6 +127,7 @@ export default class Translator extends Authentication {
       | ModelToTranslate
       | StaticSectionToTranslate
     isoCode: LanguageCode
+    region?: RegionCode
   }) {
     try {
       const translationsToRegister = (
@@ -122,6 +135,7 @@ export default class Translator extends Authentication {
           resourceToTranslate: resourceToTranslate as any,
           resourceTranslated: resourceTranslated as any,
           isoCode,
+          region,
         })
       ).filter((translation) => translation.translations.length > 0)
 
@@ -157,6 +171,9 @@ export default class Translator extends Authentication {
               key
               locale
               value
+              market {
+                name
+              }
             }
             userErrors {
               field

@@ -1,3 +1,4 @@
+import type { LanguageCode, RegionCode } from 'Types/Translation'
 import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import ChatGPT from 'App/Services/ChatGPT'
 import Shopify from 'App/Services/Shopify'
@@ -14,19 +15,29 @@ export default class TranslateProduct extends BaseTask {
   public async handle() {
     logTaskBoundary(true, 'Translate product')
 
+    await this.translateTo('en')
+    await this.translateTo('en', 'UK')
+
+    logTaskBoundary(false, 'Translate product')
+  }
+
+  private async translateTo(locale: LanguageCode, region?: RegionCode) {
     const shopify = new Shopify()
-    const productsToTranslate = await shopify.translator('product').getOutdatedTranslations()
+    const productsToTranslate = await shopify
+      .translator('product')
+      .getOutdatedTranslations(locale, region)
     console.log('🚀 ~ products to translate length:', productsToTranslate.length)
     const chatGPT = new ChatGPT()
 
     for (const product of productsToTranslate) {
       console.log('============================')
       console.log('🚀 ~ Id product to translate => ', product.id)
-      const productTranslated = await chatGPT.translate(product, 'product', 'en')
+      const productTranslated = await chatGPT.translate(product, 'product', locale, region)
       const responses = await shopify.translator('product').updateTranslation({
         resourceToTranslate: product,
         resourceTranslated: productTranslated,
-        isoCode: 'en',
+        isoCode: locale,
+        region,
       })
       responses.forEach((response) => {
         if (response.translationsRegister.userErrors.length > 0) {
@@ -37,8 +48,6 @@ export default class TranslateProduct extends BaseTask {
       })
       console.log('============================')
     }
-    console.log('✅ Products translations updated')
-
-    logTaskBoundary(false, 'Translate product')
+    console.log(`✅ Products translations updated to ${locale}${region ? `-${region}` : ''}`)
   }
 }

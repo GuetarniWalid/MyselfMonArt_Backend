@@ -1,4 +1,4 @@
-import type { LanguageCode } from 'Types/Translation'
+import type { LanguageCode, RegionCode } from 'Types/Translation'
 import type { ProductToTranslate, ProductToTranslateFormatted } from 'Types/Product'
 import ProductToTranslateValidator from 'App/Validators/ProductToTranslateValidator'
 import { validator } from '@ioc:Adonis/Core/Validator'
@@ -7,10 +7,16 @@ import English from './English'
 
 export default class ProductTranslator {
   private targetLanguage: LanguageCode
+  private targetRegion?: RegionCode
   private payload: Partial<ProductToTranslate>
 
-  constructor(payload: Partial<ProductToTranslate>, targetLanguage: LanguageCode) {
+  constructor(
+    payload: Partial<ProductToTranslate>,
+    targetLanguage: LanguageCode,
+    targetRegion?: RegionCode
+  ) {
     this.targetLanguage = targetLanguage
+    this.targetRegion = targetRegion
     this.payload = payload
   }
 
@@ -212,7 +218,7 @@ For the descriptionHtml field, preserve all HTML tags while translating its cont
   public getLanguageHandler() {
     switch (this.targetLanguage) {
       case 'en':
-        return new English()
+        return new English(this.targetRegion)
     }
   }
 }

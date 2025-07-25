@@ -1,4 +1,4 @@
-import type { LanguageCode } from 'Types/Translation'
+import type { LanguageCode, RegionCode } from 'Types/Translation'
 import type { MetaobjectToTranslate, MetaobjectToTranslateFormatted } from 'Types/Metaobject'
 import MetaobjectToTranslateValidator from 'App/Validators/MetaobjectToTranslateValidator'
 import { validator } from '@ioc:Adonis/Core/Validator'
@@ -11,11 +11,15 @@ export default class MetaobjectTranslator {
   private payload: MetaobjectToTranslate
   private languageHandler: English | undefined
 
-  constructor(payload: MetaobjectToTranslate, targetLanguage: LanguageCode) {
+  constructor(
+    payload: MetaobjectToTranslate,
+    targetLanguage: LanguageCode,
+    targetRegion?: RegionCode
+  ) {
     this.targetLanguage = targetLanguage
     this.payload = payload
 
-    const productTranslator = new ProductTranslator(payload, targetLanguage)
+    const productTranslator = new ProductTranslator(payload, targetLanguage, targetRegion)
     this.languageHandler = productTranslator.getLanguageHandler()
   }
 
