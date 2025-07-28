@@ -19,6 +19,10 @@ export default class Authentication {
   }
 
   protected async fetchGraphQL(query: string, variables = {}) {
+    return this.retryOnThrottle(() => this.executeGraphQLRequest(query, variables))
+  }
+
+  private async executeGraphQLRequest(query: string, variables = {}) {
     try {
       // Validate required environment variables
       if (!this.shopUrl || !this.apiVersion || !this.accessToken) {
@@ -59,5 +63,51 @@ export default class Authentication {
       }
       throw new Error(`Unexpected error in GraphQL request: ${error}`)
     }
+  }
+
+  private async retryOnThrottle<T>(
+    fn: () => Promise<T>,
+    maxRetries = 5,
+    baseDelayMs = 1000
+  ): Promise<T> {
+    let attempt = 0
+
+    while (attempt < maxRetries) {
+      try {
+        return await fn()
+      } catch (error) {
+        if (this.isThrottleError(error)) {
+          attempt++
+          if (attempt >= maxRetries) {
+            throw new Error('Max retry attempts reached for throttled request')
+          }
+
+          const delayMs = baseDelayMs * Math.pow(2, attempt - 1) // Exponential backoff
+          console.warn(
+            `Throttled by Shopify API. Retrying in ${delayMs / 1000} seconds... (attempt ${attempt}/${maxRetries})`
+          )
+          await this.delay(delayMs)
+        } else {
+          throw error
+        }
+      }
+    }
+
+    throw new Error('Max retry attempts reached for throttled request')
+  }
+
+  private isThrottleError(error: any): boolean {
+    if (!(error instanceof Error)) return false
+
+    const errorMessage = error.message.toLowerCase()
+    return (
+      errorMessage.includes('throttled') ||
+      errorMessage.includes('rate limit') ||
+      errorMessage.includes('429')
+    )
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
   }
 }
