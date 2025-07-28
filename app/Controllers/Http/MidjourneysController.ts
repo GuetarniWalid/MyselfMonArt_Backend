@@ -8,6 +8,12 @@ import WebhooksController from './WebhooksController'
 
 export default class MidjourneysController {
   public async publishOnShopify({ request, response }: HttpContextContract) {
+    console.log('Midjourney publish endpoint called')
+    console.log('Request headers:', request.headers())
+    console.log('Request origin:', request.header('origin'))
+    console.log('Request method:', request.method())
+    console.log('Request URL:', request.url())
+
     let midjourney: Midjourney | null = null
 
     try {
@@ -98,6 +104,13 @@ export default class MidjourneysController {
         },
       }
     } catch (error) {
+      console.error('Midjourney error details:', {
+        code: error.code,
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      })
+
       if (error.code === 'E_VALIDATION_FAILURE') {
         return response.status(422).json({
           success: false,

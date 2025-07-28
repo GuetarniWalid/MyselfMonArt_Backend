@@ -45,10 +45,34 @@ const corsConfig: CorsConfig = {
   |                     one of the above values.
   |
   */
-  origin:
-    Env.get('NODE_ENV') === 'production'
-      ? [Env.get('FRONTEND_URL'), Env.get('SHOPIFY_SHOP_URL'), 'https://www.midjourney.com']
-      : '*',
+  origin: (requestOrigin) => {
+    // For development, allow all origins
+    if (Env.get('NODE_ENV') !== 'production') {
+      return '*'
+    }
+
+    // For production, check against allowed origins
+    const allowedOrigins = [
+      Env.get('FRONTEND_URL'),
+      Env.get('SHOPIFY_SHOP_URL'),
+      'https://www.midjourney.com',
+      'https://midjourney.com',
+    ]
+
+    // Log the request origin for debugging
+    console.log('CORS Request Origin:', requestOrigin)
+    console.log('Allowed Origins:', allowedOrigins)
+
+    // Check if the request origin is in our allowed list
+    if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
+      console.log('CORS: Origin allowed:', requestOrigin)
+      return requestOrigin
+    }
+
+    // If no origin or not in allowed list, return false
+    console.log('CORS: Origin not allowed:', requestOrigin)
+    return false
+  },
 
   /*
   |--------------------------------------------------------------------------
@@ -60,7 +84,7 @@ const corsConfig: CorsConfig = {
   |
   | Following is the list of default methods. Feel free to add more.
   */
-  methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 
   /*
   |--------------------------------------------------------------------------
