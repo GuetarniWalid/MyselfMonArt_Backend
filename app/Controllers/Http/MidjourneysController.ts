@@ -4,7 +4,6 @@ import Midjourney from 'App/Services/Midjourney'
 import OpenAI from 'App/Services/ChatGPT/Midjourney'
 import { CreateProduct } from 'Types/Product'
 import Shopify from 'App/Services/Shopify'
-import WebhooksController from './WebhooksController'
 
 export default class MidjourneysController {
   public async publishOnShopify({ request, response }: HttpContextContract) {
@@ -90,9 +89,6 @@ export default class MidjourneysController {
 
       const productCreated = await shopify.product.create(product)
       await shopify.publications.publishProductOnAll(productCreated.id)
-
-      const webhooksController = new WebhooksController()
-      await webhooksController.handlePaintingCreate(productCreated.id)
 
       return {
         success: true,

@@ -4,6 +4,7 @@ import Env from '@ioc:Adonis/Core/Env'
 import Shopify from 'App/Services/Shopify'
 import WebhookLog from 'App/Models/WebhookLog'
 import Database from '@ioc:Adonis/Lucid/Database'
+import { logTaskBoundary } from 'App/Utils/Logs'
 
 export default class WebhooksController {
   private static processingProducts = new Set<string>()
@@ -12,6 +13,9 @@ export default class WebhooksController {
   private static readonly RETRY_DELAY = 1000 // 1 second
 
   public async handle({ request, response }: HttpContextContract) {
+    logTaskBoundary(true, 'Webhook received')
+    console.dir(request.body(), { depth: null })
+
     try {
       const rawBody = (await request.raw()) ?? ''
 
@@ -141,6 +145,8 @@ export default class WebhooksController {
     } catch (error) {
       console.error('Error processing webhook:', error)
       return response.status(200).send({ message: 'Webhook received' })
+    } finally {
+      logTaskBoundary(false, 'Webhook received')
     }
   }
 
@@ -149,7 +155,7 @@ export default class WebhooksController {
     await this.handlePaintingCreate(id)
   }
 
-  public async handlePaintingCreate(id: string) {
+  private async handlePaintingCreate(id: string) {
     const shopify = new Shopify()
     const product = await shopify.product.getProductById(id)
     const canProcess = shopify.product.modelCopier.canProcessPaintingCreate(product)
