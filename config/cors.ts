@@ -59,13 +59,8 @@ const corsConfig: CorsConfig = {
       'https://midjourney.com',
     ]
 
-    // Log the request origin for debugging
-    console.log('CORS Request Origin:', requestOrigin)
-    console.log('Allowed Origins:', allowedOrigins)
-
     // Check if the request origin is in our allowed list
     if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
-      console.log('CORS: Origin allowed:', requestOrigin)
       return requestOrigin
     }
 

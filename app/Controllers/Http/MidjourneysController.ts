@@ -8,12 +8,6 @@ import WebhooksController from './WebhooksController'
 
 export default class MidjourneysController {
   public async publishOnShopify({ request, response }: HttpContextContract) {
-    console.log('Midjourney publish endpoint called')
-    console.log('Request headers:', request.headers())
-    console.log('Request origin:', request.header('origin'))
-    console.log('Request method:', request.method())
-    console.log('Request URL:', request.url())
-
     let midjourney: Midjourney | null = null
 
     try {
@@ -26,15 +20,17 @@ export default class MidjourneysController {
       const ratio = midjourney.getAspectRatio(checkedRequest)
       const optimizedImage = await midjourney.getOptimizedImage(ratio)
 
-      const [descriptionHtml, parentCollection, mainImage, likesCount, tags, productTypes] =
-        await Promise.all([
-          openAI.generateHtmlDescription(optimizedImage, checkedRequest.prompt),
-          midjourney.getParentCollection(optimizedImage),
-          midjourney.getMainImage(ratio),
-          midjourney.getLikesCount(),
-          shopify.product.getAllTags(),
-          shopify.product.getAllProductTypes(),
-        ])
+      // Process non-Shopify operations concurrently
+      const [descriptionHtml, parentCollection, mainImage, likesCount] = await Promise.all([
+        openAI.generateHtmlDescription(optimizedImage),
+        midjourney.getParentCollection(optimizedImage),
+        midjourney.getMainImage(ratio),
+        midjourney.getLikesCount(),
+      ])
+
+      // Process Shopify API calls sequentially to prevent throttling
+      const tags = await shopify.product.getAllTags()
+      const productTypes = await shopify.product.getAllProductTypes()
 
       const imagesWithBackground = await midjourney.getImagesWithBackground(
         optimizedImage,
@@ -42,6 +38,7 @@ export default class MidjourneysController {
         parentCollection
       )
 
+      // Process AI operations concurrently
       const [
         suggestedTags,
         suggestedProductType,

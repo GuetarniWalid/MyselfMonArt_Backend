@@ -150,7 +150,7 @@ export default class Product extends Authentication {
 
     while (hasNextPage) {
       const { query, variables } = this.getAllProductsQuery(cursor)
-      const productsData = await this.fetchGraphQL(query, variables)
+      const productsData = await this.fetchGraphQL(query, variables, 100) // Complex query with many fields
       const products = productsData.products.edges
 
       // Store the current products
@@ -162,6 +162,8 @@ export default class Product extends Authentication {
       // Get the last cursor
       if (hasNextPage) {
         cursor = products[products.length - 1].cursor
+        // Add a small delay between pagination requests to prevent throttling
+        await new Promise((resolve) => setTimeout(resolve, 100))
       }
     }
 
@@ -265,7 +267,7 @@ export default class Product extends Authentication {
 
   public async getProductById(productId: string) {
     const { query, variables } = this.getProductByIdQuery(productId)
-    const response = await this.fetchGraphQL(query, variables)
+    const response = await this.fetchGraphQL(query, variables, 50) // Medium complexity query
     return response.product as ProductById
   }
 
