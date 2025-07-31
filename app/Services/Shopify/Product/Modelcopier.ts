@@ -1,6 +1,7 @@
 import { Product, ProductById, ProductByTag } from 'Types/Product'
 import Shopify from '..'
 import ChatGPT from 'App/Services/ChatGPT'
+import { LanguageCode, RegionCode } from 'Types/Translation'
 
 export default class ModelCopier {
   public async copyModelDataOnProduct(product: ProductById, model: ProductByTag) {
@@ -8,7 +9,7 @@ export default class ModelCopier {
     await this.copyModelOptions(product, model)
     await this.copyModelVariants(product, model)
     await this.copyModelMetafields(product, model)
-    await this.translateProductOptions(product)
+    await this.translateProductOptionsInAllLanguages(product)
   }
 
   private async deleteProductOptions(product: ProductById) {
@@ -62,8 +63,19 @@ export default class ModelCopier {
     }
   }
 
-  private async translateProductOptions(product: ProductById) {
-    console.info(`🚀 Translating product options: ${product.id}`)
+  private async translateProductOptionsInAllLanguages(product: ProductById) {
+    await this.translateProductOptions(product, 'en')
+    await this.translateProductOptions(product, 'en', 'UK')
+  }
+
+  private async translateProductOptions(
+    product: ProductById,
+    locale: LanguageCode,
+    region?: RegionCode
+  ) {
+    console.info(
+      `🚀 Translating product options: ${product.id} to ${locale}${region ? `-${region}` : ''}`
+    )
     const shopify = new Shopify()
     const chatGPT = new ChatGPT()
 
@@ -81,12 +93,13 @@ export default class ModelCopier {
       })),
     }
 
-    const productTranslated = await chatGPT.translate(productToTranslate, 'product', 'en')
+    const productTranslated = await chatGPT.translate(productToTranslate, 'product', locale, region)
 
     const responses = await shopify.translator('product').updateTranslation({
       resourceToTranslate: productToTranslate,
       resourceTranslated: productTranslated,
-      isoCode: 'en',
+      isoCode: locale,
+      region,
     })
 
     responses.forEach((response) => {

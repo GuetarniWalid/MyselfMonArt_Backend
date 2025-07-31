@@ -14,7 +14,6 @@ export default class WebhooksController {
 
   public async handle({ request, response }: HttpContextContract) {
     logTaskBoundary(true, 'Webhook received')
-    console.dir(request.body(), { depth: null })
 
     try {
       const rawBody = (await request.raw()) ?? ''
@@ -174,35 +173,39 @@ export default class WebhooksController {
   }
 
   private async updateRelatedProductsFromModel(id: string) {
-    const shopify = new Shopify()
-    const product = await shopify.product.getProductById(id)
-    const isModel = shopify.product.modelCopier.isModelProduct(product)
-    if (!isModel) return
+    try {
+      const shopify = new Shopify()
+      const product = await shopify.product.getProductById(id)
+      const isModel = shopify.product.modelCopier.isModelProduct(product)
+      if (!isModel) return
 
-    console.info(`🚀 Updating related products from model: ${id}`)
-    const tag = shopify.product.modelCopier.getTagFromModel(product)
+      console.info(`🚀 Updating related products from model: ${id}`)
+      const tag = shopify.product.modelCopier.getTagFromModel(product)
 
-    const products = await shopify.product.getAll()
-    const relatedProducts = products.filter((p) => {
-      if (p.templateSuffix !== 'painting' && p.templateSuffix !== 'personalized') return false
+      const products = await shopify.product.getAll()
+      const relatedProducts = products.filter((p) => {
+        if (p.templateSuffix !== 'painting' && p.templateSuffix !== 'personalized') return false
 
-      const pSecondImage = p.media.nodes[1]
-      if (!pSecondImage?.image) return false
+        const pSecondImage = p.media.nodes[1]
+        if (!pSecondImage?.image) return false
 
-      const isModel = shopify.product.modelCopier.isModelProduct(p)
-      if (isModel) return false
+        const isModel = shopify.product.modelCopier.isModelProduct(p)
+        if (isModel) return false
 
-      const pTag = shopify.product.modelCopier.getTagFromProduct(p)
-      return pTag === tag
-    })
+        const pTag = shopify.product.modelCopier.getTagFromProduct(p)
+        return pTag === tag
+      })
 
-    // Process related products sequentially to avoid overwhelming the system
-    for (const relatedProduct of relatedProducts) {
-      if (!WebhooksController.processingProducts.has(relatedProduct.id)) {
-        await this.handlePaintingCreate(relatedProduct.id)
+      // Process related products sequentially to avoid overwhelming the system
+      for (const relatedProduct of relatedProducts) {
+        if (!WebhooksController.processingProducts.has(relatedProduct.id)) {
+          await this.handlePaintingCreate(relatedProduct.id)
+        }
       }
+      console.info(`🚀 Related products updated: ${relatedProducts.length}`)
+    } catch (error) {
+      console.error('Error updating related products with id:', id, error)
     }
-    console.info(`🚀 Related products updated: ${relatedProducts.length}`)
   }
 
   private verifyWebhook(request: HttpContextContract['request'], rawBody: string): boolean {

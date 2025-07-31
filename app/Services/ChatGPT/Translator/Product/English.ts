@@ -85,6 +85,7 @@ export default class English {
     if (value === 'Aluminium') return { translation: 'Aluminium' }
     if (value === 'Aluminium + Plexiglas') return { translation: 'Aluminium + Plexiglas' }
     if (value === 'Poster') return { translation: 'Poster' }
+    if (value === 'Peint à la main') return { translation: 'Hand-painted' }
     else return value
   }
 
