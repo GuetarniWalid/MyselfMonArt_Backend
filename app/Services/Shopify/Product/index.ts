@@ -265,6 +265,15 @@ export default class Product extends Authentication {
     return uniqueTags
   }
 
+  public async getTagsAndProductTypes(): Promise<{ tags: string[]; productTypes: string[] }> {
+    const allProducts = await this.getAll()
+    const tags = [...new Set(allProducts.flatMap((product) => product.tags))]
+    const productTypes = [
+      ...new Set(allProducts.map((product) => product.productType).filter(Boolean)),
+    ]
+    return { tags, productTypes }
+  }
+
   public async getProductById(productId: string) {
     const { query, variables } = this.getProductByIdQuery(productId)
     const response = await this.fetchGraphQL(query, variables, 50) // Medium complexity query

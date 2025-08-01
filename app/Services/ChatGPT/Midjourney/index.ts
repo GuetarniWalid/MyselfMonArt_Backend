@@ -13,6 +13,16 @@ import TagPicker from './TagPicker'
 import { zodResponseFormat } from 'openai/helpers/zod'
 
 export default class Midjourney extends Authentication {
+  private imageAnalysis: {
+    style: string
+    elementsVisuels: string[]
+    origineCulturelle: string
+    courantArtistique: string
+    couleurs: string[]
+    emotions: string[]
+    ambiance: string
+  } | null = null
+
   public async generateAlt(imageUrl: string) {
     return this.retryOperation(async () => {
       const altGenerator = new AltGenerator()
@@ -99,9 +109,52 @@ export default class Midjourney extends Authentication {
   }
 
   public async generateHtmlDescription(imageUrl: string) {
-    const imageAnalysis = await this.analyseImage(imageUrl)
-    const htmlDescription = await this.generateHtmlDescriptionFromImageAnalysis(imageAnalysis)
-    return htmlDescription
+    return this.retryOperation(async () => {
+      const descriptionGenerator = new DescriptionGenerator()
+
+      try {
+        const { responseFormat, payload, systemPrompt } =
+          descriptionGenerator.prepareRequest(imageUrl)
+
+        const completion = await this.openai.beta.chat.completions.parse({
+          model: Env.get('OPENAI_MODEL'),
+          messages: [
+            {
+              role: 'system',
+              content: systemPrompt,
+            },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: payload.imageUrl,
+                  },
+                },
+              ],
+            },
+          ],
+          response_format: zodResponseFormat(responseFormat, 'description'),
+        })
+        const response = completion.choices[0]
+
+        if (response.finish_reason === 'length') {
+          throw new Error('ChatGPT did not return a complete description')
+        } else if (response.message.refusal) {
+          throw new Error(
+            `ChatGPT refused to generate a description for the following reason: ${response.message.refusal}`
+          )
+        } else if (!response.message.parsed) {
+          throw new Error('ChatGPT did not return a valid description')
+        }
+
+        return response.message.parsed.description
+      } catch (error) {
+        console.error('Error during description generation: ', error)
+        throw new Error('Failed to generate description')
+      }
+    })
   }
 
   private async analyseImage(imageUrl: string) {
@@ -152,69 +205,15 @@ export default class Midjourney extends Authentication {
     })
   }
 
-  private async generateHtmlDescriptionFromImageAnalysis(imageAnalysis: {
-    style: string
-    elementsVisuels: string[]
-    origineCulturelle: string
-    courantArtistique: string
-    couleurs: string[]
-    emotions: string[]
-    ambiance: string
-  }) {
-    return this.retryOperation(async () => {
-      const descriptionGenerator = new DescriptionGenerator()
+  public async generateTitleAndSeo(imageUrl: string) {
+    await this.ensureImageAnalysis(imageUrl)
 
-      try {
-        const { responseFormat, payload, systemPrompt } =
-          descriptionGenerator.prepareRequest(imageAnalysis)
-
-        const completion = await this.openai.beta.chat.completions.parse({
-          model: Env.get('OPENAI_MODEL'),
-          messages: [
-            {
-              role: 'system',
-              content: systemPrompt,
-            },
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: `Image analysis: ${JSON.stringify(payload.imageAnalysis)}`,
-                },
-              ],
-            },
-          ],
-          response_format: zodResponseFormat(responseFormat, 'description'),
-        })
-        const response = completion.choices[0]
-
-        if (response.finish_reason === 'length') {
-          throw new Error('ChatGPT did not return a complete description')
-        } else if (response.message.refusal) {
-          throw new Error(
-            `ChatGPT refused to generate a description for the following reason: ${response.message.refusal}`
-          )
-        } else if (!response.message.parsed) {
-          throw new Error('ChatGPT did not return a valid description')
-        }
-
-        return response.message.parsed.description
-      } catch (error) {
-        console.error('Error during description generation: ', error)
-        throw new Error('Failed to generate description')
-      }
-    })
-  }
-
-  public async generateTitleAndSeo(imageUrl: string, descriptionHtml: string) {
     return this.retryOperation(async () => {
       const titleAndSeoGenerator = new TitleAndSeoGenerator()
 
       try {
         const { responseFormat, payload, systemPrompt } = titleAndSeoGenerator.prepareRequest(
-          imageUrl,
-          descriptionHtml
+          this.imageAnalysis!
         )
 
         const completion = await this.openai.beta.chat.completions.parse({
@@ -229,13 +228,7 @@ export default class Midjourney extends Authentication {
               content: [
                 {
                   type: 'text',
-                  text: payload.descriptionHtml,
-                },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: payload.imageUrl,
-                  },
+                  text: JSON.stringify(payload.imageAnalysis),
                 },
               ],
             },
@@ -260,6 +253,12 @@ export default class Midjourney extends Authentication {
         throw new Error('Failed to generate title')
       }
     })
+  }
+
+  private async ensureImageAnalysis(imageUrl: string) {
+    if (!this.imageAnalysis) {
+      this.imageAnalysis = await this.analyseImage(imageUrl)
+    }
   }
 
   public async suggestRelevantBackgrounds(

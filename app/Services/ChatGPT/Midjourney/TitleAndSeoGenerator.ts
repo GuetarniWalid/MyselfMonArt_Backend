@@ -1,10 +1,18 @@
 import { z } from 'zod'
 
 export default class TitleAndSeoGenerator {
-  public prepareRequest(imageUrl: string, descriptionHtml: string) {
+  public prepareRequest(imageAnalysis: {
+    style: string
+    elementsVisuels: string[]
+    origineCulturelle: string
+    courantArtistique: string
+    couleurs: string[]
+    emotions: string[]
+    ambiance: string
+  }) {
     return {
       responseFormat: this.getResponseFormat(),
-      payload: this.getPayload(imageUrl, descriptionHtml),
+      payload: this.getPayload(imageAnalysis),
       systemPrompt: this.getSystemPrompt(),
     }
   }
@@ -17,10 +25,17 @@ export default class TitleAndSeoGenerator {
     })
   }
 
-  private getPayload(imageUrl: string, descriptionHtml: string) {
+  private getPayload(imageAnalysis: {
+    style: string
+    elementsVisuels: string[]
+    origineCulturelle: string
+    courantArtistique: string
+    couleurs: string[]
+    emotions: string[]
+    ambiance: string
+  }) {
     return {
-      imageUrl,
-      descriptionHtml,
+      imageAnalysis,
     }
   }
 
@@ -29,69 +44,103 @@ export default class TitleAndSeoGenerator {
     const metaTitle = this.getRandomMetaTitleChunk()
 
     return `CONTEXTE
-Je possède une boutique e-commerce spécialisée dans les tableaux décoratifs : MyselfMonArt.
-Affin de résoudre le problème de cannibalisation SEO, les titres des fiches produits et les méta-titres doivent être enrichis et différenciés, tout en respectant les bonnes pratiques SEO et en évitant la répétition des mêmes mots-clés entre le titre et le méta-titre.
-Le titre et meta-titre doivent être orientés vers les clients, pas vers les métiers, et doivent être compréhensible par un client lambda.
+Boutique e-commerce : MyselfMonArt (tableaux décoratifs).
+Objectif : des titres concrets, vendeurs et SEO-friendly, différenciés des méta-titres pour éviter la cannibalisation.
+Les mots fixes ${title} et ${metaTitle} sont fournis et ne doivent jamais être modifiés.
 
 
-PARTIE 1 : TITRE OPTIMISÉ
-OBJECTIF :
-Générer des titres percutants et évocateurs, qui captivent immédiatement l’utilisateur, suscitent une curiosité irrésistible et donnent envie d’en savoir plus, tout en restant SEO-friendly.
-
-RÈGLES POUR LE TITRE
-● Le mot fixe (${title}) est invariable et représente un univers du produit : les tableaux de décoration
-● Le mot-clé principal doit être identifié à partir de la description et de l'image du produit et mis en avant de manière fluide.
-● Compléter le mot fixe de manière immersive et émotionnelle, qui capte l’essence du produit et évoque une image forte.
-● Ne pas dépasser 55 caractères pour garantir lisibilité et impact SEO.
-● Utiliser un langage fluide, naturel et inspirant, évitant les formulations trop classiques ou génériques.
-
-FORMAT DU TITRE
-${title} (Mot fixe) + Mot-clé principal du produit + Complément évocateur (max 55 caractères)
-
-EXEMPLES DE TITRES PUISSANTS:
-Tableau sur toile – L’élégance mystique d’une geisha 
-Poster mural - Art Contemporain: une explosion de couleurs vibrantes 
-Affiche murale - Ambiance Zen: Le souffle apaisant du bambou 
-Cadre moderne – L’énergie brute des vagues déchaînées 
-Décoration – L’aura indomptable du lion rugissant 
-Toile - Minimalisme Chic: Une touche de sérénité absolue
+ÉTAPE 0 — Analyse rapide (depuis l’image + description):
+  - Sujet principal (ex. : poussin, bambou, geisha, lion, calligraphie…).
+  - Détail concret obligatoire (≥1) : technique (encre de Chine, aquarelle, acrylique, photographie, collage, art numérique…), style/origine (japonais, berbère, art déco…), matière/support (toile, alu, plexi), couleur dominante (max 2).
+  - Mot-clé SEO principal qui commence par “tableau” ou “affiche” (ex. : tableau poussin encre de Chine, affiche cuisine épices).
 
 
+PARTIE 1 — TITRE OPTIMISÉ
+Objectif
+Un titre court, clair et vendeur, qui nomme le sujet + 1 détail concret (technique/style/matière/couleur), sans métaphores ni lyrisme.
 
-PARTIE 2 : MÉTA-TITRE OPTIMISÉ
-OBJECTIF :
-Créer des méta-titres différenciés du titre, en évitant la répétition des mêmes mots-clés, tout en optimisant le SEO et le taux de clic (CTR). Le méta-titre doit apporter une information complémentaire sur le produit.
+Règles:
+  - ${title} = mot fixe (invariable).
+  - Longueur : ≤ 55 caractères (espaces et ponctuation inclus). Cible 45–53.
+  - Ponctuation : préférer - et , ; éviter les “: ” si ça fait dépasser.
+  - Éviter les listes d’adjectifs : max 1–2 adjectifs utiles.
+  - Rejeter les titres qui n’expliquent pas clairement ce qu’on voit.
 
-RÈGLES POUR LE MÉTA-TITRE
-● Le mot fixe (${metaTitle}) est invariable et ne doit jamais être modifié.
-● Le mot-clé principal ne doit pas être identique à celui du titre mais utiliser un synonyme ou une reformulation pour éviter la cannibalisation SEO.
-● Apporter une information complémentaire, comme un bénéfice, une émotion, une caractéristique unique ou un support.
-● Ne pas dépasser 60 caractères pour un affichage optimal sur Google.
-● Utiliser un langage fluide, naturel et engageant, qui évite les répétitions inutiles et capte l’attention de l’utilisateur.
-● Finir par le nom de marque MyselfMonArt
+Format recommandé:
+${title} - [mot-clé principal], suivi d’un détail concret (technique/style/matière/couleur), ex.
+${title} - tableau [sujet] [détail concret court]
+Mots interdits (ou à proscrire en titre):
+  - poétique
+  - mystique
+  - énigmatique
+  - indomptable
+  - évasion
+  - vibrante (au sens figuré)
+  - aura
+  - chef-d’œuvre (en titre)
+  - contemporain
+  - sophistication/sophistiqué
+  - graphique (comme style)
+  - chromatique
+  - palette
+  - contraste (isolé)
+  - structure
+  - symétrie/asymétrie
+  - impact
+  - équilibre (sans contexte)
+  - dynamique visuelle
+  - transforme l’espace
+  - valorise l’intérieur
+  - composition audacieuse
+  - narration visuelle
+  - univers chromatique
+  - épure contemporaine.
 
-FORMAT DU MÉTA-TITRE
-${metaTitle} (Mot fixe) + Synonyme ou variation du mot-clé + Information complémentaire - MyselfMonArt (max 60 caractères)
+Auto-contrôle (à exécuter avant de rendre le titre):
+  - ≤55 caractères ?
+  - Le sujet est-il clairement nommé ?
+  - Y a-t-il ≥1 détail concret (technique/style/matière/couleur) ?
+  - Le mot-clé commence-t-il par tableau ou affiche ?
+  - Aucun mot interdit / aucune métaphore ?
+  - Si “non” à l’un des points, régénérer le titre.
 
-EXEMPLES DE MÉTA-TITRES DIFFÉRENCIÉS DU TITRE
 
-Titre: Tableau Murale – L’élégance mystique d’une geisha 
-Méta-Titre: Œuvre murale - Portrait geisha japonaise raffiné - MyselfMonArt
 
-Titre: Art Contemporain – Une explosion de couleurs vibrantes 
-Méta-Titre: Peinture Moderne – Un chef-d’œuvre aux teintes éclatantes - MyselfMonArt
+PARTIE 2 — MÉTA-TITRE OPTIMISÉ
+  Objectif:
+  - Différencier du titre (éviter la cannibalisation) avec synonyme/variation et info complémentaire.
+  
+  Règles:
+  - ${metaTitle} = mot fixe (invariable).
+  - Longueur : ≤ 60 caractères (espaces inclus).
+  - Sujet : garder la même idée mais reformuler (ex. poussin → oisillon si naturel).
+  - Info complémentaire (1 seule) : support, formats, impression HD, prêt à accrocher, style/origine, pour [pièce].
+  - Terminer par - MyselfMonArt.
+  
+  Format recommandé:
+  ${metaTitle} - [variation mot-clé] [info complémentaire] - MyselfMonArt
 
-Titre: Tableau sur toile – Le souffle apaisant du bambou, ambiance Zen
-Méta-Titre: Tableau original – Tableau bambou pour une déco relaxante - MyselfMonArt
 
-Titre: Décor mural – L’énergie brute des vagues déchaînées 
-Méta-Titre: Toile design – L’intensité des flots en mouvement - MyselfMonArt
+PARTIE 3 — MÉTA-DESCRIPTION OPTIMISÉE
+Objectif:
+  - Inciter au clic avec un bénéfice clair + un détail concret, sans répéter mot pour mot le titre/méta-titre.
 
-Titre: Grand tableau – L’aura indomptable du lion rugissant 
-Méta-Titre: Affiche et poster – La puissance d’un lion en pleine majesté - MyselfMonArt
+Règles:
+  - Longueur : 140–155 caractères max.
+  - Ton : naturel, orienté client.
+  - Contenu : Mettre en avant un bénéfice clair : ambiance, style, émotion, support, originalité.
+  - Pas de mots interdits ni de métaphores.
+  - Doit être naturelle, fluide et orientée client, sans excès de mots-clés techniques.
+  - Ne pas répéter mot pour mot le titre ou le méta-titre.
+  - Intégrer subtilement des expressions synonymes ou du champ lexical lié à l'univers décoratif.
 
-Titre: Déco – Une touche de sérénité absolue, chic et minimaliste
-Méta-Titre: Toile – Élégance et simplicité pour un intérieur zen - MyselfMonArt
+Format:
+  - Une seule phrase fluide.
+
+SORTIE ATTENDUE (texte brut, 3 lignes):
+  - Titre: [ton titre ≤55c]
+  - Méta-titre: [ton méta-titre ≤60c, finissant par " - MyselfMonArt"]
+  - Méta-description: [ta phrase 140–155c]
 
 
 
@@ -103,7 +152,6 @@ MOT FIXE: ${title} (ne doit jamais être modifié)
 MOT-CLÉ: Identifié à partir de la description du 
 TONALITÉ: Évocateur, immersif, impactant
 LONGUEUR MAX: 55 caractères
-EXEMPLE: ${title} - L'élégance mystique d'une geisha - MyselfMonArt
 
 
 MÉTA-TITRE:
@@ -112,7 +160,6 @@ MOT FIXE: ${metaTitle} (ne doit jamais être modifié)
 MOT-CLÉ: Synonyme ou reformulation du mot-clé du titre
 TONALITÉ: SEO-friendly, précis et engageant
 LONGUEUR MAX: 60 caractères
-EXEMPLE: ${metaTitle} - Portrait raffiné inspiré du Japon - MyselfMonArt
 
 
 EXEMPLE A EVITER:
@@ -128,24 +175,11 @@ PARTIE 3 : MÉTA-DESCRIPTION OPTIMISÉE
 OBJECTIF :
 Générer une méta-description qui enrichit le contenu du méta-titre, améliore le référencement naturel (SEO) et incite au clic sur Google en répondant aux intentions et émotions du client. Elle doit évoquer l’univers de l’œuvre, ses effets visuels ou émotionnels, et son impact décoratif.
 
-RÈGLES POUR LA MÉTA-DESCRIPTION
-● Doit être naturelle, fluide et orientée client, sans excès de mots-clés techniques.
-● Mettre en avant un bénéfice clair : ambiance, style, émotion, support, originalité.
-● Ne pas répéter mot pour mot le titre ou le méta-titre.
-● Intégrer subtilement des expressions synonymes ou du champ lexical lié à l'univers décoratif.
-● Ne pas dépasser 155 caractères (idéalement entre 140 et 155) pour un affichage optimal dans les résultats Google.
 
-FORMAT DE LA MÉTA-DESCRIPTION
-Une phrase engageante, descriptive et émotionnelle qui donne envie de découvrir l’œuvre. Doit se lire comme un petit teaser de l’univers décoratif proposé.
-
-EXEMPLES DE MÉTA-DESCRIPTIONS OPTIMISÉES :
-
-– Apportez une touche zen et apaisante à votre pièce avec ce tableau inspiré du Japon.
-– Mettez de la couleur sur vos murs et donnez du peps à votre déco avec cette œuvre pleine de vie.
-– Créez une ambiance calme et naturelle dans votre salon grâce à cette toile aux tons doux.
-– Faites entrer l’énergie de l’océan chez vous avec ce visuel puissant et vivant.
-– Ajoutez du caractère à votre mur avec ce portrait animal qui impose sa présence
-`
+Astuces pratiques:
+  - Si ça dépasse, supprime les articles et privilégie 1 détail concret (technique ou style ou couleur).
+  - Pour Chambre d’enfant, ajoute “enfant/bébé” si ça tient.
+  - Garde des mots simples : sujet + technique/style + support/couleur = clarté immédiate.`
   }
 
   private getRandomTitleChunk() {

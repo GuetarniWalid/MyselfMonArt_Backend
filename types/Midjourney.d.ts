@@ -12,6 +12,7 @@ export interface ImageToPublish {
 }
 
 export interface Background {
+  priorityAsFirstBackground: boolean
   path: string
   description: string
   portrait: BackgroundRatio

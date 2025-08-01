@@ -27,9 +27,8 @@ export default class MidjourneysController {
         midjourney.getLikesCount(),
       ])
 
-      // Process Shopify API calls sequentially to prevent throttling
-      const tags = await shopify.product.getAllTags()
-      const productTypes = await shopify.product.getAllProductTypes()
+      // Fetch tags and product types in a single optimized call
+      const { tags, productTypes } = await shopify.product.getTagsAndProductTypes()
 
       const imagesWithBackground = await midjourney.getImagesWithBackground(
         optimizedImage,
@@ -49,7 +48,7 @@ export default class MidjourneysController {
         openAI.suggestProductType(productTypes, optimizedImage),
         Promise.all(imagesWithBackground.map(async (image) => await openAI.generateAlt(image))),
         openAI.generateAlt(optimizedImage),
-        await openAI.generateTitleAndSeo(optimizedImage, descriptionHtml),
+        await openAI.generateTitleAndSeo(optimizedImage),
       ])
 
       product.title = title

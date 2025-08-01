@@ -1,5 +1,6 @@
 export const backgrounds = [
   {
+    priorityAsFirstBackground: true,
     path: 'tropical-living-room-with-chair-and-large-plant.jpg',
     portrait: {
       x: 449,
@@ -40,6 +41,7 @@ Contexte suggéré :
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: false,
     path: 'busy-bedroom.jpg',
     portrait: {
       x: 690,
@@ -93,6 +95,7 @@ Usage possible : parfait pour un bureau créatif, atelier ou chambre d’enfant/
     topLayer: 'busy-bedroom-lamp.png',
   },
   {
+    priorityAsFirstBackground: false,
     path: 'large-open-bedroom-with-modern-furnishings.jpg',
     portrait: {
       x: 354,
@@ -146,6 +149,7 @@ Confort visuel et atmosphérique, ambiance propice au repos et à la détente`,
     topLayer: 'large-open-bedroom-with-modern-furnishings-lamp.png',
   },
   {
+    priorityAsFirstBackground: false,
     path: 'living-room-entrance-with-a-wooden-cabinet.jpg',
     portrait: {
       x: 746,
@@ -201,6 +205,7 @@ Lieu neutre et polyvalent qui sublime un tableau sans le concurrencer, avec une 
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: false,
     path: 'living-room-with-fancy-swivel-armchair.jpg',
     portrait: {
       x: 875,
@@ -260,6 +265,7 @@ Convient pour mettre en valeur un tableau aux teintes naturelles, matières orga
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: false,
     path: 'kids-toys-on-playroom-floor.jpg',
     portrait: {
       x: 590,
@@ -311,6 +317,7 @@ Usage suggéré : idéal pour une chambre d’enfant, une salle de jeu ou un coi
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: false,
     path: 'home-office-with-large-window.jpg',
     portrait: {
       x: 681,
@@ -370,6 +377,7 @@ Parfait pour mettre en scène un tableau abstrait, typographique, minimaliste ou
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: false,
     path: 'plant-room-with-cane-chair.jpg',
     portrait: {
       x: 768,
@@ -423,6 +431,7 @@ Idéal pour sublimer des tableaux aux thèmes nature, botanique, zen, ou inspir�
     topLayer: 'plant-room-with-cane-chair-plant.png',
   },
   {
+    priorityAsFirstBackground: false,
     path: 'modern-home-staircase.jpg',
     portrait: {
       x: 364,
@@ -478,6 +487,7 @@ Idéal pour mettre en valeur un tableau vertical ou une œuvre naturelle/organiq
     topLayer: 'modern-home-staircase-plant.png',
   },
   {
+    priorityAsFirstBackground: false,
     path: 'a-minimal-and-modern-kitchen.jpg',
     portrait: {
       x: 796,
@@ -537,6 +547,7 @@ Recommandé pour les collections Minimaliste, Noir & Blanc, Cuisine Artistique`,
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: false,
     path: 'a-modern-living-room-with-colorful-furniture.jpg',
     portrait: {
       x: 796,
@@ -596,6 +607,7 @@ Convient aux collections Contemporain, Couleurs douces, Street Art Pop, Formes o
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: false,
     path: 'concrete-bathroom-with-roof-windows.jpg',
     portrait: {
       x: 262,
@@ -655,6 +667,7 @@ Convient à une collection Spa, Nature, Minimalisme organique ou Ambiances exoti
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: false,
     path: 'dining-area-with-large-wooden-table.jpg',
     portrait: {
       x: 1176,
@@ -712,6 +725,7 @@ Convient aux collections Cuisine & Table, Moments de Vie, Graphisme Gourmand, Am
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: true,
     path: 'kitchen-table-with-bread-bin.jpg',
     portrait: {
       x: 470,
@@ -767,6 +781,7 @@ Parfait pour collections Cuisine douce, Slow life, Ambiances rétro, Natures mor
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: false,
     path: 'small-stucco-kitchen.jpg',
     portrait: {
       x: 1007,
@@ -828,6 +843,7 @@ Convient aux collections Cuisine Sud, Vintage Minimal, Bord de mer, Vie en Studi
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: false,
     path: 'kitchen-bench-with-spotlight.jpg',
     portrait: {
       x: 784,
@@ -887,6 +903,7 @@ Convient aux collections Nature morte contemporaine, Cuisine poétique, Végéta
     topLayer: 'kitchen-bench-with-spotlight-plant.png',
   },
   {
+    priorityAsFirstBackground: false,
     path: 'dining-area-with-solid-wood-table.jpg',
     portrait: {
       x: 599,
@@ -946,6 +963,7 @@ Convient aux collections Ambiances Sauvages, Matières brutes, Cuisine du Monde,
     topLayer: 'dining-area-with-solid-wood-table-lamp.png',
   },
   {
+    priorityAsFirstBackground: false,
     path: 'bright-bedroom-with-wooden-walls.jpg',
     portrait: {
       x: 262,
@@ -999,6 +1017,7 @@ Convient parfaitement aux collections Cabane Chic, Esprit Wabi-Sabi, Chambre Slo
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: false,
     path: 'bohemian-themed-bedroom.jpg',
     portrait: {
       x: 601,
@@ -1056,6 +1075,7 @@ Adapté aux collections Bohème Élégante, Rêve d’Ailleurs, Zen Naturel, Esp
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: false,
     path: 'large-industrial-loft-bedroom.jpg',
     portrait: {
       x: 847,
@@ -1113,6 +1133,7 @@ Parfait pour les collections Wabi-Sabi, Brut Minimal, Slow Mood, Rêverie Blanch
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: false,
     path: 'bohemian-style-bedroom-with-large-plant.jpg',
     portrait: {
       x: 650,
@@ -1172,6 +1193,7 @@ Convient aux collections Chambre Épurée, Esprit Naturel, Élégance Féminine,
     topLayer: 'bohemian-style-bedroom-with-large-plant-plant.png',
   },
   {
+    priorityAsFirstBackground: false,
     path: 'nursery-room-with-natural-tones.jpg',
     portrait: {
       x: 819,
@@ -1223,6 +1245,7 @@ Parfait pour des tableaux issus des collections Chambre d’Enfant, Mignonneries
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: false,
     path: 'stylish-apartment-bedroom-with-large-windows.jpg',
     portrait: {
       x: 884,
@@ -1272,6 +1295,7 @@ Idéal pour des tableaux de la collection Zen, Minimaliste, Poésie, Photographi
     topLayer: 'stylish-apartment-bedroom-with-large-windows-light.png',
   },
   {
+    priorityAsFirstBackground: false,
     path: 'modern-bedroom.jpg',
     portrait: {
       x: 495,
@@ -1325,6 +1349,7 @@ Parfait pour accueillir une œuvre des collections Art Graphique, Noir & Blanc, 
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: true,
     path: 'kids-playroom-with-wooden-toys-and-furniture.jpg',
     portrait: {
       x: 566,
@@ -1376,6 +1401,7 @@ Ce fond est parfait pour mettre en scène des tableaux issus des collections Mig
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: false,
     path: 'the-tidy-kids-room.jpg',
     portrait: {
       x: 698,
@@ -1427,6 +1453,7 @@ Fond parfait pour valoriser des œuvres issues des collections Chambre d’Enfan
     topLayer: 'the-tidy-kids-room-flag.png',
   },
   {
+    priorityAsFirstBackground: false,
     path: 'nursery-with-cots-and-soft-toys.jpg',
     portrait: {
       x: 222,
@@ -1482,6 +1509,7 @@ Ce fond est idéal pour mettre en valeur des tableaux doux et expressifs des col
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: false,
     path: 'stylish-kids-playroom.jpg',
     portrait: {
       x: 605,
@@ -1539,6 +1567,7 @@ Ce fond est idéal pour des collections Chambre fille ou fillette, Rêves d’Ai
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: false,
     path: 'office-with-comfy-leather-chairs.jpg',
     portrait: {
       x: 705,
@@ -1594,6 +1623,7 @@ Parfait pour présenter des œuvres issues des collections Minimal, Monochrome, 
     topLayer: null,
   },
   {
+    priorityAsFirstBackground: false,
     path: 'home-office-desk-with-computer.jpg',
     portrait: {
       x: 606,
