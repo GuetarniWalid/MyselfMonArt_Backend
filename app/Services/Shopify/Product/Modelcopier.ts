@@ -129,6 +129,67 @@ export default class ModelCopier {
     return true
   }
 
+  public async waitForMediaImages(
+    product: ProductById | Product,
+    maxRetries: number = 5,
+    delayMs: number = 2000
+  ): Promise<boolean> {
+    console.info(`🔄 Waiting for media images to load for product ${product.id}`)
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      // Check if media images are loaded
+      const hasImages = product.media.nodes.length > 0 && product.media.nodes[1]?.image !== null
+
+      if (hasImages) {
+        console.info(
+          `✅ Media images loaded successfully for product ${product.id} on attempt ${attempt}`
+        )
+        return true
+      }
+
+      console.info(
+        `⏳ Media images not ready for product ${product.id}, attempt ${attempt}/${maxRetries}`
+      )
+
+      if (attempt < maxRetries) {
+        console.info(`⏳ Waiting ${delayMs}ms before retry...`)
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+
+        // Refresh product data to get updated media
+        try {
+          const shopify = new Shopify()
+          const refreshedProduct = await shopify.product.getProductById(product.id)
+          Object.assign(product, refreshedProduct)
+        } catch (error) {
+          console.warn(`⚠️ Failed to refresh product data on attempt ${attempt}:`, error.message)
+        }
+      }
+    }
+
+    console.warn(
+      `❌ Media images failed to load after ${maxRetries} attempts for product ${product.id}`
+    )
+    return false
+  }
+
+  public async areMediaImagesLoaded(product: ProductById | Product): Promise<boolean> {
+    if (!product) return false
+    if (this.isModelProduct(product)) return false
+    if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'personalized')
+      return false
+    if (product.media.nodes.length < 1) return false
+
+    // Wait for media images to be loaded
+    const mediaLoaded = await this.waitForMediaImages(product)
+    if (!mediaLoaded) {
+      console.warn(`⚠️ Cannot process product ${product.id} - media images not available`)
+      return false
+    }
+
+    if (!product.media.nodes[1].image) return false
+    return true
+  }
+
   public async copyModelDataFromImageRatio(product: ProductById) {
     const model = await this.getModelFromProduct(product)
     if (!model) return

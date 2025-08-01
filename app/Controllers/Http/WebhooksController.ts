@@ -157,6 +157,10 @@ export default class WebhooksController {
   private async handlePaintingCreate(id: string) {
     const shopify = new Shopify()
     const product = await shopify.product.getProductById(id)
+
+    const areMediaLoaded = await shopify.product.modelCopier.areMediaImagesLoaded(product)
+    if (!areMediaLoaded) return
+
     const canProcess = shopify.product.modelCopier.canProcessPaintingCreate(product)
     if (!canProcess) return
 
