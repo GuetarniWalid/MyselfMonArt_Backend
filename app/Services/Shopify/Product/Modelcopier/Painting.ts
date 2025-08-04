@@ -1,53 +1,14 @@
 import { Product, ProductById, ProductByTag } from 'Types/Product'
-import Shopify from '..'
-import ChatGPT from 'App/Services/ChatGPT'
-import { LanguageCode, RegionCode } from 'Types/Translation'
+import Shopify from '../..'
+import ModelCopier from './index'
 
-export default class ModelCopier {
+export default class PaintingCopier extends ModelCopier {
   public async copyModelDataOnProduct(product: ProductById, model: ProductByTag) {
     await this.deleteProductOptions(product)
     await this.copyModelOptions(product, model)
     await this.copyModelVariants(product, model)
     await this.copyModelMetafields(product, model)
     await this.translateProductOptionsInAllLanguages(product)
-  }
-
-  private async deleteProductOptions(product: ProductById) {
-    const shopify = new Shopify()
-    await shopify.product.deleteAllOptions(product.id)
-  }
-
-  private async copyModelOptions(product: ProductById, model: ProductByTag) {
-    const shopify = new Shopify()
-    await shopify.product.createOptions(
-      product.id,
-      model.options.map((option) => ({
-        name: option.name,
-        values: option.values,
-      }))
-    )
-  }
-
-  private async copyModelVariants(product: ProductById, model: ProductByTag) {
-    const shopify = new Shopify()
-
-    const modelVariants = model.variants.nodes
-    if (!modelVariants) return
-
-    const defaultVariant = product.variants.nodes[0]
-    const variants = modelVariants.map((variant) => ({
-      price: variant.price,
-      optionValues: variant.selectedOptions.map((option) => ({
-        name: option.value,
-        optionName: option.name,
-      })),
-    }))
-
-    const [defaultModelVariant, ...variantsWithoutDefault] = variants
-    await shopify.product.updateVariant(product.id, defaultVariant.id, {
-      price: defaultModelVariant.price,
-    })
-    await shopify.product.createVariantsBulk(product.id, variantsWithoutDefault)
   }
 
   private async copyModelMetafields(product: ProductById, model: ProductByTag) {
@@ -63,54 +24,6 @@ export default class ModelCopier {
     }
   }
 
-  private async translateProductOptionsInAllLanguages(product: ProductById) {
-    await this.translateProductOptions(product, 'en')
-    await this.translateProductOptions(product, 'en', 'UK')
-  }
-
-  private async translateProductOptions(
-    product: ProductById,
-    locale: LanguageCode,
-    region?: RegionCode
-  ) {
-    console.info(
-      `🚀 Translating product options: ${product.id} to ${locale}${region ? `-${region}` : ''}`
-    )
-    const shopify = new Shopify()
-    const chatGPT = new ChatGPT()
-
-    const updatedProduct = await shopify.product.getProductById(product.id)
-
-    const productToTranslate = {
-      id: updatedProduct.id,
-      options: updatedProduct.options.map((option) => ({
-        id: option.id,
-        name: option.name,
-        optionValues: option.optionValues.map((value) => ({
-          id: value.id,
-          name: value.name,
-        })),
-      })),
-    }
-
-    const productTranslated = await chatGPT.translate(productToTranslate, 'product', locale, region)
-
-    const responses = await shopify.translator('product').updateTranslation({
-      resourceToTranslate: productToTranslate,
-      resourceTranslated: productTranslated,
-      isoCode: locale,
-      region,
-    })
-
-    responses.forEach((response) => {
-      if (response.translationsRegister.userErrors.length > 0) {
-        console.log('🚨 Error => ', response.translationsRegister.userErrors)
-      } else {
-        console.log('✅ Translation updated')
-      }
-    })
-  }
-
   public isModelProduct(product: ProductById | Product): boolean {
     return product.tags.some((tag) =>
       ['portrait model', 'paysage model', 'square model', 'personalized portrait model'].includes(
@@ -119,7 +32,7 @@ export default class ModelCopier {
     )
   }
 
-  public canProcessPaintingCreate(product: ProductById | Product): boolean {
+  public canProcessProductCreate(product: ProductById | Product): boolean {
     if (!product) return false
     if (this.isModelProduct(product)) return false
     if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'personalized')
@@ -237,44 +150,6 @@ export default class ModelCopier {
     return tag
   }
 
-  public areOptionsSimilar(product: ProductById, model: ProductByTag): boolean {
-    if (!product.options || !model.options) return false
-    if (product.options.length !== model.options.length) return false
-
-    return product.options.every((productOption, index) => {
-      const modelOption = model.options[index]
-
-      if (productOption.name !== modelOption.name) return false
-      if (productOption.optionValues.length !== modelOption.values.length) return false
-
-      return productOption.optionValues.every((value) => modelOption.values.includes(value.name))
-    })
-  }
-
-  public areVariantsSimilar(product: ProductById, model: ProductByTag): boolean {
-    if (!product.variants?.nodes || !model.variants?.nodes) return false
-    if (product.variants.nodes.length !== model.variants.nodes.length) return false
-
-    return product.variants.nodes.every((productVariant) => {
-      const matchingModelVariant = model.variants.nodes.find((modelVariant) => {
-        if (productVariant.price !== modelVariant.price) return false
-
-        const optionsMatch = productVariant.selectedOptions.every((productOption) => {
-          const hasMatchingOption = modelVariant.selectedOptions.some(
-            (modelOption) =>
-              modelOption.name === productOption.name && modelOption.value === productOption.value
-          )
-          if (!hasMatchingOption) return false
-          return hasMatchingOption
-        })
-
-        return optionsMatch
-      })
-
-      return !!matchingModelVariant
-    })
-  }
-
   public areMetafieldsSimilar(product: ProductById, model: ProductByTag): boolean {
     if (!product.paintingOptionsMetafields?.nodes || !model.paintingOptionsMetafields?.nodes)
       return false
@@ -300,6 +175,23 @@ export default class ModelCopier {
       )
 
       return !!matchingModelMetafield
+    })
+  }
+
+  public getRelatedProducts(product: ProductById, products: Product[]) {
+    const tag = this.getTagFromModel(product)
+
+    return products.filter((p) => {
+      if (p.templateSuffix !== 'painting' && p.templateSuffix !== 'personalized') return false
+
+      const pSecondImage = p.media.nodes[1]
+      if (!pSecondImage?.image) return false
+
+      const isModel = this.isModelProduct(p)
+      if (isModel) return false
+
+      const pTag = this.getTagFromProduct(p)
+      return pTag === tag
     })
   }
 }

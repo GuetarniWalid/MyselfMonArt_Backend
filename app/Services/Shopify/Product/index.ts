@@ -6,14 +6,17 @@ import type {
 } from 'Types/Product'
 import Authentication from '../Authentication'
 import Metafield from '../Metafield'
-import ModelCopier from './Modelcopier'
+import PaintingCopier from './Modelcopier/Painting'
+import TapestryCopier from './Modelcopier/Tapestry'
 
 export default class Product extends Authentication {
-  public modelCopier: ModelCopier
+  public paintingCopier: PaintingCopier
+  public tapestryCopier: TapestryCopier
 
   constructor() {
     super()
-    this.modelCopier = new ModelCopier()
+    this.paintingCopier = new PaintingCopier()
+    this.tapestryCopier = new TapestryCopier()
   }
 
   public async create(product: CreateProduct) {
@@ -260,6 +263,16 @@ export default class Product extends Authentication {
     const flattenedTags = allProductTags.flat()
     const uniqueTags = [...new Set(flattenedTags)]
     return uniqueTags
+  }
+
+  public getModelCopier(product: ProductById | ShopifyProduct) {
+    const isPainting = product.templateSuffix === 'painting'
+    const isTapestry = product.templateSuffix === 'tapestry'
+
+    if (isPainting) return new PaintingCopier()
+    if (isTapestry) return new TapestryCopier()
+
+    throw new Error('Invalid product type')
   }
 
   public async getTagsAndProductTypes(): Promise<{ tags: string[]; productTypes: string[] }> {

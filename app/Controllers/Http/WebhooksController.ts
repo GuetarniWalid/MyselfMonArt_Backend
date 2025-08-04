@@ -152,20 +152,33 @@ export default class WebhooksController {
   private async handleProductCreate(id: string) {
     console.info(`🚀 Handling product create: ${id}`)
     await this.handlePaintingCreate(id)
+    await this.handleTapestryCreate(id)
   }
 
   private async handlePaintingCreate(id: string) {
     const shopify = new Shopify()
     const product = await shopify.product.getProductById(id)
 
-    const areMediaLoaded = await shopify.product.modelCopier.areMediaImagesLoaded(product)
+    const areMediaLoaded = await shopify.product.paintingCopier.areMediaImagesLoaded(product)
     if (!areMediaLoaded) return
 
-    const canProcess = shopify.product.modelCopier.canProcessPaintingCreate(product)
+    const canProcess = shopify.product.paintingCopier.canProcessProductCreate(product)
     if (!canProcess) return
 
     console.info(`🚀 Filling model data on product`)
-    await shopify.product.modelCopier.copyModelDataFromImageRatio(product)
+    await shopify.product.paintingCopier.copyModelDataFromImageRatio(product)
+    console.info(`🚀 Data successfully copied on product ${id}`)
+  }
+
+  private async handleTapestryCreate(id: string) {
+    const shopify = new Shopify()
+    const product = await shopify.product.getProductById(id)
+
+    const canProcess = shopify.product.tapestryCopier.canProcessProductCreate(product)
+    if (!canProcess) return
+
+    console.info(`🚀 Filling model data on product`)
+    await shopify.product.tapestryCopier.copyModelDataOnProduct(product)
     console.info(`🚀 Data successfully copied on product ${id}`)
   }
 
@@ -180,35 +193,28 @@ export default class WebhooksController {
     try {
       const shopify = new Shopify()
       const product = await shopify.product.getProductById(id)
-      const isModel = shopify.product.modelCopier.isModelProduct(product)
+      const copier = shopify.product.getModelCopier(product)
+      const isModel = copier.isModelProduct(product)
       if (!isModel) return
 
       console.info(`🚀 Updating related products from model: ${id}`)
-      const tag = shopify.product.modelCopier.getTagFromModel(product)
 
       const products = await shopify.product.getAll()
-      const relatedProducts = products.filter((p) => {
-        if (p.templateSuffix !== 'painting' && p.templateSuffix !== 'personalized') return false
-
-        const pSecondImage = p.media.nodes[1]
-        if (!pSecondImage?.image) return false
-
-        const isModel = shopify.product.modelCopier.isModelProduct(p)
-        if (isModel) return false
-
-        const pTag = shopify.product.modelCopier.getTagFromProduct(p)
-        return pTag === tag
-      })
+      const relatedProducts = copier.getRelatedProducts(product, products)
 
       // Process related products sequentially to avoid overwhelming the system
       for (const relatedProduct of relatedProducts) {
         if (!WebhooksController.processingProducts.has(relatedProduct.id)) {
-          await this.handlePaintingCreate(relatedProduct.id)
+          try {
+            await this.handleProductCreate(relatedProduct.id)
+          } catch (error) {
+            console.error('Error updating related product:', relatedProduct.id, error)
+          }
         }
       }
       console.info(`🚀 Related products updated: ${relatedProducts.length}`)
     } catch (error) {
-      console.error('Error updating related products with id:', id, error)
+      console.error('Error during update related products:', error)
     }
   }
 
