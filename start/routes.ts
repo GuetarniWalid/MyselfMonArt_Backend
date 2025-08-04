@@ -34,8 +34,6 @@ Route.group(() => {
     return ally.use('google').redirect()
   })
   Route.get('/callback', 'SocialAuthsController.index')
-  Route.get('/merchant-center', 'SocialAuthsController.redirectToGoogle')
-  Route.get('/merchant-center/callback', 'SocialAuthsController.handleGoogleCallback')
   Route.get('/pinterest', 'SocialAuthsController.redirectToPinterest')
   Route.get('/pinterest/callback', 'SocialAuthsController.handlePinterestCallback')
 }).prefix('/login')
@@ -48,9 +46,6 @@ Route.group(() => {
   Route.get('/backlinks', async ({ view }) => {
     return view.render('pages/backlinks')
   })
-  Route.get('/painting-options', async ({ view }) => {
-    return view.render('pages/painting-options')
-  })
 })
   .prefix('/dashboard')
   .middleware(['auth'])
@@ -61,11 +56,6 @@ Route.group(() => {
     Route.post('/delete', 'BacklinksController.delete')
     Route.post('/check', 'BacklinksController.checkLinks')
   }).prefix('/backlinks')
-
-  Route.group(() => {
-    Route.get('/options/:aspectRatio', 'PaintingsController.index')
-    Route.post('/options/store', 'PaintingsController.store')
-  }).prefix('/paintings')
 
   Route.group(() => {
     Route.post('/update/metafield/likes-count', 'ProductsController.updateMetafieldLikesCount')

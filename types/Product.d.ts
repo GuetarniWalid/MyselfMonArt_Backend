@@ -31,16 +31,6 @@ export type Image = {
 
 export type Ratio = 'square' | 'portrait' | 'landscape' | 'personalized portrait'
 
-export type UpdateProductPainting = {
-  type: 'painting'
-  productId: number
-  ratio: Ratio
-  variant: {
-    title: string
-    price?: string
-  }
-}
-
 export interface ProductWithOutdatedTranslations {
   id: string
   title: string

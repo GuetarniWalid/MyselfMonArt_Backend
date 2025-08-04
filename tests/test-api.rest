@@ -1,15 +1,3 @@
-# POST http://127.0.0.1:3333/api/product/update/painting HTTP/1.1
-# content-type: application/json
-
-# {
-#     "type": "painting",
-#     "productId": 8827943354715,
-#     "ratio": "square",
-#     "variant": {
-#         "title": "100x100 cm/Toile/Bordure blanche"
-#     }
-# }
-
 POST /admin/api/2024-04/metafields.json
 {
   "metafield": {
