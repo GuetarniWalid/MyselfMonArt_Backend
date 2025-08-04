@@ -51,9 +51,6 @@ Route.group(() => {
   Route.get('/painting-options', async ({ view }) => {
     return view.render('pages/painting-options')
   })
-  Route.get('/tapestry-options', async ({ view }) => {
-    return view.render('pages/tapestry-options')
-  })
 })
   .prefix('/dashboard')
   .middleware(['auth'])
@@ -71,12 +68,6 @@ Route.group(() => {
   }).prefix('/paintings')
 
   Route.group(() => {
-    Route.get('/price', 'TapestriesController.index')
-    Route.put('/price', 'TapestriesController.update')
-  }).prefix('/tapestry')
-
-  Route.group(() => {
-    Route.post('/update/tapestry', 'ProductsController.updateTapestry')
     Route.post('/update/metafield/likes-count', 'ProductsController.updateMetafieldLikesCount')
   }).prefix('/product')
 

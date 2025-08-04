@@ -1,6 +1,4 @@
 import type {
-  UpdateProductPainting,
-  UpdateProductTapestry,
   Product as ShopifyProduct,
   ProductByTag,
   ProductById,
@@ -8,7 +6,6 @@ import type {
 } from 'Types/Product'
 import Authentication from '../Authentication'
 import Metafield from '../Metafield'
-import Variant from '../Variant'
 import ModelCopier from './Modelcopier'
 
 export default class Product extends Authentication {
@@ -621,13 +618,6 @@ export default class Product extends Authentication {
         ? await metafield.increment(productId, 'likes', 'number')
         : await metafield.decrement(productId, 'likes', 'number')
     return newCount
-  }
-
-  public async updateTapestryVariant(product: UpdateProductPainting | UpdateProductTapestry) {
-    const variant = new Variant()
-    if (product.type === 'tapestry') {
-      return variant.updateTapestry(product)
-    }
   }
 
   public async updateVariant(productId: string, variantId: string, payload: any) {

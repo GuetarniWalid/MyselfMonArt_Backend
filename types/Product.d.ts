@@ -41,16 +41,6 @@ export type UpdateProductPainting = {
   }
 }
 
-export type UpdateProductTapestry = {
-  type: 'tapestry'
-  productId: number
-  variant: {
-    title: string
-    price?: string
-  }
-  cm2: number
-}
-
 export interface ProductWithOutdatedTranslations {
   id: string
   title: string
