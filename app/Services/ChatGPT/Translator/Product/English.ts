@@ -74,10 +74,7 @@ export default class English {
     if (value === '100x75 cm') return { translation: '39.4x29.5 in' }
     if (value === '120x90 cm') return { translation: '47.2x35.4 in' }
 
-    //others
-    if (value === '2 cm') return { translation: '0.8 in' }
-    if (value === '4 cm') return { translation: '1.6 in' }
-    else return value
+    return this.convertCmToInch(value)
   }
 
   private translateIfIsOfTypeMaterial(value: string) {
@@ -163,5 +160,18 @@ export default class English {
 
       return match
     })
+  }
+
+  private convertCmToInch(value: string) {
+    const match = value.match(/^(\d+)\s*cm$/i)
+    if (!match) return value
+
+    const cm = parseInt(match[1], 10)
+    const inch = cm * 0.3937
+    const roundedInch = Math.round(inch * 10) / 10
+
+    return {
+      translation: `${roundedInch.toFixed(1)} in`,
+    }
   }
 }
