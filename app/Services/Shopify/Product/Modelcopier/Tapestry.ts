@@ -30,29 +30,17 @@ export default class TapestryCopier extends ModelCopier {
     return model
   }
 
-  public getTagFromModel(product: ProductById | Product) {
-    const tag = product.tags.find((tag) => ['tapestry model'].includes(tag))
-    if (!tag) throw new Error('Model tag not found')
-
-    return tag
-  }
-
   public getTagFromProduct(product: ProductById | Product) {
     const productHasTapestryTag = product.tags.some((tag) => ['tapestry model'].includes(tag))
     return productHasTapestryTag ? 'tapestry model' : null
   }
 
-  public getRelatedProducts(product: ProductById, products: Product[]) {
-    const tag = this.getTagFromModel(product)
-
+  public getRelatedProducts(products: Product[]) {
     return products.filter((p) => {
-      if (p.templateSuffix !== 'tapestry') return false
-
       const isModel = this.isModelProduct(p)
       if (isModel) return false
 
-      const pTag = this.getTagFromProduct(p)
-      return pTag === tag
+      return p.templateSuffix === 'tapestry'
     })
   }
 }

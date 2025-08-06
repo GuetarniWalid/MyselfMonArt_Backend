@@ -6,7 +6,6 @@ import { LanguageCode, RegionCode } from 'Types/Translation'
 export default abstract class ModelCopier {
   public abstract isModelProduct(product: ProductById | Product): boolean
   public abstract canProcessProductCreate(product: ProductById | Product): boolean
-  public abstract getTagFromModel(product: ProductById | Product): string
   public abstract getTagFromProduct(product: ProductById | Product): string | null
 
   protected async deleteProductOptions(product: ProductById) {

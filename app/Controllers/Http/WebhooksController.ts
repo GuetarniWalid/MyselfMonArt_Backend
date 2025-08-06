@@ -200,7 +200,7 @@ export default class WebhooksController {
       console.info(`🚀 Updating related products from model: ${id}`)
 
       const products = await shopify.product.getAll()
-      const relatedProducts = copier.getRelatedProducts(product, products)
+      const relatedProducts = copier.getRelatedProducts(products, product)
 
       // Process related products sequentially to avoid overwhelming the system
       for (const relatedProduct of relatedProducts) {

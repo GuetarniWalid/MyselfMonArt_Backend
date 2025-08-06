@@ -178,7 +178,7 @@ export default class PaintingCopier extends ModelCopier {
     })
   }
 
-  public getRelatedProducts(product: ProductById, products: Product[]) {
+  public getRelatedProducts(products: Product[], product: ProductById) {
     const tag = this.getTagFromModel(product)
 
     return products.filter((p) => {
