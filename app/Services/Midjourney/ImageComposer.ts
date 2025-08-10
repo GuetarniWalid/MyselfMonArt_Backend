@@ -1,5 +1,4 @@
 import type { Background, Ratio } from 'Types/Midjourney'
-import type { Collection } from 'Types/Collection'
 import BackgroundSelector from './BackgroundSelector'
 import fs from 'fs/promises'
 import path from 'path'
@@ -334,11 +333,11 @@ export default class ImageComposer {
   public async getImagesWithBackground(
     mainImageUrl: string,
     ratio: Ratio,
-    parentCollection: Collection
+    descriptionHtml: string
   ): Promise<string[]> {
     const backgroundSelector = new BackgroundSelector()
     try {
-      const backgrounds = await backgroundSelector.getBackgrounds(mainImageUrl, parentCollection)
+      const backgrounds = await backgroundSelector.getBackgrounds(mainImageUrl, descriptionHtml)
       const newImageUrlsPromises = backgrounds.map(async (background, idx) => {
         const composedImageBuffer = await this.composeImageWithBackground(
           background,

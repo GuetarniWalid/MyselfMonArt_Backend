@@ -1,5 +1,4 @@
 import type { Background } from 'Types/Midjourney'
-import type { Collection } from 'Types/Collection'
 import { backgrounds } from './backgroundsData'
 import OpenAI from 'App/Services/ChatGPT/Midjourney'
 
@@ -8,13 +7,13 @@ export default class BackgroundSelector {
 
   public async getBackgrounds(
     mainImageUrl: string,
-    parentCollection: Collection
+    descriptionHtml: string
   ): Promise<Background[]> {
     const openAI = new OpenAI()
     const selectedBackgroundPaths = await openAI.suggestRelevantBackgrounds(
       this.backgrounds,
       mainImageUrl,
-      parentCollection
+      descriptionHtml
     )
 
     const backgrounds = this.backgrounds.filter((background) =>

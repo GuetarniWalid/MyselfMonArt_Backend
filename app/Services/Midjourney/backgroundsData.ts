@@ -266,58 +266,6 @@ Convient pour mettre en valeur un tableau aux teintes naturelles, matières orga
   },
   {
     priorityAsFirstBackground: false,
-    path: 'kids-toys-on-playroom-floor.jpg',
-    portrait: {
-      x: 590,
-      y: 157,
-      width: 621,
-      height: 828,
-    },
-    landscape: {
-      x: 380,
-      y: 194,
-      width: 1083,
-      height: 722,
-    },
-    square: {
-      x: 530,
-      y: 172,
-      width: 833,
-      height: 833,
-    },
-    description: `Type de pièce : coin de jeu ou salle de jeux pour petitenfant entre 1 et 5ans, chaleureux, doux et ludique.
-
-Ambiance générale : joyeuse, apaisante et stimulante, avec une atmosphère sécurisante et créative.
-
-Palette de couleurs :
-
-Mur : bleu-gris profond au décor graphique façon espace (planètes et étoiles blanches).
-
-Textiles : tons pastel (bleu clair, rose poudré) sur les coussins et poufs.
-
-Tapis : shaggy gris très doux, propice au confort des petits.
-
-Bois naturel pour les jouets, apportant chaleur et équilibre visuel.
-
-Mobilier & accessoires :
-
-Poufs ronds moelleux en tissu, à hauteur enfant.
-
-Coussins étoile pastel pour le jeu / la décoration.
-
-Jouets en bois, figurines, petites constructions, train, animaux — ambiance Montessori/éducative.
-
-Panière en corde pour le rangement, facilitant l’organisation ludique.
-
-Motif mural galaxies, très graphique et stimulant, parfaitement adapté à l’imagination enfantine.
-
-Ambiance lumineuse : lumière claire et diffuse, probablement naturelle, mettant en valeur les textures douces.
-
-Usage suggéré : idéal pour une chambre d’enfant, une salle de jeu ou un coin créatif enfantin. L’espace dégage à la fois douceur tactile, stimulation visuelle et invitation au jeu.`,
-    topLayer: null,
-  },
-  {
-    priorityAsFirstBackground: false,
     path: 'home-office-with-large-window.jpg',
     portrait: {
       x: 681,
@@ -901,66 +849,6 @@ Convient aux collections Nature morte contemporaine, Cuisine poétique, Végéta
 
 `,
     topLayer: 'kitchen-bench-with-spotlight-plant.png',
-  },
-  {
-    priorityAsFirstBackground: false,
-    path: 'dining-area-with-solid-wood-table.jpg',
-    portrait: {
-      x: 599,
-      y: 305,
-      width: 602,
-      height: 802,
-    },
-    landscape: {
-      x: 524,
-      y: 342,
-      width: 1074,
-      height: 716,
-    },
-    square: {
-      x: 599,
-      y: 329,
-      width: 771,
-      height: 771,
-    },
-    description: `Type de pièce : salle à manger rustique haut de gamme, au style brut et chaleureux, pensée pour les moments conviviaux et élégants.
-
-Ambiance générale : naturelle, robuste et authentique, avec une forte présence de matériaux bruts (pierre, bois massif).
-
-Palette de couleurs :
-
-Mur en pierre apparente, tons gris bleutés, bruns et ocres, très texturé
-
-Mobilier en bois foncé et clair, avec contrastes harmonieux
-
-Chaises en toile noire et structure bois, style metteur en scène
-
-Suspensions en dôme, tons terre cuite foncée à l’extérieur, beige chaud à l’intérieur
-
-Mobilier & accessoires :
-
-Grande table en bois brut clair, centrale, conviviale
-
-Chaises panachées : dossier en corde, assise noire ou bois
-
-Service de table discret : théière cuivrée, coupelles, plateau bois
-
-Décoration florale sèche minimaliste
-
-Stores en bois foncé sur les fenêtres latérales
-
-Ambiance lumineuse :
-
-Lumière douce accentuée par les suspensions design
-
-Éclairage naturel diffus, complété par une lumière chaude et enveloppante
-
-Usage suggéré :
-
-Parfait pour des œuvres ethniques, zen, tribales, naturelles ou gastronomiques
-
-Convient aux collections Ambiances Sauvages, Matières brutes, Cuisine du Monde, Table & Partage`,
-    topLayer: 'dining-area-with-solid-wood-table-lamp.png',
   },
   {
     priorityAsFirstBackground: false,
