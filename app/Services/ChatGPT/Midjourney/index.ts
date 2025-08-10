@@ -1,5 +1,4 @@
 import type { Background } from 'Types/Midjourney'
-import type { Collection } from 'Types/Collection'
 import AltGenerator from './AltGenerator'
 import Authentication from '../Authentication'
 import BackgroundSelector from './BackgroundSelector'
@@ -14,13 +13,7 @@ import { zodResponseFormat } from 'openai/helpers/zod'
 
 export default class Midjourney extends Authentication {
   private imageAnalysis: {
-    style: string
-    elementsVisuels: string[]
-    origineCulturelle: string
-    courantArtistique: string
-    couleurs: string[]
-    emotions: string[]
-    ambiance: string
+    haveToBeDetailed: boolean
   } | null = null
 
   public async generateAlt(imageUrl: string) {
@@ -109,8 +102,10 @@ export default class Midjourney extends Authentication {
   }
 
   public async generateHtmlDescription(imageUrl: string) {
+    await this.ensureImageAnalysis(imageUrl)
+
     return this.retryOperation(async () => {
-      const descriptionGenerator = new DescriptionGenerator()
+      const descriptionGenerator = new DescriptionGenerator(this.imageAnalysis!.haveToBeDetailed)
 
       try {
         const { responseFormat, payload, systemPrompt } =
@@ -205,16 +200,13 @@ export default class Midjourney extends Authentication {
     })
   }
 
-  public async generateTitleAndSeo(imageUrl: string) {
-    await this.ensureImageAnalysis(imageUrl)
-
+  public async generateTitleAndSeo(descriptionHtml: string) {
     return this.retryOperation(async () => {
       const titleAndSeoGenerator = new TitleAndSeoGenerator()
 
       try {
-        const { responseFormat, payload, systemPrompt } = titleAndSeoGenerator.prepareRequest(
-          this.imageAnalysis!
-        )
+        const { responseFormat, systemPrompt } =
+          titleAndSeoGenerator.prepareRequest(descriptionHtml)
 
         const completion = await this.openai.beta.chat.completions.parse({
           model: Env.get('OPENAI_MODEL'),
@@ -228,7 +220,7 @@ export default class Midjourney extends Authentication {
               content: [
                 {
                   type: 'text',
-                  text: JSON.stringify(payload.imageAnalysis),
+                  text: JSON.stringify(descriptionHtml),
                 },
               ],
             },
@@ -264,7 +256,7 @@ export default class Midjourney extends Authentication {
   public async suggestRelevantBackgrounds(
     backgrounds: Background[],
     mainImageUrl: string,
-    parentCollection: Collection
+    descriptionHtml: string
   ) {
     return this.retryOperation(async () => {
       const backgroundSelector = new BackgroundSelector()
@@ -273,7 +265,7 @@ export default class Midjourney extends Authentication {
         const { responseFormat, payload, systemPrompt } = backgroundSelector.prepareRequest(
           backgrounds,
           mainImageUrl,
-          parentCollection.title
+          descriptionHtml
         )
 
         const completion = await this.openai.beta.chat.completions.parse({
@@ -292,7 +284,7 @@ export default class Midjourney extends Authentication {
                 },
                 {
                   type: 'text',
-                  text: `Collection parente : ${payload.parentCollection}`,
+                  text: `Description du tableau en HTML : ${payload.descriptionHtml}`,
                 },
                 {
                   type: 'image_url',

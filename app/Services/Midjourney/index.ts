@@ -32,12 +32,12 @@ export default class Midjourney {
   public async getImagesWithBackground(
     mainImageUrl: string,
     ratio: Ratio,
-    parentCollection: Collection
+    descriptionHtml: string
   ) {
     const imagesWithBackground = await this.imageComposer.getImagesWithBackground(
       mainImageUrl,
       ratio,
-      parentCollection
+      descriptionHtml
     )
 
     const imagesWithBackgroundUrls = imagesWithBackground.map((image) =>

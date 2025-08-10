@@ -33,7 +33,7 @@ export default class MidjourneysController {
       const imagesWithBackground = await midjourney.getImagesWithBackground(
         optimizedImage,
         ratio,
-        parentCollection
+        descriptionHtml
       )
 
       // Process AI operations concurrently
@@ -48,7 +48,7 @@ export default class MidjourneysController {
         openAI.suggestProductType(productTypes, optimizedImage),
         Promise.all(imagesWithBackground.map(async (image) => await openAI.generateAlt(image))),
         openAI.generateAlt(optimizedImage),
-        await openAI.generateTitleAndSeo(optimizedImage),
+        await openAI.generateTitleAndSeo(descriptionHtml),
       ])
 
       product.title = title

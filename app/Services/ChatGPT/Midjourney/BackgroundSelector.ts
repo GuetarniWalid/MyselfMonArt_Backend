@@ -2,10 +2,10 @@ import type { Background } from 'Types/Midjourney'
 import { z } from 'zod'
 
 export default class BackgroundSelector {
-  public prepareRequest(backgrounds: Background[], mainImageUrl: string, parentCollection: string) {
+  public prepareRequest(backgrounds: Background[], mainImageUrl: string, descriptionHtml: string) {
     return {
       responseFormat: this.getResponseFormat(),
-      payload: this.getPayload(backgrounds, mainImageUrl, parentCollection),
+      payload: this.getPayload(backgrounds, mainImageUrl, descriptionHtml),
       systemPrompt: this.getSystemPrompt(),
     }
   }
@@ -16,7 +16,7 @@ export default class BackgroundSelector {
     })
   }
 
-  private getPayload(backgrounds: Background[], mainImageUrl: string, parentCollection: string) {
+  private getPayload(backgrounds: Background[], mainImageUrl: string, descriptionHtml: string) {
     const backgroundsFormatted = backgrounds.map((background) => {
       return {
         path: background.path,
@@ -28,17 +28,17 @@ export default class BackgroundSelector {
     return {
       backgrounds: backgroundsFormatted,
       mainImageUrl,
-      parentCollection,
+      descriptionHtml,
     }
   }
 
   private getSystemPrompt() {
     return `Tu es un expert en scénographie décorative, en design d’intérieur et en communication visuelle.
-Ta mission est de sélectionner **3 backgrounds**, classés du plus pertinent au moins, pour mettre en scène un tableau décoratif selon des critères artistiques, émotionnels et stylistiques.
+Ta mission est de sélectionner **6 backgrounds**, classés du plus pertinent au moins, pour mettre en scène un tableau décoratif selon des critères artistiques, émotionnels et stylistiques.
 
 Tu reçois :
 - Une image du tableau (analyse composition, couleurs, style, ton émotionnel)
-- Le nom de la collection parente (ex. : Zen, Nature, Afrique, Street Art, etc.)
+- La description du tableau en HTML
 - Une liste de backgrounds disponibles, chacun défini par :
   - path (chemin vers l’image)
   - description détaillée du lieu (style, ambiance, type de pièce)
@@ -46,7 +46,7 @@ Tu reçois :
 
 📌 **Consignes pour la sélection :**
 1. Analyse le tableau (esthétique, énergie, style décoratif)
-2. Croise cette analyse avec la collection parente
+2. Croise cette analyse avec la description du tableau en HTML
 3. Choisis **3 backgrounds différents**, classés par ordre de pertinence :
    - Le 1er doit être le plus adapté (ex. : un tableau cuisine doit être placé dans un background cuisine)
    - Le 2eme doit représenter une pièce alternative pertinente si cela est pertinent seulement (ex. : un tableau cuisine ne peut être que dans une cuisine, mais un tableau zen peut être dans un salon ou un bureau)
