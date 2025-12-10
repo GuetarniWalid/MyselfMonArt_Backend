@@ -5,8 +5,9 @@ import { logTaskBoundary } from 'App/Utils/Logs'
 
 export default class PublishPinterestPin extends BaseTask {
   public static get schedule() {
-    // Schedule to run every day at 8:30 AM, 12:30 PM, and 6:30 PM.
-    return '30 8,12,18 * * *'
+    // Schedule disabled
+    // return '30 8,12,18 * * *'
+    return ''
   }
 
   public static get useLock() {
