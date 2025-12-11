@@ -180,6 +180,30 @@
       "aliases": [],
       "flags": []
     },
+    "shopify:update_descriptions_to_wallart": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShopifyUpdateDescriptionsToWallArt",
+      "commandName": "shopify:update_descriptions_to_wallart",
+      "description": "Update product descriptions to reflect wall art terminology only",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
+    "shopify:update_titles_to_wallart": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShopifyUpdateTitlesToWallArt",
+      "commandName": "shopify:update_titles_to_wallart",
+      "description": "Update product titles to reflect wall art terminology only",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
     "shopify:update_whebhook_subscription_callback_url": {
       "settings": {
         "loadApp": true,
