@@ -121,7 +121,7 @@ export interface ProductToTranslateFormatted {
   mediaAltTexts: string[]
   option1Name: string
   option2Name: string
-  option3Name: string
+  option3Name?: string
 }
 
 export interface Product {

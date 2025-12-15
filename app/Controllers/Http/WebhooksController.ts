@@ -229,7 +229,10 @@ export default class WebhooksController {
         return false
       }
 
-      return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(hmac))
+      return crypto.timingSafeEqual(
+        new Uint8Array(Buffer.from(hash)),
+        new Uint8Array(Buffer.from(hmac))
+      )
     } catch (error) {
       console.error('Error verifying webhook:', error)
       return false
