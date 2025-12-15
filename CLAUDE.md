@@ -1,3 +1,11 @@
+## Server and Test Command Policy
+**IMPORTANT:** Do NOT start servers or run test commands unless explicitly requested by the user.
+
+- NEVER automatically run `npm start`, `npm run dev`, `node server.js`, or any server startup commands
+- NEVER automatically run `npm test`, `npm run test`, or any testing commands
+- Only execute these commands when the user specifically asks you to do so
+- The user will manage server startup and testing on their own unless they request your help
+
 ## Commit Message Format
 Follow conventional commits format: `type(scope): description`
 

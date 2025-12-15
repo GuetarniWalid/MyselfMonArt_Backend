@@ -1,0 +1,51 @@
+{
+  "id": "com.myselfmonart.mockup.automation",
+  "name": "Mockup Automation",
+  "version": "1.0.0",
+  "main": "index.html",
+  "manifestVersion": 5,
+  "host": [
+    {
+      "app": "PS",
+      "minVersion": "24.0.0"
+    }
+  ],
+  "entrypoints": [
+    {
+      "type": "panel",
+      "id": "mockup-automation-panel",
+      "label": {
+        "default": "Mockup Automation"
+      }
+    }
+  ],
+  "requiredPermissions": [
+    {
+      "name": "network",
+      "domains": [
+        "ws://localhost:8081",
+        "http://localhost:8081",
+        "https://*.shopify.com"
+      ]
+    },
+    {
+      "name": "allowCodeGenerationFromStrings",
+      "value": true
+    },
+    {
+      "name": "localFileSystem",
+      "value": "fullAccess"
+    }
+  ],
+  "icons": [
+    {
+      "width": 48,
+      "height": 48,
+      "path": "icons/icon.png",
+      "scale": [
+        1,
+        2
+      ]
+    }
+  ]
+}

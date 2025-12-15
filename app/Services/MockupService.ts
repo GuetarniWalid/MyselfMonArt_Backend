@@ -1,5 +1,6 @@
 import WebSocket from 'ws'
 import { v4 as uuidv4 } from 'uuid'
+import { EventEmitter } from 'events'
 
 export interface MockupJob {
   id: string
@@ -13,10 +14,14 @@ export interface MockupJob {
   completedAt?: Date
 }
 
-export default class MockupService {
+export default class MockupService extends EventEmitter {
   private jobs: Map<string, MockupJob> = new Map()
   private wsServer: WebSocket.Server | null = null
   private connectedClients: Set<WebSocket> = new Set()
+
+  constructor() {
+    super()
+  }
 
   /**
    * Initialize the WebSocket server
@@ -71,17 +76,74 @@ export default class MockupService {
         ws.send(JSON.stringify({ type: 'pong', timestamp: new Date() }))
         break
 
+      case 'new_job':
+        // Command is requesting to create a new job
+        this.handleNewJobRequest(ws, data.job)
+        break
+
       case 'job_completed':
         this.handleJobCompleted(data.jobId, data.resultPath)
+        // Notify the requesting client
+        this.broadcastToClient(ws, {
+          type: 'job_completed',
+          jobId: data.jobId,
+          resultPath: data.resultPath,
+        })
         break
 
       case 'job_failed':
         this.handleJobFailed(data.jobId, data.error)
+        // Notify the requesting client
+        this.broadcastToClient(ws, {
+          type: 'job_failed',
+          jobId: data.jobId,
+          error: data.error,
+        })
         break
 
       default:
         console.log('⚠️  Unknown message type:', data.type)
     }
+  }
+
+  /**
+   * Handle new job request from command/client
+   */
+  private handleNewJobRequest(senderWs: WebSocket, jobData: any) {
+    // Create the job
+    const job = this.createJob(jobData.productId, jobData.productTitle, jobData.imageUrl)
+
+    console.log(`📝 Job created from client: ${job.id}`)
+
+    // Broadcast to all OTHER clients (Photoshop plugins)
+    const message = JSON.stringify({
+      type: 'new_job',
+      job: {
+        id: jobData.id, // Use the ID from the command
+        productId: job.productId,
+        productTitle: job.productTitle,
+        imageUrl: job.imageUrl,
+      },
+    })
+
+    this.connectedClients.forEach((client) => {
+      if (client !== senderWs && client.readyState === WebSocket.OPEN) {
+        client.send(message)
+        console.log(`📤 Job forwarded to Photoshop client`)
+      }
+    })
+  }
+
+  /**
+   * Broadcast message to all clients
+   */
+  private broadcastToClient(excludeWs: WebSocket, message: any) {
+    const messageStr = JSON.stringify(message)
+    this.connectedClients.forEach((client) => {
+      if (client !== excludeWs && client.readyState === WebSocket.OPEN) {
+        client.send(messageStr)
+      }
+    })
   }
 
   /**
@@ -152,6 +214,9 @@ export default class MockupService {
     this.jobs.set(jobId, job)
 
     console.log(`✅ Job ${jobId} completed: ${resultPath}`)
+
+    // Emit event for job completion
+    this.emit(`job:${jobId}:completed`, job)
   }
 
   /**
@@ -170,6 +235,9 @@ export default class MockupService {
     this.jobs.set(jobId, job)
 
     console.error(`❌ Job ${jobId} failed: ${error}`)
+
+    // Emit event for job failure
+    this.emit(`job:${jobId}:failed`, job)
   }
 
   /**
@@ -198,6 +266,52 @@ export default class MockupService {
    */
   public getConnectedClientsCount(): number {
     return this.connectedClients.size
+  }
+
+  /**
+   * Wait for a job to complete (event-based, no polling!)
+   */
+  public async waitForJobCompletion(jobId: string, timeoutMs: number = 300000): Promise<MockupJob> {
+    const job = this.jobs.get(jobId)
+
+    if (!job) {
+      throw new Error(`Job ${jobId} not found`)
+    }
+
+    // If job is already completed or failed, return immediately
+    if (job.status === 'completed') {
+      return job
+    }
+
+    if (job.status === 'failed') {
+      throw new Error(`Job ${jobId} failed: ${job.error}`)
+    }
+
+    // Wait for job completion or failure events
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        // Cleanup listeners
+        this.removeListener(`job:${jobId}:completed`, onCompleted)
+        this.removeListener(`job:${jobId}:failed`, onFailed)
+        reject(new Error(`Job ${jobId} timed out after ${timeoutMs}ms`))
+      }, timeoutMs)
+
+      const onCompleted = (completedJob: MockupJob) => {
+        clearTimeout(timeout)
+        this.removeListener(`job:${jobId}:failed`, onFailed)
+        resolve(completedJob)
+      }
+
+      const onFailed = (failedJob: MockupJob) => {
+        clearTimeout(timeout)
+        this.removeListener(`job:${jobId}:completed`, onCompleted)
+        reject(new Error(`Job ${jobId} failed: ${failedJob.error}`))
+      }
+
+      // Listen for completion or failure
+      this.once(`job:${jobId}:completed`, onCompleted)
+      this.once(`job:${jobId}:failed`, onFailed)
+    })
   }
 
   /**
