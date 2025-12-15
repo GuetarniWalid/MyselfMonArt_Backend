@@ -64,7 +64,8 @@ export class WebSocketClient {
           this.log('info', `Received: ${message.type}`)
           this.options.onMessage?.(message)
         } catch (error) {
-          this.log('error', `Failed to parse message: ${error.message}`)
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          this.log('error', `Failed to parse message: ${errorMessage}`)
         }
       }
 
@@ -84,8 +85,9 @@ export class WebSocketClient {
         }
       }
     } catch (error) {
-      this.log('error', `Failed to connect: ${error.message}`)
-      this.options.onError?.(error)
+      const err = error instanceof Error ? error : new Error(String(error))
+      this.log('error', `Failed to connect: ${err.message}`)
+      this.options.onError?.(err)
     }
   }
 
@@ -108,7 +110,8 @@ export class WebSocketClient {
       this.ws.send(JSON.stringify(message))
       this.log('info', `Sent: ${message.type}`)
     } catch (error) {
-      this.log('error', `Failed to send message: ${error.message}`)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      this.log('error', `Failed to send message: ${errorMessage}`)
     }
   }
 

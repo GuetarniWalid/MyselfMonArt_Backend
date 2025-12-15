@@ -4,48 +4,53 @@
   "version": "1.0.0",
   "main": "index.html",
   "manifestVersion": 5,
-  "host": [
-    {
-      "app": "PS",
-      "minVersion": "24.0.0"
+  "host": {
+    "app": "PS",
+    "minVersion": "27.1.0"
+  },
+  "requiredPermissions": {
+    "webview": {
+      "allow": "yes",
+      "domains": ["https://*", "ws://*", "http://*"],
+      "enableMessageBridge": "localAndRemote"
+    },
+    "network": {
+      "domains": [
+        "http://localhost:3333",
+        "http://127.0.0.1:3333",
+        "https://*.shopify.com"
+      ]
+    },
+    "localFileSystem": "fullAccess",
+    "launchProcess": {
+      "schemes": ["file"]
     }
-  ],
+  },
   "entrypoints": [
     {
       "type": "panel",
       "id": "mockup-automation-panel",
-      "label": {
-        "default": "Mockup Automation"
-      }
-    }
-  ],
-  "requiredPermissions": [
-    {
-      "name": "network",
-      "domains": [
-        "ws://localhost:8081",
-        "http://localhost:8081",
-        "https://*.shopify.com"
+      "label": "Mockup Automation",
+      "icons": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "icons/myselfmonart_48x48.png",
+          "scale": [1, 2],
+          "theme": ["dark", "darkest", "lightest", "light"],
+          "species": ["generic"]
+        }
       ]
-    },
-    {
-      "name": "allowCodeGenerationFromStrings",
-      "value": true
-    },
-    {
-      "name": "localFileSystem",
-      "value": "fullAccess"
     }
   ],
   "icons": [
     {
-      "width": 48,
-      "height": 48,
-      "path": "icons/icon.png",
-      "scale": [
-        1,
-        2
-      ]
+      "width": 32,
+      "height": 32,
+      "path": "icons/myselfmonart_48x48.png",
+      "scale": [1, 2],
+      "theme": ["dark", "darkest", "lightest", "light"],
+      "species": ["generic"]
     }
   ]
 }

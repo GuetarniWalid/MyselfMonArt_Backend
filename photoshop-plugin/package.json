@@ -1,0 +1,12 @@
+{
+  "name": "mockup-automation-plugin",
+  "version": "1.0.0",
+  "description": "Photoshop UXP plugin for automated mockup generation",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

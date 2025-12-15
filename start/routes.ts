@@ -31,6 +31,13 @@ Route.group(() => {
   })
 }).prefix('/test')
 
+// Mockup API routes
+Route.group(() => {
+  Route.get('/status', 'MockupController.status')
+  Route.get('/pending-jobs', 'MockupController.getPendingJobs')
+  Route.post('/complete', 'MockupController.completeJob')
+}).prefix('/api/mockup')
+
 Route.group(() => {
   Route.get('/', async ({ ally }) => {
     return ally.use('google').redirect()

@@ -1,0 +1,6 @@
+node_modules/
+*.js
+*.js.map
+.DS_Store
+# Exception: keep bundle.js (main compiled file)
+!src/bundle.js
