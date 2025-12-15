@@ -12,6 +12,18 @@
       "aliases": [],
       "flags": []
     },
+    "photoshop:mockup_automation": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/PhotoshopMockupAutomation",
+      "commandName": "photoshop:mockup_automation",
+      "description": "Automate Photoshop mockup generation for paintings",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
     "pinterest:get_boards": {
       "settings": {
         "loadApp": true,

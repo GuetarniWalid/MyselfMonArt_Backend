@@ -24,10 +24,12 @@ Route.get('/', 'DashboardController.index').middleware(['auth'])
 Route.post('/', 'WebhooksController.handle')
 Route.post('/webhooks', 'WebhooksController.handle')
 
-Route.get('/test', async () => {
-  console.log('🚀 ~ test ok')
-  return 'test ok'
-})
+Route.group(() => {
+  Route.get('/', () => 'test ok')
+  Route.get('/websocket', async ({ view }) => {
+    return view.render('pages/test-websocket')
+  })
+}).prefix('/test')
 
 Route.group(() => {
   Route.get('/', async ({ ally }) => {
