@@ -1,4 +1,456 @@
 // ============================================
+// Mockup Processor - Photoshop Operations
+// ============================================
+
+const fs = require('uxp').storage.localFileSystem
+const { app } = require('photoshop')
+
+class MockupProcessor {
+  constructor(onLog) {
+    this.onLog = onLog
+    this.tempFolder = null
+  }
+
+  /**
+   * Log message
+   */
+  log(level, message) {
+    console.log(`[MockupProcessor] [${level}] ${message}`)
+    if (this.onLog) this.onLog(level, message)
+  }
+
+  /**
+   * Initialize temp folder
+   */
+  async initTempFolder() {
+    try {
+      const tempFolder = await fs.getTemporaryFolder()
+      this.tempFolder = tempFolder
+      this.log('info', 'Temp folder initialized')
+      return tempFolder
+    } catch (error) {
+      this.log('error', `Failed to init temp folder: ${error.message}`)
+      throw error
+    }
+  }
+
+  /**
+   * Download image from URL
+   */
+  async downloadImage(imageUrl) {
+    this.log('info', `Downloading image from: ${imageUrl}`)
+
+    try {
+      // Download from backend endpoint
+      const response = await fetch(
+        `http://localhost:3333/api/mockup/download?path=${encodeURIComponent(imageUrl)}`
+      )
+
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.status}`)
+      }
+
+      const blob = await response.blob()
+      const arrayBuffer = await blob.arrayBuffer()
+
+      // Save to temp folder
+      if (!this.tempFolder) {
+        await this.initTempFolder()
+      }
+
+      const filename = `product-${Date.now()}.jpg`
+      const file = await this.tempFolder.createFile(filename, { overwrite: true })
+      await file.write(arrayBuffer, { format: require('uxp').storage.formats.binary })
+
+      this.log('success', `Image downloaded: ${filename}`)
+      return file
+    } catch (error) {
+      this.log('error', `Download failed: ${error.message}`)
+      throw error
+    }
+  }
+
+  /**
+   * Get mockup template path
+   */
+  async getMockupTemplate() {
+    this.log('info', 'Please select mockup template PSD file')
+
+    try {
+      const file = await fs.getFileForOpening({
+        types: ['psd', 'psb'],
+      })
+
+      if (!file) {
+        throw new Error('No template selected')
+      }
+
+      this.log('success', `Template selected: ${file.name}`)
+      return file
+    } catch (error) {
+      this.log('error', `Template selection failed: ${error.message}`)
+      throw error
+    }
+  }
+
+  /**
+   * Open document in Photoshop
+   */
+  async openDocument(file) {
+    this.log('info', `Opening document: ${file.name}`)
+
+    try {
+      const doc = await app.open(file)
+      this.log('success', `Document opened: ${doc.name}`)
+      return doc
+    } catch (error) {
+      this.log('error', `Failed to open document: ${error.message}`)
+      throw error
+    }
+  }
+
+  /**
+   * Recursively search for smart object layer
+   */
+  findSmartObjectInLayers(layers, targetName = null) {
+    for (let i = 0; i < layers.length; i++) {
+      const layer = layers[i]
+
+      // Check if this layer is the smart object we're looking for
+      if (targetName && layer.name === targetName && layer.kind === 'smartObject') {
+        return layer
+      }
+
+      // If no target name, return first smart object
+      if (!targetName && layer.kind === 'smartObject') {
+        return layer
+      }
+
+      // If this is a group, search recursively inside it
+      if (layer.kind === 'group' && layer.layers) {
+        const found = this.findSmartObjectInLayers(layer.layers, targetName)
+        if (found) {
+          return found
+        }
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * Find smart object layer
+   */
+  async findSmartObjectLayer(doc) {
+    this.log('info', 'Searching for smart object layer')
+
+    try {
+      // First, try to find layer named "Artwork" (recursively)
+      let smartObject = this.findSmartObjectInLayers(doc.layers, 'Artwork')
+
+      if (smartObject) {
+        this.log('success', `Found smart object: ${smartObject.name}`)
+        return smartObject
+      }
+
+      // If not found, get the first smart object (recursively)
+      smartObject = this.findSmartObjectInLayers(doc.layers, null)
+
+      if (smartObject) {
+        this.log('success', `Found smart object: ${smartObject.name}`)
+        return smartObject
+      }
+
+      throw new Error('No smart object layer found')
+    } catch (error) {
+      this.log('error', `Smart object search failed: ${error.message}`)
+      throw error
+    }
+  }
+
+  /**
+   * Replace smart object contents
+   */
+  async replaceSmartObject(layer, imageFile) {
+    this.log('info', `Replacing smart object with: ${imageFile.name}`)
+
+    try {
+      const { batchPlay } = require('photoshop').action
+      const { storage } = require('uxp')
+      const { app } = require('photoshop')
+
+      // Select the layer first
+      layer.selected = true
+
+      // Get file token for the image file
+      const token = await storage.localFileSystem.createSessionToken(imageFile)
+
+      // Edit/open the smart object
+      this.log('info', 'Opening smart object for editing...')
+      await batchPlay(
+        [
+          {
+            _obj: 'placedLayerEditContents',
+          },
+        ],
+        {}
+      )
+
+      // Wait a moment for the smart object to open
+      await new Promise((resolve) => setTimeout(resolve, 500))
+
+      // Now we're inside the smart object document
+      const smartObjectDoc = app.activeDocument
+      this.log('info', `Inside smart object: ${smartObjectDoc.name}`)
+
+      // Place the new image on top (no need to delete existing layers)
+      this.log('info', 'Placing new image as top layer in smart object...')
+      await batchPlay(
+        [
+          {
+            _obj: 'placeEvent',
+            null: {
+              _path: token,
+              _kind: 'local',
+            },
+            freeTransformCenterState: {
+              _enum: 'quadCenterState',
+              _value: 'QCSAverage',
+            },
+          },
+        ],
+        {}
+      )
+
+      // Get canvas and image dimensions for cover calculation
+      const canvas = {
+        width: smartObjectDoc.width,
+        height: smartObjectDoc.height,
+      }
+      const imageLayer = smartObjectDoc.activeLayers[0]
+      const imageBounds = imageLayer.bounds
+      const image = {
+        width: imageBounds.right - imageBounds.left,
+        height: imageBounds.bottom - imageBounds.top,
+      }
+
+      this.log(
+        'info',
+        `Canvas: ${canvas.width}x${canvas.height}, Image: ${image.width}x${image.height}`
+      )
+
+      // Calculate "cover" scale (fill entire canvas, maintain aspect ratio)
+      const scaleX = canvas.width / image.width
+      const scaleY = canvas.height / image.height
+      const scale = Math.max(scaleX, scaleY) * 100 // Use larger scale to cover, convert to percentage
+
+      this.log('info', `Applying cover scale: ${scale.toFixed(2)}%`)
+
+      // Transform the image to cover the canvas
+      await batchPlay(
+        [
+          {
+            _obj: 'transform',
+            freeTransformCenterState: {
+              _enum: 'quadCenterState',
+              _value: 'QCSAverage',
+            },
+            offset: {
+              _obj: 'offset',
+              horizontal: { _unit: 'pixelsUnit', _value: 0 },
+              vertical: { _unit: 'pixelsUnit', _value: 0 },
+            },
+            width: { _unit: 'percentUnit', _value: scale },
+            height: { _unit: 'percentUnit', _value: scale },
+            interfaceIconFrameDimmed: {
+              _enum: 'interpolationType',
+              _value: 'bicubic',
+            },
+          },
+        ],
+        {}
+      )
+
+      // Center the image on the canvas
+      await batchPlay(
+        [
+          {
+            _obj: 'align',
+            _target: [{ _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' }],
+            using: {
+              _enum: 'alignDistributeSelector',
+              _value: 'ADSCentersH',
+            },
+          },
+          {
+            _obj: 'align',
+            _target: [{ _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' }],
+            using: {
+              _enum: 'alignDistributeSelector',
+              _value: 'ADSCentersV',
+            },
+          },
+        ],
+        {}
+      )
+
+      // Flatten/rasterize the placed layer
+      await batchPlay(
+        [
+          {
+            _obj: 'rasterizeLayer',
+            _target: [{ _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' }],
+          },
+        ],
+        {}
+      )
+
+      // Save and close the smart object
+      this.log('info', 'Closing smart object...')
+      await batchPlay(
+        [
+          {
+            _obj: 'close',
+            saving: {
+              _enum: 'yesNo',
+              _value: 'yes',
+            },
+          },
+        ],
+        {}
+      )
+
+      this.log('success', 'Smart object replaced successfully')
+    } catch (error) {
+      this.log('error', `Failed to replace smart object: ${error.message}`)
+      throw error
+    }
+  }
+
+  /**
+   * Save document as JPEG
+   */
+  async saveAsJPEG(doc, outputName) {
+    this.log('info', `Saving result as: ${outputName}`)
+
+    try {
+      if (!this.tempFolder) {
+        await this.initTempFolder()
+      }
+
+      const outputFile = await this.tempFolder.createFile(outputName, { overwrite: true })
+
+      const saveOptions = {
+        quality: 12, // Maximum quality
+        embedColorProfile: true,
+      }
+
+      await doc.saveAs.jpg(outputFile, saveOptions)
+
+      this.log('success', `Saved to: ${outputFile.nativePath}`)
+      return outputFile
+    } catch (error) {
+      this.log('error', `Save failed: ${error.message}`)
+      throw error
+    }
+  }
+
+  /**
+   * Close document
+   */
+  async closeDocument(doc, save = false) {
+    try {
+      await doc.close(save ? 'save' : 'no')
+      this.log('info', 'Document closed')
+    } catch (error) {
+      this.log('error', `Failed to close document: ${error.message}`)
+    }
+  }
+
+  /**
+   * Process mockup job
+   */
+  async processJob(job) {
+    this.log('info', `Processing job: ${job.id}`)
+    this.log('info', `Product: ${job.productTitle}`)
+
+    let doc = null
+    let productImage = null
+    let outputFile = null
+
+    try {
+      // Step 1: Download product image
+      this.log('info', 'Step 1/5: Downloading product image...')
+      productImage = await this.downloadImage(job.imageUrl)
+
+      // Step 2: Get mockup template
+      this.log('info', 'Step 2/5: Selecting mockup template...')
+      const templateFile = await this.getMockupTemplate()
+
+      // Step 3-5: Execute Photoshop operations in modal scope
+      this.log('info', 'Step 3/5: Processing in Photoshop (modal scope)...')
+
+      const result = await require('photoshop').core.executeAsModal(
+        async () => {
+          // Step 3: Open template
+          this.log('info', 'Opening template...')
+          doc = await this.openDocument(templateFile)
+
+          // Step 4: Replace smart object
+          this.log('info', 'Replacing smart object...')
+          const smartObject = await this.findSmartObjectLayer(doc)
+          await this.replaceSmartObject(smartObject, productImage)
+
+          // Step 5: Save result
+          this.log('info', 'Saving result...')
+          // Extract numeric ID from Shopify GID (e.g., "gid://shopify/Product/7890767380735" -> "7890767380735")
+          const numericId = job.productId.split('/').pop()
+          const outputName = `mockup-${numericId}-${Date.now()}.jpg`
+          outputFile = await this.saveAsJPEG(doc, outputName)
+
+          // Close document without saving
+          await this.closeDocument(doc, false)
+
+          return {
+            success: true,
+            resultPath: outputFile.nativePath,
+            outputFile: outputFile,
+          }
+        },
+        {
+          commandName: 'Process Mockup',
+          interactive: true,
+        }
+      )
+
+      this.log('success', `✅ Job completed successfully!`)
+      return result
+    } catch (error) {
+      this.log('error', `❌ Job failed: ${error.message}`)
+
+      // Clean up on error
+      if (doc) {
+        try {
+          await require('photoshop').core.executeAsModal(
+            async () => {
+              await this.closeDocument(doc, false)
+            },
+            { commandName: 'Cleanup' }
+          )
+        } catch (cleanupError) {
+          this.log('error', `Cleanup failed: ${cleanupError.message}`)
+        }
+      }
+
+      return {
+        success: false,
+        error: error.message,
+      }
+    }
+  }
+}
+
+// ============================================
 // HTTP Polling Client (instead of WebSocket)
 // ============================================
 class HTTPPollingClient {
@@ -123,8 +575,9 @@ const jobsCompletedEl = document.getElementById('jobsCompleted')
 let jobsReceived = 0
 let jobsCompleted = 0
 
-// Client
+// Client and processor
 let client = null
+let processor = null
 
 /**
  * Initialize the plugin
@@ -136,6 +589,9 @@ function init() {
     console.error('Connect button not found!')
     return
   }
+
+  // Initialize processor
+  processor = new MockupProcessor(addLog)
 
   connectBtn.addEventListener('click', handleConnectClick)
   clearLogsBtn.addEventListener('click', clearLogs)
@@ -208,28 +664,55 @@ function handleMessage(message) {
 /**
  * Handle new job message
  */
-function handleNewJob(message) {
+async function handleNewJob(message) {
   jobsReceived++
   updateStats()
 
-  addLog('info', `New job received: ${message.job.productTitle}`)
-  addLog('info', `Job ID: ${message.job.id}`)
-  addLog('info', `Product: ${message.job.productId}`)
-  addLog('warning', 'Phase 4: Job received but processing not yet implemented')
+  const job = message.job
 
-  // Simulate processing for testing Phase 4
-  setTimeout(() => {
-    if (client && client.isConnected()) {
-      client.send({
-        type: 'job_completed',
-        jobId: message.job.id,
-        resultPath: `/test-result-${message.job.productId}.jpg`,
-      })
-      jobsCompleted++
-      updateStats()
-      addLog('success', `Simulated completion for job ${message.job.id}`)
+  addLog('info', `New job received: ${job.productTitle}`)
+  addLog('info', `Job ID: ${job.id}`)
+  addLog('info', `Product: ${job.productId}`)
+
+  // Process job using MockupProcessor
+  try {
+    const result = await processor.processJob(job)
+
+    if (result.success) {
+      // Send completion message to backend
+      if (client && client.isConnected()) {
+        await client.send({
+          jobId: job.id,
+          resultPath: result.resultPath,
+          success: true,
+        })
+        jobsCompleted++
+        updateStats()
+        addLog('success', `Job ${job.id} completed and reported to backend`)
+      }
+    } else {
+      // Send failure message to backend
+      if (client && client.isConnected()) {
+        await client.send({
+          jobId: job.id,
+          error: result.error,
+          success: false,
+        })
+        addLog('error', `Job ${job.id} failed and reported to backend`)
+      }
     }
-  }, 2000)
+  } catch (error) {
+    addLog('error', `Unexpected error processing job: ${error.message}`)
+
+    // Send failure message to backend
+    if (client && client.isConnected()) {
+      await client.send({
+        jobId: job.id,
+        error: error.message,
+        success: false,
+      })
+    }
+  }
 }
 
 /**

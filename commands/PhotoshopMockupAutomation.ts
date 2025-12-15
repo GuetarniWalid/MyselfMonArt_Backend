@@ -5,8 +5,6 @@ import axios from 'axios'
 import fs from 'fs'
 import path from 'path'
 import Application from '@ioc:Adonis/Core/Application'
-import WebSocket from 'ws'
-import { EventEmitter } from 'events'
 
 export default class PhotoshopMockupAutomation extends BaseCommand {
   public static commandName = 'photoshop:mockup_automation'
@@ -18,9 +16,7 @@ export default class PhotoshopMockupAutomation extends BaseCommand {
   }
 
   private downloadedFiles: string[] = []
-  private ws: WebSocket | null = null
-  private eventEmitter = new EventEmitter()
-  private isConnected = false
+  private serverUrl = 'http://localhost:3333'
 
   public async run() {
     const shouldUpdateAllProducts = await this.askIfWeShouldUpdateAllProducts()
@@ -38,25 +34,10 @@ export default class PhotoshopMockupAutomation extends BaseCommand {
       : paintingProducts.slice(0, numberOfProducts)
 
     console.log('============================================')
-    console.log('🎨 Photoshop Mockup Automation - Phase 3')
+    console.log('🎨 Photoshop Mockup Automation - Phase 5')
     console.log('============================================')
     console.log(`Total painting products found: ${paintingProducts.length}`)
     console.log(`Products selected for processing: ${productsToUpdate.length}`)
-    console.log('============================================')
-
-    // Connect to WebSocket server
-    console.log('\n🔌 Connecting to WebSocket server...')
-    try {
-      await this.connectToWebSocket()
-      console.log('✅ Connected to WebSocket server')
-    } catch (error) {
-      console.error('\n❌ Error: Could not connect to WebSocket server')
-      console.error('   Please make sure the dev server is running:')
-      console.error('   npm run dev\n')
-      console.error(`   Error: ${error.message}`)
-      return
-    }
-
     console.log('============================================\n')
 
     const jobs: string[] = []
@@ -81,10 +62,22 @@ export default class PhotoshopMockupAutomation extends BaseCommand {
         const filePath = await this.downloadImage(secondImage.url, product.id)
         console.log(`   ✅ Downloaded to: ${filePath}`)
 
-        // Create and send mockup job via WebSocket
-        const jobId = await this.sendMockupJob(product.id, product.title, filePath)
-        console.log(`   📝 Job sent: ${jobId}`)
-        jobs.push(jobId)
+        // Create and send mockup job to server
+        const jobId = `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        const job = {
+          id: jobId,
+          productId: product.id,
+          productTitle: product.title,
+          imageUrl: filePath,
+        }
+
+        try {
+          await axios.post(`${this.serverUrl}/api/mockup/add-job`, job)
+          console.log(`   📝 Job sent to server: ${jobId}`)
+          jobs.push(jobId)
+        } catch (error) {
+          console.error(`   ❌ Failed to send job: ${error.message}`)
+        }
 
         console.log('--------------------------------------------')
       }
@@ -103,12 +96,11 @@ export default class PhotoshopMockupAutomation extends BaseCommand {
       }
 
       console.log('\n============================================')
-      console.log('✅ Phase 3 completed successfully!')
+      console.log('✅ Phase 5 completed successfully!')
       console.log(`   Total jobs processed: ${jobs.length}`)
       console.log('============================================')
     } finally {
-      // Cleanup WebSocket and files
-      this.disconnectWebSocket()
+      // Cleanup files
       await this.cleanup()
     }
   }
@@ -215,139 +207,49 @@ export default class PhotoshopMockupAutomation extends BaseCommand {
   }
 
   /**
-   * Connect to WebSocket server
-   */
-  private async connectToWebSocket(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.ws = new WebSocket('ws://localhost:8081')
-
-      const timeout = setTimeout(() => {
-        reject(new Error('Connection timeout'))
-      }, 5000)
-
-      this.ws.on('open', () => {
-        clearTimeout(timeout)
-        this.isConnected = true
-      })
-
-      this.ws.on('message', (data: Buffer) => {
-        try {
-          const message = JSON.parse(data.toString())
-          this.handleWebSocketMessage(message)
-        } catch (error) {
-          console.error('Error parsing WebSocket message:', error.message)
-        }
-      })
-
-      this.ws.on('error', (error) => {
-        clearTimeout(timeout)
-        reject(error)
-      })
-
-      this.ws.on('close', () => {
-        this.isConnected = false
-      })
-
-      // Wait for 'connected' message from server
-      this.eventEmitter.once('connected', () => {
-        resolve()
-      })
-    })
-  }
-
-  /**
-   * Handle incoming WebSocket messages
-   */
-  private handleWebSocketMessage(message: any) {
-    switch (message.type) {
-      case 'connected':
-        this.eventEmitter.emit('connected')
-        break
-
-      case 'job_completed':
-        this.eventEmitter.emit(`job:${message.jobId}:completed`, {
-          jobId: message.jobId,
-          resultPath: message.resultPath,
-        })
-        break
-
-      case 'job_failed':
-        this.eventEmitter.emit(`job:${message.jobId}:failed`, {
-          jobId: message.jobId,
-          error: message.error,
-        })
-        break
-
-      default:
-        // Ignore other messages
-        break
-    }
-  }
-
-  /**
-   * Send a mockup job via WebSocket
-   */
-  private async sendMockupJob(
-    productId: string,
-    productTitle: string,
-    imageUrl: string
-  ): Promise<string> {
-    if (!this.ws || !this.isConnected) {
-      throw new Error('WebSocket not connected')
-    }
-
-    const jobId = `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-
-    const message = {
-      type: 'new_job',
-      job: {
-        id: jobId,
-        productId,
-        productTitle,
-        imageUrl,
-      },
-    }
-
-    this.ws.send(JSON.stringify(message))
-    return jobId
-  }
-
-  /**
-   * Wait for job completion (event-based)
+   * Wait for job completion by polling the server
    */
   private async waitForJobCompletion(
     jobId: string,
-    timeoutMs: number = 300000
+    timeoutMs: number = 300000,
+    pollIntervalMs: number = 2000
   ): Promise<{ jobId: string; resultPath: string }> {
+    const startTime = Date.now()
+
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.eventEmitter.removeAllListeners(`job:${jobId}:completed`)
-        this.eventEmitter.removeAllListeners(`job:${jobId}:failed`)
-        reject(new Error(`Job ${jobId} timed out`))
-      }, timeoutMs)
+      const checkInterval = setInterval(async () => {
+        // Check for timeout
+        if (Date.now() - startTime > timeoutMs) {
+          clearInterval(checkInterval)
+          reject(new Error(`Job ${jobId} timed out`))
+          return
+        }
 
-      this.eventEmitter.once(`job:${jobId}:completed`, (result) => {
-        clearTimeout(timeout)
-        this.eventEmitter.removeAllListeners(`job:${jobId}:failed`)
-        resolve(result)
-      })
+        try {
+          // Check if job is completed
+          const response = await axios.get(`${this.serverUrl}/api/mockup/job-status`, {
+            params: { jobId },
+          })
 
-      this.eventEmitter.once(`job:${jobId}:failed`, (error) => {
-        clearTimeout(timeout)
-        this.eventEmitter.removeAllListeners(`job:${jobId}:completed`)
-        reject(new Error(error.error || 'Job failed'))
-      })
+          if (response.data.completed) {
+            clearInterval(checkInterval)
+            const job = response.data.job
+
+            // Check if job failed
+            if (job.error) {
+              reject(new Error(job.error))
+            } else {
+              resolve({
+                jobId: job.jobId,
+                resultPath: job.resultPath,
+              })
+            }
+          }
+        } catch (error) {
+          // Don't fail on polling errors, just continue
+          console.error(`   ⚠️  Polling error: ${error.message}`)
+        }
+      }, pollIntervalMs)
     })
-  }
-
-  /**
-   * Disconnect from WebSocket server
-   */
-  private disconnectWebSocket() {
-    if (this.ws) {
-      this.ws.close()
-      this.ws = null
-      this.isConnected = false
-    }
   }
 }

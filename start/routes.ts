@@ -34,8 +34,11 @@ Route.group(() => {
 // Mockup API routes
 Route.group(() => {
   Route.get('/status', 'MockupController.status')
+  Route.post('/add-job', 'MockupController.addJob')
   Route.get('/pending-jobs', 'MockupController.getPendingJobs')
+  Route.get('/job-status', 'MockupController.getJobStatus')
   Route.post('/complete', 'MockupController.completeJob')
+  Route.get('/download', 'MockupController.downloadImage')
 }).prefix('/api/mockup')
 
 Route.group(() => {
