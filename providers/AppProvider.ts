@@ -15,14 +15,25 @@ export default class AppProvider {
   }
 
   public async ready() {
-    // App is ready - Initialize WebSocket server
-    this.mockupService = new MockupService()
+    // Only initialize WebSocket server when HTTP server is running
+    try {
+      const Server = this.app.container.resolveBinding('Adonis/Core/Server')
 
-    // Initialize WebSocket on port 8081 (8080 is used by Encore)
-    this.mockupService.initializeWebSocketServer(8081)
+      // If Server instance exists, we're running the HTTP server
+      if (Server && Server.instance) {
+        // App is ready - Initialize WebSocket server
+        this.mockupService = new MockupService()
 
-    // Store the service instance globally for access from commands
-    global.mockupService = this.mockupService
+        // Initialize WebSocket on port 8081 (8080 is used by Encore)
+        this.mockupService.initializeWebSocketServer(8081)
+
+        // Store the service instance globally for access from commands
+        global.mockupService = this.mockupService
+      }
+    } catch (error) {
+      // Server not available, we're probably running a command
+      // Do nothing
+    }
   }
 
   public async shutdown() {
