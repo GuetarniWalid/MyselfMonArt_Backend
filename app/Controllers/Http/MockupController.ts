@@ -144,12 +144,12 @@ export default class MockupController {
     }
   }
 
-  // Start mockup automation for a specific collection
+  // Start mockup automation for specific collection(s)
   public async startAutomation({ request, response }: HttpContextContract) {
-    const { collectionId } = request.only(['collectionId'])
+    const { collectionIds } = request.only(['collectionIds'])
 
     console.log('🎨 Starting Mockup Automation via API')
-    console.log(`   Collection ID: ${collectionId || 'ALL'}`)
+    console.log(`   Collection IDs: ${JSON.stringify(collectionIds)}`)
 
     try {
       const shopify = new Shopify()
@@ -164,27 +164,30 @@ export default class MockupController {
 
       let productsToUpdate: typeof allProducts = []
 
-      if (collectionId === 'all') {
+      if (collectionIds.includes('all')) {
         // Process all painting products
         productsToUpdate = paintingProducts
 
         console.log(`📦 Processing ALL painting products`)
         console.log(`📝 Total products selected: ${productsToUpdate.length}`)
       } else {
-        // Get the specific collection to find its title
+        // Get all collections
         const allCollections = await shopify.collection.getAll()
-        const targetCollection = allCollections.find((c) => c.id === collectionId)
 
-        if (!targetCollection) {
+        // Find target collections
+        const targetCollections = allCollections.filter((c) => collectionIds.includes(c.id))
+
+        if (targetCollections.length === 0) {
           return response.badRequest({
             success: false,
-            message: 'Collection not found',
+            message: 'No valid collections found',
           })
         }
 
-        console.log(`📦 Target collection: ${targetCollection.title}`)
+        const targetTitles = targetCollections.map((c) => c.title)
+        console.log(`📦 Target collections: ${targetTitles.join(', ')}`)
 
-        // Filter painting products by mother_collection metafield matching this collection
+        // Filter painting products that match ANY of the selected collections
         productsToUpdate = paintingProducts.filter((product) => {
           if (!product.metafields?.edges) return false
 
@@ -193,14 +196,13 @@ export default class MockupController {
             return (
               node.namespace === 'link' &&
               node.key === 'mother_collection' &&
-              node.reference?.title === targetCollection.title
+              node.reference?.title &&
+              targetTitles.includes(node.reference.title)
             )
           })
         })
 
-        console.log(
-          `📝 Products in collection "${targetCollection.title}": ${productsToUpdate.length}`
-        )
+        console.log(`📝 Products in selected collections: ${productsToUpdate.length}`)
       }
 
       if (productsToUpdate.length === 0) {

@@ -621,13 +621,16 @@ const step5 = document.getElementById('step5')
 
 // Automation Form Elements
 const automationSection = document.getElementById('automationSection')
-const processAllYes = document.getElementById('processAllYes')
-const processAllNo = document.getElementById('processAllNo')
-const yesLabel = document.getElementById('yesLabel')
-const noLabel = document.getElementById('noLabel')
-const numberOfProductsGroup = document.getElementById('numberOfProductsGroup')
-const numberOfProductsInput = document.getElementById('numberOfProducts')
+const collectionLoader = document.getElementById('collectionLoader')
+const collectionSelectorWrapper = document.getElementById('collectionSelectorWrapper')
+const collectionSelector = document.getElementById('collectionSelector')
 const startAutomationBtn = document.getElementById('startAutomationBtn')
+
+// Loader animation
+let loaderInterval = null
+let loaderDots = null
+let dotPositions = [0, 0, 0]
+let dotDirections = [1, 1, 1]
 
 // Stats
 let jobsReceived = 0
@@ -636,6 +639,7 @@ let jobsCompleted = 0
 // Client and processor
 let client = null
 let processor = null
+let paintingCollections = []
 
 // Job queue for sequential processing
 let jobQueue = []
@@ -652,6 +656,12 @@ function init() {
     return
   }
 
+  // Initialize loader dots elements
+  if (collectionLoader) {
+    loaderDots = collectionLoader.querySelectorAll('.dot')
+    console.log('Loader dots found:', loaderDots.length)
+  }
+
   // Initialize processor with log and step callbacks
   processor = new MockupProcessor(addLog, updateStep)
 
@@ -659,8 +669,6 @@ function init() {
   clearLogsBtn.addEventListener('click', clearLogs)
 
   // Automation form event listeners
-  processAllYes.addEventListener('change', handleProcessAllChange)
-  processAllNo.addEventListener('change', handleProcessAllChange)
   startAutomationBtn.addEventListener('click', handleStartAutomation)
 
   addLog('info', 'Plugin initialized. Click "Connect to Server" to start.')
@@ -700,16 +708,89 @@ function connectToServer() {
 }
 
 /**
+ * Start loader animation
+ */
+function startLoader() {
+  console.log('Starting loader animation')
+  collectionLoader.style.display = 'flex'
+  collectionSelectorWrapper.style.display = 'none'
+
+  // JavaScript animation for bouncing dots
+  if (loaderDots && loaderDots.length === 3) {
+    // Reset positions
+    dotPositions = [0, 0, 0]
+    dotDirections = [1, 1, 1]
+
+    let frame = 0
+    loaderInterval = setInterval(() => {
+      // Animate each dot with staggered timing
+      loaderDots.forEach((dot, index) => {
+        // Calculate bounce position using sine wave with phase offset
+        const phase = (frame + index * 10) * 0.1 // Phase offset for stagger effect
+        const bounce = Math.abs(Math.sin(phase)) * 12 // Bounce up to 12px
+        dot.style.transform = `translateY(-${bounce}px)`
+      })
+      frame++
+    }, 50) // ~20fps for smooth bounce
+    console.log('Loader dots animation started')
+  } else {
+    console.error('Loader dots not found!')
+  }
+}
+
+/**
+ * Stop loader animation
+ */
+function stopLoader() {
+  console.log('Stopping loader animation')
+  if (loaderInterval) {
+    clearInterval(loaderInterval)
+    loaderInterval = null
+    console.log('Loader interval cleared')
+  }
+
+  // Reset dots to original position
+  if (loaderDots && loaderDots.length === 3) {
+    loaderDots.forEach((dot) => {
+      dot.style.transform = 'translateY(0)'
+    })
+  }
+
+  collectionLoader.style.display = 'none'
+  collectionSelectorWrapper.style.display = 'block'
+}
+
+/**
  * Handle connection
  */
-function handleConnect() {
+async function handleConnect() {
   updateConnectionStatus(true)
   addLog('success', 'Connected to server! Polling for jobs...')
 
-  // Show sections when connected
+  // Show sections and loader
   automationSection.style.display = 'block'
   statsSection.style.display = 'block'
   currentJobSection.style.display = 'block'
+  startLoader()
+
+  // Fetch painting collections
+  try {
+    addLog('info', 'Fetching painting collections...')
+    const response = await fetch('http://localhost:3333/api/mockup/painting-collections')
+
+    if (response.ok) {
+      paintingCollections = await response.json()
+      addLog('success', `Loaded ${paintingCollections.length} painting collections`)
+      populateCollectionsDropdown()
+      stopLoader()
+    } else {
+      addLog('error', 'Failed to fetch collections')
+      stopLoader()
+    }
+  } catch (error) {
+    addLog('error', `Error fetching collections: ${error.message}`)
+    stopLoader()
+  }
 }
 
 /**
@@ -726,18 +807,55 @@ function handleDisconnect() {
 }
 
 /**
- * Handle process all radio button change
+ * Populate collections checkboxes
  */
-function handleProcessAllChange() {
-  if (processAllYes.checked) {
-    numberOfProductsGroup.style.display = 'none'
-    yesLabel.classList.add('checked')
-    noLabel.classList.remove('checked')
-  } else {
-    numberOfProductsGroup.style.display = 'block'
-    yesLabel.classList.remove('checked')
-    noLabel.classList.add('checked')
+function populateCollectionsDropdown() {
+  if (!collectionSelector) {
+    addLog('error', 'Collection selector not found')
+    return
   }
+
+  // Clear existing checkboxes
+  collectionSelector.innerHTML = ''
+
+  if (paintingCollections.length === 0) {
+    collectionSelector.innerHTML = `
+      <div class="checkbox-item">
+        <label>
+          <input type="checkbox" disabled />
+          <span>No collections found</span>
+        </label>
+      </div>
+    `
+    return
+  }
+
+  // Add "All Collections" checkbox
+  const totalProducts = paintingCollections.reduce((sum, col) => sum + col.productCount, 0)
+  const allCheckbox = document.createElement('div')
+  allCheckbox.className = 'checkbox-item'
+  allCheckbox.innerHTML = `
+    <label>
+      <input type="checkbox" value="all" data-name="All Collections" />
+      <span>All Collections (${totalProducts} products)</span>
+    </label>
+  `
+  collectionSelector.appendChild(allCheckbox)
+
+  // Add individual collection checkboxes
+  paintingCollections.forEach((collection) => {
+    const checkboxItem = document.createElement('div')
+    checkboxItem.className = 'checkbox-item'
+    checkboxItem.innerHTML = `
+      <label>
+        <input type="checkbox" value="${collection.id}" data-name="${collection.title}" />
+        <span>${collection.title} (${collection.productCount} products)</span>
+      </label>
+    `
+    collectionSelector.appendChild(checkboxItem)
+  })
+
+  addLog('info', 'Collection selector populated')
 }
 
 /**
@@ -749,23 +867,39 @@ async function handleStartAutomation() {
     return
   }
 
-  const processAll = processAllYes.checked
-  const numberOfProducts = processAll ? 0 : parseInt(numberOfProductsInput.value, 10)
+  // Reset statistics for new automation run
+  resetStats()
 
-  if (!processAll && (!numberOfProducts || numberOfProducts < 1)) {
-    addLog('error', 'Please enter a valid number of products')
+  // Get all checked checkboxes
+  const checkboxes = collectionSelector.querySelectorAll('input[type="checkbox"]:checked')
+  const collectionIds = Array.from(checkboxes).map((cb) => cb.value)
+
+  console.log('🔍 DEBUG: Checked checkboxes count:', checkboxes.length)
+  console.log('🔍 DEBUG: Collection IDs being sent:', collectionIds)
+  addLog('info', `Selected ${collectionIds.length} collection(s): ${JSON.stringify(collectionIds)}`)
+
+  if (collectionIds.length === 0) {
+    addLog('error', 'Please select at least one collection')
     return
   }
 
-  // Disable button during processing
+  // Get collection names for logging
+  let collectionNames = ''
+  if (collectionIds.includes('all')) {
+    collectionNames = 'All Collections'
+  } else {
+    const selectedNames = Array.from(checkboxes).map((cb) => cb.getAttribute('data-name'))
+    collectionNames = selectedNames.join(', ')
+  }
+
+  // Disable button and checkboxes during processing
   startAutomationBtn.disabled = true
+  const allCheckboxes = collectionSelector.querySelectorAll('input[type="checkbox"]')
+  allCheckboxes.forEach((cb) => (cb.disabled = true))
   startAutomationBtn.textContent = 'Starting...'
 
   try {
-    addLog(
-      'info',
-      `Starting automation: ${processAll ? 'All products' : `${numberOfProducts} product(s)`}`
-    )
+    addLog('info', `Starting automation for: ${collectionNames}`)
 
     const response = await fetch('http://localhost:3333/api/mockup/start-automation', {
       method: 'POST',
@@ -773,8 +907,7 @@ async function handleStartAutomation() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        processAll,
-        numberOfProducts,
+        collectionIds: collectionIds,
       }),
     })
 
@@ -788,8 +921,9 @@ async function handleStartAutomation() {
   } catch (error) {
     addLog('error', `Error starting automation: ${error.message}`)
   } finally {
-    // Re-enable button
+    // Re-enable button and checkboxes
     startAutomationBtn.disabled = false
+    allCheckboxes.forEach((cb) => (cb.disabled = false))
     startAutomationBtn.textContent = 'Start Processing'
   }
 }
@@ -943,6 +1077,16 @@ function updateConnectionStatus(connected) {
 function updateStats() {
   jobsReceivedEl.textContent = jobsReceived.toString()
   jobsCompletedEl.textContent = jobsCompleted.toString()
+}
+
+/**
+ * Reset statistics counters
+ */
+function resetStats() {
+  jobsReceived = 0
+  jobsCompleted = 0
+  updateStats()
+  addLog('info', 'Statistics reset for new automation run')
 }
 
 /**
