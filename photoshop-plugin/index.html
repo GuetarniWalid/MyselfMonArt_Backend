@@ -11,16 +11,29 @@
         padding: 0;
       }
 
+      html,
+      body {
+        height: 100%;
+        overflow: hidden;
+      }
+
       body {
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        padding: 16px;
         background-color: #2d2d2d;
         color: #e0e0e0;
         font-size: 13px;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .main-container {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 16px;
       }
 
       .header {
-        margin-bottom: 16px;
         padding-bottom: 12px;
         border-bottom: 1px solid #444;
       }
@@ -204,6 +217,11 @@
 
       .stat-item {
         text-align: center;
+        padding: 8px;
+        min-height: 60px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
       }
 
       .stat-value {
@@ -211,40 +229,327 @@
         font-weight: 700;
         color: #2196f3;
         margin-bottom: 4px;
+        line-height: 1.2;
+        display: block;
       }
 
       .stat-label {
+        font-size: 12px;
+        color: #999;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        line-height: 1.4;
+        display: block;
+      }
+
+      .current-job-section {
+        margin-top: 16px;
+        padding: 12px;
+        background-color: #1e1e1e;
+        border-radius: 4px;
+        border: 1px solid #444;
+      }
+
+      .current-job-section.hidden {
+        display: none;
+      }
+
+      .current-job-section.processing {
+        border-color: #2196f3;
+        box-shadow: 0 0 8px rgba(33, 150, 243, 0.3);
+      }
+
+      .current-job-section.success {
+        border-color: #4caf50;
+        box-shadow: 0 0 8px rgba(76, 175, 80, 0.3);
+      }
+
+      .current-job-section.error {
+        border-color: #f44336;
+        box-shadow: 0 0 8px rgba(244, 67, 54, 0.3);
+      }
+
+      .job-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .job-icon {
+        font-size: 16px;
+      }
+
+      .job-title-label {
         font-size: 11px;
         color: #999;
         text-transform: uppercase;
         letter-spacing: 0.5px;
       }
+
+      .job-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #fff;
+        margin-bottom: 12px;
+      }
+
+      .progress-bar-container {
+        background-color: #333;
+        border-radius: 4px;
+        height: 6px;
+        margin-bottom: 12px;
+        overflow: hidden;
+      }
+
+      .progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #2196f3, #21cbf3);
+        transition: width 0.3s ease;
+        width: 0%;
+      }
+
+      .progress-bar.complete {
+        background: linear-gradient(90deg, #4caf50, #66bb6a);
+      }
+
+      .progress-text {
+        font-size: 11px;
+        color: #999;
+        margin-bottom: 8px;
+        text-align: center;
+      }
+
+      .steps-list {
+        list-style: none;
+      }
+
+      .step-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 0;
+        font-size: 12px;
+        color: #999;
+      }
+
+      .step-item.active {
+        color: #2196f3;
+        font-weight: 500;
+      }
+
+      .step-item.completed {
+        color: #4caf50;
+      }
+
+      .step-item.error {
+        color: #f44336;
+      }
+
+      .step-icon {
+        font-size: 14px;
+        width: 20px;
+        text-align: center;
+      }
+
+      .spinner {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border: 2px solid #444;
+        border-top-color: #2196f3;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* Custom Radio Button Styles */
+      .radio-group {
+        display: flex;
+        gap: 16px;
+        padding: 8px 0;
+      }
+
+      .radio-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        padding: 8px 16px;
+        border-radius: 6px;
+        background-color: #1e1e1e;
+        border: 2px solid #444;
+        transition: all 0.2s ease;
+        flex: 1;
+        justify-content: center;
+      }
+
+      .radio-label:hover {
+        border-color: #2196f3;
+        background-color: #252525;
+      }
+
+      .radio-label input[type='radio'] {
+        appearance: none;
+        width: 18px;
+        height: 18px;
+        border: 2px solid #666;
+        border-radius: 50%;
+        outline: none;
+        cursor: pointer;
+        position: relative;
+        transition: all 0.2s ease;
+        flex-shrink: 0;
+      }
+
+      .radio-label input[type='radio']:hover {
+        border-color: #2196f3;
+      }
+
+      .radio-label input[type='radio']:checked {
+        border-color: #2196f3;
+        background-color: #2196f3;
+      }
+
+      .radio-label.checked {
+        border-color: #2196f3;
+        background-color: rgba(33, 150, 243, 0.1);
+      }
+
+      .radio-label span {
+        font-size: 13px;
+        font-weight: 500;
+        color: #e0e0e0;
+      }
+
+      .form-label {
+        display: block;
+        font-size: 13px;
+        font-weight: 500;
+        color: #fff;
+        margin-bottom: 6px;
+      }
+
+      .form-input {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #444;
+        border-radius: 6px;
+        background-color: #1e1e1e;
+        color: #e0e0e0;
+        font-size: 13px;
+        transition: border-color 0.2s ease;
+      }
+
+      .form-input:focus {
+        outline: none;
+        border-color: #2196f3;
+      }
+
+      .automation-section {
+        margin-bottom: 16px;
+        padding: 16px;
+        background-color: #1e1e1e;
+        border-radius: 6px;
+        border: 1px solid #444;
+      }
+
+      .automation-section h3 {
+        margin: 0 0 16px 0;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #444;
+      }
     </style>
   </head>
   <body>
-    <div class="header">
-      <h1>Mockup Automation</h1>
-      <div class="status-row">
-        <div class="status-indicator disconnected" id="statusIndicator"></div>
-        <span class="status-text" id="statusText">Disconnected</span>
+    <div class="main-container">
+      <div class="header">
+        <h1>Mockup Automation</h1>
+        <div class="status-row">
+          <div class="status-indicator disconnected" id="statusIndicator"></div>
+          <span class="status-text" id="statusText">Disconnected</span>
+        </div>
       </div>
-    </div>
 
     <div class="status-section">
       <button class="button primary" id="connectBtn">Connect to Server</button>
     </div>
 
-    <div class="stats-section">
-      <div class="stats-grid">
-        <div class="stat-item">
-          <div class="stat-value" id="jobsReceived">0</div>
-          <div class="stat-label">Jobs Received</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-value" id="jobsCompleted">0</div>
-          <div class="stat-label">Jobs Completed</div>
+    <div class="automation-section" id="automationSection" style="display: none;">
+      <h3>Start Mockup Automation</h3>
+
+      <div class="form-group" style="margin-bottom: 20px;">
+        <label class="form-label">Process all paintings?</label>
+        <div class="radio-group">
+          <label class="radio-label" id="yesLabel">
+            <input type="radio" name="processAll" value="true" id="processAllYes" />
+            <span>Yes - All Products</span>
+          </label>
+          <label class="radio-label checked" id="noLabel">
+            <input type="radio" name="processAll" value="false" id="processAllNo" checked />
+            <span>No - Specific Number</span>
+          </label>
         </div>
       </div>
+
+      <div class="form-group" id="numberOfProductsGroup">
+        <label for="numberOfProducts" class="form-label">Number of paintings to process:</label>
+        <input type="number" id="numberOfProducts" class="form-input" min="1" value="1" />
+      </div>
+
+      <button class="button primary" id="startAutomationBtn">Start Processing</button>
+    </div>
+
+    <div class="stats-section" id="statsSection" style="display: none;">
+      <h4 style="color: white; margin-bottom: 12px; font-size: 14px;">Statistics</h4>
+      <div style="display: flex; gap: 16px;">
+        <div style="flex: 1; text-align: center;">
+          <div id="jobsReceived" style="font-size: 32px; font-weight: bold; color: #2196f3; margin-bottom: 4px;">0</div>
+          <div style="font-size: 11px; color: #999; text-transform: uppercase;">Jobs Received</div>
+        </div>
+        <div style="flex: 1; text-align: center;">
+          <div id="jobsCompleted" style="font-size: 32px; font-weight: bold; color: #2196f3; margin-bottom: 4px;">0</div>
+          <div style="font-size: 11px; color: #999; text-transform: uppercase;">Jobs Completed</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="current-job-section" id="currentJobSection" style="display: none;">
+      <div class="job-title-label">Current Job</div>
+      <div class="job-title" id="jobTitle">Waiting for job...</div>
+
+      <div class="progress-bar-container">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <div class="progress-text" id="progressText">Step 0 of 5</div>
+
+      <ul class="steps-list">
+        <li class="step-item" id="step1">
+          <span class="step-icon">○</span>
+          <span>Downloading image</span>
+        </li>
+        <li class="step-item" id="step2">
+          <span class="step-icon">○</span>
+          <span>Selecting template</span>
+        </li>
+        <li class="step-item" id="step3">
+          <span class="step-icon">○</span>
+          <span>Opening in Photoshop</span>
+        </li>
+        <li class="step-item" id="step4">
+          <span class="step-icon">○</span>
+          <span>Replacing smart object</span>
+        </li>
+        <li class="step-item" id="step5">
+          <span class="step-icon">○</span>
+          <span>Saving result</span>
+        </li>
+      </ul>
     </div>
 
     <div class="logs-section">
@@ -259,6 +564,7 @@
           <span class="log-message">Waiting to connect...</span>
         </div>
       </div>
+    </div>
     </div>
 
     <script src="./src/bundle.js"></script>

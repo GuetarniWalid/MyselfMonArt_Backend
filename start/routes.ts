@@ -36,9 +36,11 @@ Route.group(() => {
   Route.get('/status', 'MockupController.status')
   Route.post('/add-job', 'MockupController.addJob')
   Route.get('/pending-jobs', 'MockupController.getPendingJobs')
+  Route.get('/painting-collections', 'MockupController.getPaintingCollections')
   Route.get('/job-status', 'MockupController.getJobStatus')
   Route.post('/complete', 'MockupController.completeJob')
   Route.get('/download', 'MockupController.downloadImage')
+  Route.post('/start-automation', 'MockupController.startAutomation')
 }).prefix('/api/mockup')
 
 Route.group(() => {

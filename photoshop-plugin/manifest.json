@@ -31,16 +31,10 @@
       "type": "panel",
       "id": "mockup-automation-panel",
       "label": "Mockup Automation",
-      "icons": [
-        {
-          "width": 32,
-          "height": 32,
-          "path": "icons/myselfmonart_48x48.png",
-          "scale": [1, 2],
-          "theme": ["dark", "darkest", "lightest", "light"],
-          "species": ["generic"]
-        }
-      ]
+      "minimumSize": { "width": 600, "height": 600 },
+      "maximumSize": { "width": 3840, "height": 2160 },
+      "preferredDockedSize": { "width": 600, "height": 800 },
+      "preferredFloatingSize": { "width": 1400, "height": 1000 }
     }
   ],
   "icons": [

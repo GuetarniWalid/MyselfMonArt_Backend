@@ -6,9 +6,11 @@ const fs = require('uxp').storage.localFileSystem
 const { app } = require('photoshop')
 
 class MockupProcessor {
-  constructor(onLog) {
+  constructor(onLog, onStep) {
     this.onLog = onLog
+    this.onStep = onStep
     this.tempFolder = null
+    this.selectedTemplate = null // Store template for reuse
   }
 
   /**
@@ -17,6 +19,21 @@ class MockupProcessor {
   log(level, message) {
     console.log(`[MockupProcessor] [${level}] ${message}`)
     if (this.onLog) this.onLog(level, message)
+  }
+
+  /**
+   * Update step
+   */
+  step(stepNumber, status = 'active') {
+    if (this.onStep) this.onStep(stepNumber, status)
+  }
+
+  /**
+   * Reset stored template (force reselection)
+   */
+  resetTemplate() {
+    this.selectedTemplate = null
+    this.log('info', 'Template reset - will prompt on next job')
   }
 
   /**
@@ -71,10 +88,17 @@ class MockupProcessor {
   }
 
   /**
-   * Get mockup template path
+   * Get mockup template path (reuses previously selected template)
    */
   async getMockupTemplate() {
-    this.log('info', 'Please select mockup template PSD file')
+    // If we already have a template selected, reuse it
+    if (this.selectedTemplate) {
+      this.log('info', `Using previously selected template: ${this.selectedTemplate.name}`)
+      return this.selectedTemplate
+    }
+
+    // First time - prompt user to select template
+    this.log('info', 'Please select mockup template PSD file (will be reused for all jobs)')
 
     try {
       const file = await fs.getFileForOpening({
@@ -85,7 +109,9 @@ class MockupProcessor {
         throw new Error('No template selected')
       }
 
-      this.log('success', `Template selected: ${file.name}`)
+      // Store for reuse
+      this.selectedTemplate = file
+      this.log('success', `Template selected: ${file.name} (will be reused for remaining jobs)`)
       return file
     } catch (error) {
       this.log('error', `Template selection failed: ${error.message}`)
@@ -380,33 +406,43 @@ class MockupProcessor {
 
     try {
       // Step 1: Download product image
+      this.step(1, 'active')
       this.log('info', 'Step 1/5: Downloading product image...')
       productImage = await this.downloadImage(job.imageUrl)
+      this.step(1, 'completed')
 
       // Step 2: Get mockup template
+      this.step(2, 'active')
       this.log('info', 'Step 2/5: Selecting mockup template...')
       const templateFile = await this.getMockupTemplate()
+      this.step(2, 'completed')
 
       // Step 3-5: Execute Photoshop operations in modal scope
-      this.log('info', 'Step 3/5: Processing in Photoshop (modal scope)...')
+      this.log('info', 'Processing in Photoshop (modal scope)...')
 
       const result = await require('photoshop').core.executeAsModal(
         async () => {
           // Step 3: Open template
-          this.log('info', 'Opening template...')
+          this.step(3, 'active')
+          this.log('info', 'Step 3/5: Opening template...')
           doc = await this.openDocument(templateFile)
+          this.step(3, 'completed')
 
           // Step 4: Replace smart object
-          this.log('info', 'Replacing smart object...')
+          this.step(4, 'active')
+          this.log('info', 'Step 4/5: Replacing smart object...')
           const smartObject = await this.findSmartObjectLayer(doc)
           await this.replaceSmartObject(smartObject, productImage)
+          this.step(4, 'completed')
 
           // Step 5: Save result
-          this.log('info', 'Saving result...')
+          this.step(5, 'active')
+          this.log('info', 'Step 5/5: Saving result...')
           // Extract numeric ID from Shopify GID (e.g., "gid://shopify/Product/7890767380735" -> "7890767380735")
           const numericId = job.productId.split('/').pop()
           const outputName = `mockup-${numericId}-${Date.now()}.jpg`
           outputFile = await this.saveAsJPEG(doc, outputName)
+          this.step(5, 'completed')
 
           // Close document without saving
           await this.closeDocument(doc, false)
@@ -568,8 +604,30 @@ const statusText = document.getElementById('statusText')
 const connectBtn = document.getElementById('connectBtn')
 const logsContainer = document.getElementById('logsContainer')
 const clearLogsBtn = document.getElementById('clearLogsBtn')
+const statsSection = document.getElementById('statsSection')
 const jobsReceivedEl = document.getElementById('jobsReceived')
 const jobsCompletedEl = document.getElementById('jobsCompleted')
+
+// Current Job UI Elements
+const currentJobSection = document.getElementById('currentJobSection')
+const jobTitle = document.getElementById('jobTitle')
+const progressBar = document.getElementById('progressBar')
+const progressText = document.getElementById('progressText')
+const step1 = document.getElementById('step1')
+const step2 = document.getElementById('step2')
+const step3 = document.getElementById('step3')
+const step4 = document.getElementById('step4')
+const step5 = document.getElementById('step5')
+
+// Automation Form Elements
+const automationSection = document.getElementById('automationSection')
+const processAllYes = document.getElementById('processAllYes')
+const processAllNo = document.getElementById('processAllNo')
+const yesLabel = document.getElementById('yesLabel')
+const noLabel = document.getElementById('noLabel')
+const numberOfProductsGroup = document.getElementById('numberOfProductsGroup')
+const numberOfProductsInput = document.getElementById('numberOfProducts')
+const startAutomationBtn = document.getElementById('startAutomationBtn')
 
 // Stats
 let jobsReceived = 0
@@ -578,6 +636,10 @@ let jobsCompleted = 0
 // Client and processor
 let client = null
 let processor = null
+
+// Job queue for sequential processing
+let jobQueue = []
+let isProcessingJob = false
 
 /**
  * Initialize the plugin
@@ -590,11 +652,17 @@ function init() {
     return
   }
 
-  // Initialize processor
-  processor = new MockupProcessor(addLog)
+  // Initialize processor with log and step callbacks
+  processor = new MockupProcessor(addLog, updateStep)
 
   connectBtn.addEventListener('click', handleConnectClick)
   clearLogsBtn.addEventListener('click', clearLogs)
+
+  // Automation form event listeners
+  processAllYes.addEventListener('change', handleProcessAllChange)
+  processAllNo.addEventListener('change', handleProcessAllChange)
+  startAutomationBtn.addEventListener('click', handleStartAutomation)
+
   addLog('info', 'Plugin initialized. Click "Connect to Server" to start.')
   addLog('info', 'Using HTTP polling (WebSocket requires WebView in UXP)')
   console.log('Plugin initialized successfully')
@@ -637,6 +705,11 @@ function connectToServer() {
 function handleConnect() {
   updateConnectionStatus(true)
   addLog('success', 'Connected to server! Polling for jobs...')
+
+  // Show sections when connected
+  automationSection.style.display = 'block'
+  statsSection.style.display = 'block'
+  currentJobSection.style.display = 'block'
 }
 
 /**
@@ -645,6 +718,80 @@ function handleConnect() {
 function handleDisconnect() {
   updateConnectionStatus(false)
   addLog('warning', 'Disconnected from server.')
+
+  // Hide sections when disconnected
+  automationSection.style.display = 'none'
+  statsSection.style.display = 'none'
+  currentJobSection.style.display = 'none'
+}
+
+/**
+ * Handle process all radio button change
+ */
+function handleProcessAllChange() {
+  if (processAllYes.checked) {
+    numberOfProductsGroup.style.display = 'none'
+    yesLabel.classList.add('checked')
+    noLabel.classList.remove('checked')
+  } else {
+    numberOfProductsGroup.style.display = 'block'
+    yesLabel.classList.remove('checked')
+    noLabel.classList.add('checked')
+  }
+}
+
+/**
+ * Handle start automation button click
+ */
+async function handleStartAutomation() {
+  if (!client || !client.isConnected()) {
+    addLog('error', 'Not connected to server')
+    return
+  }
+
+  const processAll = processAllYes.checked
+  const numberOfProducts = processAll ? 0 : parseInt(numberOfProductsInput.value, 10)
+
+  if (!processAll && (!numberOfProducts || numberOfProducts < 1)) {
+    addLog('error', 'Please enter a valid number of products')
+    return
+  }
+
+  // Disable button during processing
+  startAutomationBtn.disabled = true
+  startAutomationBtn.textContent = 'Starting...'
+
+  try {
+    addLog(
+      'info',
+      `Starting automation: ${processAll ? 'All products' : `${numberOfProducts} product(s)`}`
+    )
+
+    const response = await fetch('http://localhost:3333/api/mockup/start-automation', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        processAll,
+        numberOfProducts,
+      }),
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      addLog('success', `Automation started! Processing ${data.totalJobs} product(s)`)
+    } else {
+      const error = await response.json()
+      addLog('error', `Failed to start automation: ${error.message || response.statusText}`)
+    }
+  } catch (error) {
+    addLog('error', `Error starting automation: ${error.message}`)
+  } finally {
+    // Re-enable button
+    startAutomationBtn.disabled = false
+    startAutomationBtn.textContent = 'Start Processing'
+  }
 }
 
 /**
@@ -662,9 +809,9 @@ function handleMessage(message) {
 }
 
 /**
- * Handle new job message
+ * Handle new job message - adds to queue instead of processing immediately
  */
-async function handleNewJob(message) {
+function handleNewJob(message) {
   jobsReceived++
   updateStats()
 
@@ -672,13 +819,46 @@ async function handleNewJob(message) {
 
   addLog('info', `New job received: ${job.productTitle}`)
   addLog('info', `Job ID: ${job.id}`)
-  addLog('info', `Product: ${job.productId}`)
+
+  // Add to queue
+  jobQueue.push(job)
+  addLog('info', `Job added to queue (${jobQueue.length} job(s) in queue)`)
+
+  // Start processing if not already processing
+  if (!isProcessingJob) {
+    processNextJob()
+  }
+}
+
+/**
+ * Process jobs sequentially from the queue
+ */
+async function processNextJob() {
+  // If already processing or queue is empty, return
+  if (isProcessingJob || jobQueue.length === 0) {
+    return
+  }
+
+  // Mark as processing
+  isProcessingJob = true
+
+  // Get next job from queue
+  const job = jobQueue.shift()
+
+  addLog('info', `Processing: ${job.productTitle}`)
+  addLog('info', `Remaining in queue: ${jobQueue.length}`)
+
+  // Show current job section
+  showCurrentJob(job.productTitle)
 
   // Process job using MockupProcessor
   try {
     const result = await processor.processJob(job)
 
     if (result.success) {
+      // Mark job as completed successfully
+      markJobCompleted(true)
+
       // Send completion message to backend
       if (client && client.isConnected()) {
         await client.send({
@@ -691,6 +871,9 @@ async function handleNewJob(message) {
         addLog('success', `Job ${job.id} completed and reported to backend`)
       }
     } else {
+      // Mark job as failed
+      markJobCompleted(false)
+
       // Send failure message to backend
       if (client && client.isConnected()) {
         await client.send({
@@ -704,6 +887,9 @@ async function handleNewJob(message) {
   } catch (error) {
     addLog('error', `Unexpected error processing job: ${error.message}`)
 
+    // Mark job as failed
+    markJobCompleted(false)
+
     // Send failure message to backend
     if (client && client.isConnected()) {
       await client.send({
@@ -711,6 +897,18 @@ async function handleNewJob(message) {
         error: error.message,
         success: false,
       })
+    }
+  } finally {
+    // Mark as not processing
+    isProcessingJob = false
+
+    // Process next job if any
+    if (jobQueue.length > 0) {
+      addLog('info', `Processing next job (${jobQueue.length} remaining)`)
+      // Small delay before next job to ensure UI updates
+      setTimeout(() => processNextJob(), 500)
+    } else {
+      addLog('success', 'All jobs completed!')
     }
   }
 }
@@ -745,6 +943,108 @@ function updateConnectionStatus(connected) {
 function updateStats() {
   jobsReceivedEl.textContent = jobsReceived.toString()
   jobsCompletedEl.textContent = jobsCompleted.toString()
+}
+
+/**
+ * Show current job section
+ */
+function showCurrentJob(productTitle) {
+  currentJobSection.classList.remove('success', 'error')
+  currentJobSection.classList.add('processing')
+  jobTitle.textContent = productTitle
+  resetSteps()
+}
+
+/**
+ * Reset to idle state after job completion
+ */
+function resetToIdle() {
+  setTimeout(() => {
+    currentJobSection.classList.remove('processing', 'success', 'error')
+    jobTitle.textContent = 'Waiting for job...'
+    resetSteps()
+  }, 3000) // Keep completion state visible for 3 seconds
+}
+
+/**
+ * Reset all steps
+ */
+function resetSteps() {
+  const steps = [step1, step2, step3, step4, step5]
+  steps.forEach((step) => {
+    step.classList.remove('active', 'completed', 'error')
+    const icon = step.querySelector('.step-icon')
+    icon.innerHTML = '○'
+  })
+  progressBar.style.width = '0%'
+  progressBar.classList.remove('complete')
+  progressText.textContent = 'Step 0 of 5'
+}
+
+/**
+ * Update processing step
+ */
+function updateStep(stepNumber, status = 'active') {
+  const steps = [step1, step2, step3, step4, step5]
+  const step = steps[stepNumber - 1]
+
+  if (!step) return
+
+  // Remove all status classes from this step
+  step.classList.remove('active', 'completed', 'error')
+
+  // Update icon and class based on status
+  const icon = step.querySelector('.step-icon')
+  if (status === 'active') {
+    step.classList.add('active')
+    icon.innerHTML = '<div class="spinner"></div>'
+  } else if (status === 'completed') {
+    step.classList.add('completed')
+    icon.innerHTML = '✓'
+  } else if (status === 'error') {
+    step.classList.add('error')
+    icon.innerHTML = '✗'
+  }
+
+  // Update progress bar
+  const progress = (stepNumber / 5) * 100
+  progressBar.style.width = `${progress}%`
+  progressText.textContent = `Step ${stepNumber} of 5`
+
+  // Mark previous steps as completed
+  for (let i = 0; i < stepNumber - 1; i++) {
+    steps[i].classList.remove('active', 'error')
+    steps[i].classList.add('completed')
+    const prevIcon = steps[i].querySelector('.step-icon')
+    prevIcon.innerHTML = '✓'
+  }
+}
+
+/**
+ * Mark job as completed
+ */
+function markJobCompleted(success = true) {
+  currentJobSection.classList.remove('processing')
+  if (success) {
+    currentJobSection.classList.add('success')
+    progressBar.classList.add('complete')
+    progressBar.style.width = '100%'
+    progressText.textContent = 'Completed!'
+
+    // Mark all steps as completed
+    const steps = [step1, step2, step3, step4, step5]
+    steps.forEach((step) => {
+      step.classList.remove('active', 'error')
+      step.classList.add('completed')
+      const icon = step.querySelector('.step-icon')
+      icon.innerHTML = '✓'
+    })
+  } else {
+    currentJobSection.classList.add('error')
+    progressText.textContent = 'Failed!'
+  }
+
+  resetToIdle()
 }
 
 /**
