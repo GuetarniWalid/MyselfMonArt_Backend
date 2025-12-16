@@ -11,6 +11,7 @@ class MockupProcessor {
     this.onStep = onStep
     this.tempFolder = null
     this.selectedTemplate = null // Store template for reuse
+    this.mockupTemplateFolder = null // Store selected mockup template folder path
   }
 
   /**
@@ -88,6 +89,14 @@ class MockupProcessor {
   }
 
   /**
+   * Set the selected mockup template folder
+   */
+  setMockupTemplateFolder(templatePath) {
+    this.mockupTemplateFolder = templatePath
+    this.log('info', `Mockup template folder set: ${templatePath}`)
+  }
+
+  /**
    * Get mockup template path (reuses previously selected template)
    */
   async getMockupTemplate() {
@@ -115,6 +124,42 @@ class MockupProcessor {
       return file
     } catch (error) {
       this.log('error', `Template selection failed: ${error.message}`)
+      throw error
+    }
+  }
+
+  /**
+   * Get specific mockup PSD file based on orientation
+   */
+  async getMockupTemplateForOrientation(orientation) {
+    if (!this.mockupTemplateFolder) {
+      throw new Error('No mockup template folder selected')
+    }
+
+    this.log('info', `Selecting ${orientation}.psd from ${this.mockupTemplateFolder}`)
+
+    try {
+      // Get plugin folder
+      const pluginFolder = await fs.getPluginFolder()
+      const mockupsFolder = await pluginFolder.getEntry('mockups')
+
+      // Navigate to template folder (e.g., "Cuisine/Grande cuisine")
+      const [categoryName, subfolderName] = this.mockupTemplateFolder.split('/')
+      const categoryFolder = await mockupsFolder.getEntry(categoryName)
+      const templateFolder = await categoryFolder.getEntry(subfolderName)
+
+      // Get the specific PSD file
+      const psdFileName = `${orientation}.psd`
+      const psdFile = await templateFolder.getEntry(psdFileName)
+
+      if (!psdFile) {
+        throw new Error(`${psdFileName} not found in ${this.mockupTemplateFolder}`)
+      }
+
+      this.log('success', `Selected mockup: ${psdFileName}`)
+      return psdFile
+    } catch (error) {
+      this.log('error', `Failed to get mockup: ${error.message}`)
       throw error
     }
   }
@@ -399,6 +444,7 @@ class MockupProcessor {
   async processJob(job) {
     this.log('info', `Processing job: ${job.id}`)
     this.log('info', `Product: ${job.productTitle}`)
+    this.log('info', `Orientation: ${job.orientation}`)
 
     let doc = null
     let productImage = null
@@ -411,10 +457,10 @@ class MockupProcessor {
       productImage = await this.downloadImage(job.imageUrl)
       this.step(1, 'completed')
 
-      // Step 2: Get mockup template
+      // Step 2: Get mockup template based on orientation
       this.step(2, 'active')
-      this.log('info', 'Step 2/5: Selecting mockup template...')
-      const templateFile = await this.getMockupTemplate()
+      this.log('info', `Step 2/5: Selecting ${job.orientation} mockup...`)
+      const templateFile = await this.getMockupTemplateForOrientation(job.orientation)
       this.step(2, 'completed')
 
       // Step 3-5: Execute Photoshop operations in modal scope
@@ -624,6 +670,13 @@ const automationSection = document.getElementById('automationSection')
 const collectionLoader = document.getElementById('collectionLoader')
 const collectionSelectorWrapper = document.getElementById('collectionSelectorWrapper')
 const collectionSelector = document.getElementById('collectionSelector')
+const mockupCategorySelector = document.getElementById('mockupCategorySelector')
+const mockupSubfolderGroup = document.getElementById('mockupSubfolderGroup')
+const mockupSubfolderSelector = document.getElementById('mockupSubfolderSelector')
+const mockupImagesPreview = document.getElementById('mockupImagesPreview')
+const mockupFile1 = document.getElementById('mockupFile1')
+const mockupFile2 = document.getElementById('mockupFile2')
+const mockupFile3 = document.getElementById('mockupFile3')
 const startAutomationBtn = document.getElementById('startAutomationBtn')
 
 // Loader animation
@@ -640,6 +693,10 @@ let jobsCompleted = 0
 let client = null
 let processor = null
 let paintingCollections = []
+
+// Mockup template data
+let mockupFolderPath = null
+let selectedMockupImages = []
 
 // Job queue for sequential processing
 let jobQueue = []
@@ -670,6 +727,8 @@ function init() {
 
   // Automation form event listeners
   startAutomationBtn.addEventListener('click', handleStartAutomation)
+  mockupCategorySelector.addEventListener('change', handleCategoryChange)
+  mockupSubfolderSelector.addEventListener('change', handleSubfolderChange)
 
   addLog('info', 'Plugin initialized. Click "Connect to Server" to start.')
   addLog('info', 'Using HTTP polling (WebSocket requires WebView in UXP)')
@@ -791,6 +850,9 @@ async function handleConnect() {
     addLog('error', `Error fetching collections: ${error.message}`)
     stopLoader()
   }
+
+  // Load mockup categories
+  await loadMockupCategories()
 }
 
 /**
@@ -859,6 +921,198 @@ function populateCollectionsDropdown() {
 }
 
 /**
+ * Load mockup categories (top-level folders)
+ */
+async function loadMockupCategories() {
+  try {
+    addLog('info', 'Loading mockup categories...')
+
+    // Get plugin folder
+    const pluginFolder = await fs.getPluginFolder()
+    mockupFolderPath = await pluginFolder.getEntry('mockups')
+
+    if (!mockupFolderPath || !mockupFolderPath.isFolder) {
+      addLog('error', 'Mockups folder not found')
+      return
+    }
+
+    // Get all entries (folders) in mockups directory
+    const entries = await mockupFolderPath.getEntries()
+    const folders = entries.filter((entry) => entry.isFolder)
+
+    // Clear and populate category selector
+    mockupCategorySelector.innerHTML = '<option value="">-- Select Category --</option>'
+
+    folders.forEach((folder) => {
+      const option = document.createElement('option')
+      option.value = folder.name
+      option.textContent = folder.name
+      mockupCategorySelector.appendChild(option)
+    })
+
+    addLog('success', `Loaded ${folders.length} mockup categories`)
+  } catch (error) {
+    addLog('error', `Failed to load mockup categories: ${error.message}`)
+    console.error('Error loading mockup categories:', error)
+  }
+}
+
+/**
+ * Handle category selection change
+ */
+async function handleCategoryChange() {
+  const categoryName = mockupCategorySelector.value
+
+  // Reset subfolder and images
+  mockupSubfolderGroup.style.display = 'none'
+  mockupImagesPreview.style.display = 'none'
+  mockupSubfolderSelector.innerHTML = '<option value="">-- Select Template --</option>'
+
+  if (!categoryName) {
+    return
+  }
+
+  try {
+    addLog('info', `Loading templates for ${categoryName}...`)
+
+    // Get selected category folder
+    const categoryFolder = await mockupFolderPath.getEntry(categoryName)
+
+    if (!categoryFolder || !categoryFolder.isFolder) {
+      addLog('error', 'Category folder not found')
+      return
+    }
+
+    // Get subfolders
+    const entries = await categoryFolder.getEntries()
+    const subfolders = entries.filter((entry) => entry.isFolder)
+
+    // Populate subfolder selector
+    subfolders.forEach((folder) => {
+      const option = document.createElement('option')
+      option.value = `${categoryName}/${folder.name}`
+      option.textContent = folder.name
+      mockupSubfolderSelector.appendChild(option)
+    })
+
+    // Show subfolder selector
+    mockupSubfolderGroup.style.display = 'block'
+    addLog('success', `Loaded ${subfolders.length} templates`)
+  } catch (error) {
+    addLog('error', `Failed to load templates: ${error.message}`)
+    console.error('Error loading templates:', error)
+  }
+}
+
+/**
+ * Handle subfolder selection change
+ */
+async function handleSubfolderChange() {
+  const subfolderPath = mockupSubfolderSelector.value
+
+  // Reset file display
+  mockupImagesPreview.style.display = 'none'
+  mockupFile1.querySelector('span:last-child').textContent = ''
+  mockupFile2.querySelector('span:last-child').textContent = ''
+  mockupFile3.querySelector('span:last-child').textContent = ''
+
+  if (!subfolderPath) {
+    return
+  }
+
+  try {
+    addLog('info', `Loading images from ${subfolderPath}...`)
+
+    // Split path to navigate
+    const [categoryName, subfolderName] = subfolderPath.split('/')
+
+    // Get category folder
+    const categoryFolder = await mockupFolderPath.getEntry(categoryName)
+    // Get subfolder
+    const subfolder = await categoryFolder.getEntry(subfolderName)
+
+    if (!subfolder || !subfolder.isFolder) {
+      addLog('error', 'Template folder not found')
+      return
+    }
+
+    // Get all image files
+    const entries = await subfolder.getEntries()
+    const imageFiles = entries.filter((entry) => {
+      const ext = entry.name.toLowerCase().split('.').pop()
+      return !entry.isFolder && ['jpg', 'jpeg', 'png', 'gif'].includes(ext)
+    })
+
+    if (imageFiles.length < 3) {
+      addLog('warning', `Only ${imageFiles.length} images found, expected 3`)
+    }
+
+    // Store selected images
+    selectedMockupImages = imageFiles.slice(0, 3)
+
+    // Display file names and make them clickable (UXP has limitations with image display)
+    const { shell } = require('uxp')
+
+    // Helper function to open file in system default application
+    async function openImageFile(file) {
+      console.log('Click handler called for:', file.name)
+      console.log('File native path:', file.nativePath)
+      addLog('info', `Attempting to open ${file.name}...`)
+
+      try {
+        console.log('Calling shell.openPath...')
+        await shell.openPath(file.nativePath)
+        console.log('shell.openPath completed successfully')
+        addLog('success', `Opened ${file.name} in default viewer`)
+      } catch (error) {
+        console.error('Error opening file:', error)
+        addLog('error', `Failed to open ${file.name}: ${error.message}`)
+      }
+    }
+
+    // File 1
+    if (imageFiles[0]) {
+      const file1 = imageFiles[0]
+      mockupFile1.querySelector('span:last-child').textContent = file1.name
+      mockupFile1.onclick = async () => {
+        console.log('File 1 clicked')
+        await openImageFile(file1)
+      }
+      console.log('File 1 click handler attached')
+    }
+
+    // File 2
+    if (imageFiles[1]) {
+      const file2 = imageFiles[1]
+      mockupFile2.querySelector('span:last-child').textContent = file2.name
+      mockupFile2.onclick = async () => {
+        console.log('File 2 clicked')
+        await openImageFile(file2)
+      }
+      console.log('File 2 click handler attached')
+    }
+
+    // File 3
+    if (imageFiles[2]) {
+      const file3 = imageFiles[2]
+      mockupFile3.querySelector('span:last-child').textContent = file3.name
+      mockupFile3.onclick = async () => {
+        console.log('File 3 clicked')
+        await openImageFile(file3)
+      }
+      console.log('File 3 click handler attached')
+    }
+
+    // Show preview
+    mockupImagesPreview.style.display = 'block'
+    addLog('success', `Loaded ${imageFiles.length} mockup images`)
+  } catch (error) {
+    addLog('error', `Failed to load images: ${error.message}`)
+    console.error('Error loading images:', error)
+  }
+}
+
+/**
  * Handle start automation button click
  */
 async function handleStartAutomation() {
@@ -882,6 +1136,23 @@ async function handleStartAutomation() {
     addLog('error', 'Please select at least one collection')
     return
   }
+
+  // Validate mockup template is selected
+  const mockupTemplatePath = mockupSubfolderSelector.value
+  if (!mockupTemplatePath) {
+    addLog('error', 'Please select a mockup template')
+    return
+  }
+
+  // Verify we have 3 mockup files loaded
+  if (selectedMockupImages.length !== 3) {
+    addLog('error', 'Invalid mockup template - expected 3 files')
+    return
+  }
+
+  // Set the mockup template folder for the processor BEFORE starting automation
+  processor.setMockupTemplateFolder(mockupTemplatePath)
+  addLog('info', `Using template: ${mockupTemplatePath}`)
 
   // Get collection names for logging
   let collectionNames = ''
@@ -908,11 +1179,13 @@ async function handleStartAutomation() {
       },
       body: JSON.stringify({
         collectionIds: collectionIds,
+        mockupTemplatePath: mockupTemplatePath,
       }),
     })
 
     if (response.ok) {
       const data = await response.json()
+
       addLog('success', `Automation started! Processing ${data.totalJobs} product(s)`)
     } else {
       const error = await response.json()

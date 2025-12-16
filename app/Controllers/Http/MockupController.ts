@@ -144,12 +144,38 @@ export default class MockupController {
     }
   }
 
+  /**
+   * Determine image orientation from dimensions
+   * Reuses same logic as Midjourney service (app/Services/Midjourney/index.ts:19-30)
+   */
+  private getImageOrientation(width: number, height: number): 'square' | 'portrait' | 'landscape' {
+    if (width === height) {
+      return 'square'
+    } else if (width < height) {
+      return 'portrait'
+    } else {
+      return 'landscape'
+    }
+  }
+
   // Start mockup automation for specific collection(s)
   public async startAutomation({ request, response }: HttpContextContract) {
-    const { collectionIds } = request.only(['collectionIds'])
+    const { collectionIds, mockupTemplatePath } = request.only([
+      'collectionIds',
+      'mockupTemplatePath',
+    ])
+
+    // Validate template path
+    if (!mockupTemplatePath) {
+      return response.badRequest({
+        success: false,
+        message: 'Mockup template path is required',
+      })
+    }
 
     console.log('🎨 Starting Mockup Automation via API')
     console.log(`   Collection IDs: ${JSON.stringify(collectionIds)}`)
+    console.log(`   Mockup Template: ${mockupTemplatePath}`)
 
     try {
       const shopify = new Shopify()
@@ -229,6 +255,12 @@ export default class MockupController {
 
         console.log(`   ✅ Second image found`)
 
+        // Calculate orientation from image dimensions
+        const orientation = this.getImageOrientation(secondImage.width, secondImage.height)
+        console.log(
+          `   📐 Orientation: ${orientation} (${secondImage.width}x${secondImage.height})`
+        )
+
         // Download image
         const filePath = await this.downloadProductImage(secondImage.url, product.id)
         console.log(`   ✅ Downloaded to: ${filePath}`)
@@ -240,6 +272,8 @@ export default class MockupController {
           productId: product.id,
           productTitle: product.title,
           imageUrl: filePath,
+          mockupTemplatePath: mockupTemplatePath,
+          orientation: orientation,
         }
 
         this.queue.addJob(job)

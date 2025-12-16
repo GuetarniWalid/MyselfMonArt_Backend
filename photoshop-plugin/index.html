@@ -586,6 +586,10 @@
         padding-bottom: 12px;
         border-bottom: 1px solid #444;
       }
+
+      .mockup-file-item:hover {
+        background-color: #252525 !important;
+      }
     </style>
   </head>
   <body>
@@ -625,6 +629,43 @@
                 <input type="checkbox" disabled />
                 <span>Loading collections...</span>
               </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mockup Template Selector -->
+        <div class="form-group" style="margin-bottom: 20px;">
+          <label class="form-label">Select Mockup Template:</label>
+
+          <div style="margin-bottom: 12px;">
+            <label for="mockupCategorySelector" style="font-size: 12px; color: #999; margin-bottom: 4px; display: block;">Category:</label>
+            <select id="mockupCategorySelector" class="form-input">
+              <option value="">-- Select Category --</option>
+            </select>
+          </div>
+
+          <div id="mockupSubfolderGroup" style="margin-bottom: 12px; display: none;">
+            <label for="mockupSubfolderSelector" style="font-size: 12px; color: #999; margin-bottom: 4px; display: block;">Template:</label>
+            <select id="mockupSubfolderSelector" class="form-input">
+              <option value="">-- Select Template --</option>
+            </select>
+          </div>
+
+          <div id="mockupImagesPreview" style="display: none;">
+            <label style="font-size: 12px; color: #999; margin-bottom: 8px; display: block;">Selected mockup files (click to preview):</label>
+            <div style="background-color: #1e1e1e; padding: 12px; border-radius: 4px; border: 1px solid #444;">
+              <div id="mockupFile1" class="mockup-file-item" style="font-size: 13px; color: #4caf50; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background-color 0.2s;">
+                <span style="font-size: 16px;">🖼️</span>
+                <span style="text-decoration: underline;"></span>
+              </div>
+              <div id="mockupFile2" class="mockup-file-item" style="font-size: 13px; color: #4caf50; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background-color 0.2s;">
+                <span style="font-size: 16px;">🖼️</span>
+                <span style="text-decoration: underline;"></span>
+              </div>
+              <div id="mockupFile3" class="mockup-file-item" style="font-size: 13px; color: #4caf50; display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background-color 0.2s;">
+                <span style="font-size: 16px;">🖼️</span>
+                <span style="text-decoration: underline;"></span>
+              </div>
             </div>
           </div>
         </div>

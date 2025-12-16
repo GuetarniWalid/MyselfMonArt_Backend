@@ -23,7 +23,8 @@
     },
     "localFileSystem": "fullAccess",
     "launchProcess": {
-      "schemes": ["file"]
+      "schemes": ["file"],
+      "extensions": [".png", ".jpg", ".jpeg", ".gif"]
     }
   },
   "entrypoints": [
