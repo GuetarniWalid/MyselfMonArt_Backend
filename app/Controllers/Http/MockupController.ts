@@ -144,26 +144,73 @@ export default class MockupController {
     }
   }
 
-  // Start mockup automation
+  // Start mockup automation for a specific collection
   public async startAutomation({ request, response }: HttpContextContract) {
-    const { processAll, numberOfProducts } = request.only(['processAll', 'numberOfProducts'])
+    const { collectionId } = request.only(['collectionId'])
 
     console.log('🎨 Starting Mockup Automation via API')
-    console.log(`   Process all: ${processAll}`)
-    console.log(`   Number of products: ${numberOfProducts}`)
+    console.log(`   Collection ID: ${collectionId || 'ALL'}`)
 
     try {
-      // Get all products from Shopify
       const shopify = new Shopify()
-      const products = await shopify.product.getAll()
-      const paintingProducts = products.filter((product) => product.templateSuffix === 'painting')
 
-      const productsToUpdate = processAll
-        ? paintingProducts
-        : paintingProducts.slice(0, numberOfProducts)
+      // Get all products from Shopify and filter painting products first
+      const allProducts = await shopify.product.getAll()
+      const paintingProducts = allProducts.filter(
+        (product) => product.templateSuffix === 'painting'
+      )
 
       console.log(`📦 Total painting products found: ${paintingProducts.length}`)
-      console.log(`📝 Products selected for processing: ${productsToUpdate.length}`)
+
+      let productsToUpdate: typeof allProducts = []
+
+      if (collectionId === 'all') {
+        // Process all painting products
+        productsToUpdate = paintingProducts
+
+        console.log(`📦 Processing ALL painting products`)
+        console.log(`📝 Total products selected: ${productsToUpdate.length}`)
+      } else {
+        // Get the specific collection to find its title
+        const allCollections = await shopify.collection.getAll()
+        const targetCollection = allCollections.find((c) => c.id === collectionId)
+
+        if (!targetCollection) {
+          return response.badRequest({
+            success: false,
+            message: 'Collection not found',
+          })
+        }
+
+        console.log(`📦 Target collection: ${targetCollection.title}`)
+
+        // Filter painting products by mother_collection metafield matching this collection
+        productsToUpdate = paintingProducts.filter((product) => {
+          if (!product.metafields?.edges) return false
+
+          return product.metafields.edges.some((edge) => {
+            const node = edge.node as any
+            return (
+              node.namespace === 'link' &&
+              node.key === 'mother_collection' &&
+              node.reference?.title === targetCollection.title
+            )
+          })
+        })
+
+        console.log(
+          `📝 Products in collection "${targetCollection.title}": ${productsToUpdate.length}`
+        )
+      }
+
+      if (productsToUpdate.length === 0) {
+        return response.ok({
+          success: true,
+          totalJobs: 0,
+          jobIds: [],
+          message: 'No products found to process',
+        })
+      }
 
       const jobs: string[] = []
 
