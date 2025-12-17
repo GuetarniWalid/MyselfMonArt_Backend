@@ -33,9 +33,9 @@
       "id": "mockup-automation-panel",
       "label": "Mockup Automation",
       "minimumSize": { "width": 600, "height": 600 },
-      "maximumSize": { "width": 3840, "height": 2160 },
+      "maximumSize": { "width": 1920, "height": 1080 },
       "preferredDockedSize": { "width": 600, "height": 800 },
-      "preferredFloatingSize": { "width": 1400, "height": 1000 }
+      "preferredFloatingSize": { "width": 600, "height": 800 }
     }
   ],
   "icons": [

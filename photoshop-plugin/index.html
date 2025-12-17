@@ -108,9 +108,32 @@
         background-color: #616161;
       }
 
-      .button:disabled {
-        opacity: 0.5;
+      .button.success {
+        background-color: #4caf50;
+        color: white;
+      }
+
+      .button.success:hover:not(:disabled) {
+        background-color: #45a049;
+      }
+
+      .button.danger {
+        background-color: #f44336;
+        color: white;
+      }
+
+      .button.danger:hover {
+        background-color: #d32f2f;
+      }
+
+      .button:disabled,
+      .button.success:disabled,
+      .button.primary:disabled,
+      .button.danger:disabled {
+        background-color: #424242 !important;
+        color: #757575 !important;
         cursor: not-allowed;
+        opacity: 0.6;
       }
 
       .logs-section {
@@ -503,6 +526,25 @@
         font-size: 13px !important;
       }
 
+      .category-header {
+        font-size: 12px;
+        font-weight: 600;
+        color: #2196f3;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding: 8px 4px 4px 4px;
+        margin-top: 8px;
+        border-bottom: 1px solid #333;
+      }
+
+      .category-header:first-child {
+        margin-top: 0;
+      }
+
+      .checkbox-item.indented {
+        padding-left: 12px;
+      }
+
       .collection-loader {
         display: flex;
         flex-direction: column;
@@ -602,10 +644,6 @@
         </div>
       </div>
 
-    <div class="status-section">
-      <button class="button primary" id="connectBtn">Connect to Server</button>
-    </div>
-
     <div class="automation-section" id="automationSection" style="display: none;">
       <h3>Start Mockup Automation</h3>
 
@@ -637,18 +675,8 @@
         <div class="form-group" style="margin-bottom: 20px;">
           <label class="form-label">Select Mockup Template:</label>
 
-          <div style="margin-bottom: 12px;">
-            <label for="mockupCategorySelector" style="font-size: 12px; color: #999; margin-bottom: 4px; display: block;">Category:</label>
-            <select id="mockupCategorySelector" class="form-input">
-              <option value="">-- Select Category --</option>
-            </select>
-          </div>
-
-          <div id="mockupSubfolderGroup" style="margin-bottom: 12px; display: none;">
-            <label for="mockupSubfolderSelector" style="font-size: 12px; color: #999; margin-bottom: 4px; display: block;">Template:</label>
-            <select id="mockupSubfolderSelector" class="form-input">
-              <option value="">-- Select Template --</option>
-            </select>
+          <div class="collection-checkboxes" id="mockupTemplateSelector" style="max-height: 200px;">
+            <!-- Templates will be populated here -->
           </div>
 
           <div id="mockupImagesPreview" style="display: none;">
@@ -670,7 +698,7 @@
           </div>
         </div>
 
-        <button class="button primary" id="startAutomationBtn">Start Processing</button>
+        <button class="button success" id="startAutomationBtn" disabled>Start Processing</button>
       </div>
     </div>
 
@@ -733,6 +761,11 @@
           <span class="log-message">Waiting to connect...</span>
         </div>
       </div>
+    </div>
+
+    <!-- Connection Control -->
+    <div class="status-section">
+      <button class="button primary" id="connectBtn">Connect to Server</button>
     </div>
     </div>
 

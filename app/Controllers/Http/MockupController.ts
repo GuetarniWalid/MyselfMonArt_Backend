@@ -50,6 +50,18 @@ export default class MockupController {
 
     if (data.jobId) {
       this.queue.completeJob(data.jobId, data)
+
+      // Clean up source image file if job was successful
+      if (data.success && data.imageUrl) {
+        try {
+          if (fs.existsSync(data.imageUrl)) {
+            fs.unlinkSync(data.imageUrl)
+            console.log(`🗑️  Cleaned up source image: ${data.imageUrl}`)
+          }
+        } catch (error) {
+          console.error(`⚠️  Failed to delete source image: ${error.message}`)
+        }
+      }
     }
 
     return response.ok({ success: true })

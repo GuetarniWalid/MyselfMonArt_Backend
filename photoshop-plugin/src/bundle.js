@@ -528,6 +528,16 @@ class MockupProcessor {
         success: false,
         error: error.message,
       }
+    } finally {
+      // Clean up downloaded product image
+      if (productImage) {
+        try {
+          await productImage.delete()
+          this.log('info', 'Cleaned up product image file')
+        } catch (deleteError) {
+          this.log('error', `Failed to delete product image: ${deleteError.message}`)
+        }
+      }
     }
   }
 }
@@ -670,9 +680,7 @@ const automationSection = document.getElementById('automationSection')
 const collectionLoader = document.getElementById('collectionLoader')
 const collectionSelectorWrapper = document.getElementById('collectionSelectorWrapper')
 const collectionSelector = document.getElementById('collectionSelector')
-const mockupCategorySelector = document.getElementById('mockupCategorySelector')
-const mockupSubfolderGroup = document.getElementById('mockupSubfolderGroup')
-const mockupSubfolderSelector = document.getElementById('mockupSubfolderSelector')
+const mockupTemplateSelector = document.getElementById('mockupTemplateSelector')
 const mockupImagesPreview = document.getElementById('mockupImagesPreview')
 const mockupFile1 = document.getElementById('mockupFile1')
 const mockupFile2 = document.getElementById('mockupFile2')
@@ -703,6 +711,52 @@ let jobQueue = []
 let isProcessingJob = false
 
 /**
+ * Validate if Start Processing button should be enabled
+ */
+function validateStartButton() {
+  // Safety check - ensure elements exist
+  if (!collectionSelector || !mockupTemplateSelector || !startAutomationBtn) {
+    console.log('Validation skipped - elements not ready')
+    return
+  }
+
+  // Check if at least one collection is selected
+  const checkedCollections = collectionSelector.querySelectorAll('input[type="checkbox"]:checked')
+  const hasCollection = checkedCollections.length > 0
+
+  // Check if a template is selected (checkbox must be checked)
+  const selectedTemplate = mockupTemplateSelector.querySelector('input[type="checkbox"]:checked')
+  const templateValue = selectedTemplate ? selectedTemplate.value : ''
+  const hasTemplate = templateValue !== '' && templateValue !== null && templateValue !== undefined
+
+  console.log('Validation:', {
+    hasCollection,
+    collectionCount: checkedCollections.length,
+    hasTemplate,
+    templateValue,
+  })
+
+  // Enable button only if BOTH conditions are met
+  const isValid = hasCollection && hasTemplate
+
+  if (isValid) {
+    startAutomationBtn.disabled = false
+    startAutomationBtn.title = ''
+    console.log('✅ Button enabled')
+  } else {
+    startAutomationBtn.disabled = true
+    if (!hasCollection && !hasTemplate) {
+      startAutomationBtn.title = 'Please select collections and a mockup template'
+    } else if (!hasCollection) {
+      startAutomationBtn.title = 'Please select at least one collection'
+    } else {
+      startAutomationBtn.title = 'Please select a mockup template'
+    }
+    console.log('❌ Button disabled:', startAutomationBtn.title)
+  }
+}
+
+/**
  * Initialize the plugin
  */
 function init() {
@@ -727,8 +781,7 @@ function init() {
 
   // Automation form event listeners
   startAutomationBtn.addEventListener('click', handleStartAutomation)
-  mockupCategorySelector.addEventListener('change', handleCategoryChange)
-  mockupSubfolderSelector.addEventListener('change', handleSubfolderChange)
+  // Template change listeners are added when radio buttons are created
 
   addLog('info', 'Plugin initialized. Click "Connect to Server" to start.')
   addLog('info', 'Using HTTP polling (WebSocket requires WebView in UXP)')
@@ -910,22 +963,54 @@ function populateCollectionsDropdown() {
     checkboxItem.className = 'checkbox-item'
     checkboxItem.innerHTML = `
       <label>
-        <input type="checkbox" value="${collection.id}" data-name="${collection.title}" />
+        <input type="checkbox" value="${collection.id}" data-name="${collection.title}" class="collection-checkbox" />
         <span>${collection.title} (${collection.productCount} products)</span>
       </label>
     `
     collectionSelector.appendChild(checkboxItem)
   })
 
+  // Setup "All Collections" checkbox behavior
+  const allCheckboxInput = allCheckbox.querySelector('input[type="checkbox"]')
+  const individualCheckboxes = collectionSelector.querySelectorAll('.collection-checkbox')
+
+  // When "All Collections" is checked/unchecked, update all individual checkboxes
+  allCheckboxInput.addEventListener('change', () => {
+    const isChecked = allCheckboxInput.checked
+    individualCheckboxes.forEach((checkbox) => {
+      checkbox.checked = isChecked
+    })
+    addLog('info', isChecked ? 'All collections selected' : 'All collections deselected')
+    validateStartButton()
+  })
+
+  // When individual checkboxes change, update "All Collections" accordingly
+  individualCheckboxes.forEach((checkbox) => {
+    checkbox.addEventListener('change', () => {
+      const allChecked = Array.from(individualCheckboxes).every((cb) => cb.checked)
+      const noneChecked = Array.from(individualCheckboxes).every((cb) => !cb.checked)
+
+      if (allChecked) {
+        allCheckboxInput.checked = true
+      } else if (noneChecked || !allCheckboxInput.checked) {
+        allCheckboxInput.checked = false
+      }
+      validateStartButton()
+    })
+  })
+
+  // Initial validation
+  validateStartButton()
+
   addLog('info', 'Collection selector populated')
 }
 
 /**
- * Load mockup categories (top-level folders)
+ * Load all mockup templates with categories as optgroups
  */
 async function loadMockupCategories() {
   try {
-    addLog('info', 'Loading mockup categories...')
+    addLog('info', 'Loading mockup templates...')
 
     // Get plugin folder
     const pluginFolder = await fs.getPluginFolder()
@@ -936,79 +1021,80 @@ async function loadMockupCategories() {
       return
     }
 
-    // Get all entries (folders) in mockups directory
-    const entries = await mockupFolderPath.getEntries()
-    const folders = entries.filter((entry) => entry.isFolder)
+    // Get all category folders
+    const categoryEntries = await mockupFolderPath.getEntries()
+    const categoryFolders = categoryEntries.filter((entry) => entry.isFolder)
 
-    // Clear and populate category selector
-    mockupCategorySelector.innerHTML = '<option value="">-- Select Category --</option>'
+    // Clear selector
+    mockupTemplateSelector.innerHTML = ''
 
-    folders.forEach((folder) => {
-      const option = document.createElement('option')
-      option.value = folder.name
-      option.textContent = folder.name
-      mockupCategorySelector.appendChild(option)
-    })
+    let totalTemplates = 0
 
-    addLog('success', `Loaded ${folders.length} mockup categories`)
-  } catch (error) {
-    addLog('error', `Failed to load mockup categories: ${error.message}`)
-    console.error('Error loading mockup categories:', error)
-  }
-}
+    // For each category, add category header and templates
+    for (const categoryFolder of categoryFolders) {
+      const categoryName = categoryFolder.name
 
-/**
- * Handle category selection change
- */
-async function handleCategoryChange() {
-  const categoryName = mockupCategorySelector.value
+      // Get template folders within this category
+      const templateEntries = await categoryFolder.getEntries()
+      const templateFolders = templateEntries.filter((entry) => entry.isFolder)
 
-  // Reset subfolder and images
-  mockupSubfolderGroup.style.display = 'none'
-  mockupImagesPreview.style.display = 'none'
-  mockupSubfolderSelector.innerHTML = '<option value="">-- Select Template --</option>'
+      if (templateFolders.length > 0) {
+        // Add category header
+        const categoryHeader = document.createElement('div')
+        categoryHeader.className = 'category-header'
+        categoryHeader.textContent = categoryName
+        mockupTemplateSelector.appendChild(categoryHeader)
 
-  if (!categoryName) {
-    return
-  }
-
-  try {
-    addLog('info', `Loading templates for ${categoryName}...`)
-
-    // Get selected category folder
-    const categoryFolder = await mockupFolderPath.getEntry(categoryName)
-
-    if (!categoryFolder || !categoryFolder.isFolder) {
-      addLog('error', 'Category folder not found')
-      return
+        // Add each template as a checkbox (with radio behavior) under the category
+        templateFolders.forEach((templateFolder) => {
+          const checkboxItem = document.createElement('div')
+          checkboxItem.className = 'checkbox-item indented'
+          checkboxItem.innerHTML = `
+            <label>
+              <input type="checkbox" value="${categoryName}/${templateFolder.name}" class="template-checkbox" />
+              <span>${templateFolder.name}</span>
+            </label>
+          `
+          mockupTemplateSelector.appendChild(checkboxItem)
+          totalTemplates++
+        })
+      }
     }
 
-    // Get subfolders
-    const entries = await categoryFolder.getEntries()
-    const subfolders = entries.filter((entry) => entry.isFolder)
-
-    // Populate subfolder selector
-    subfolders.forEach((folder) => {
-      const option = document.createElement('option')
-      option.value = `${categoryName}/${folder.name}`
-      option.textContent = folder.name
-      mockupSubfolderSelector.appendChild(option)
+    // Add event listeners to checkboxes with radio button behavior (only one selected)
+    const templateCheckboxes = mockupTemplateSelector.querySelectorAll('.template-checkbox')
+    templateCheckboxes.forEach((checkbox) => {
+      checkbox.addEventListener('change', (e) => {
+        // If this checkbox is checked, uncheck all others (radio behavior)
+        if (e.target.checked) {
+          templateCheckboxes.forEach((otherCheckbox) => {
+            if (otherCheckbox !== e.target) {
+              otherCheckbox.checked = false
+            }
+          })
+        }
+        // Trigger template change handler
+        handleTemplateChange()
+      })
     })
 
-    // Show subfolder selector
-    mockupSubfolderGroup.style.display = 'block'
-    addLog('success', `Loaded ${subfolders.length} templates`)
+    addLog(
+      'success',
+      `Loaded ${totalTemplates} mockup templates across ${categoryFolders.length} categories`
+    )
   } catch (error) {
-    addLog('error', `Failed to load templates: ${error.message}`)
-    console.error('Error loading templates:', error)
+    addLog('error', `Failed to load mockup templates: ${error.message}`)
+    console.error('Error loading mockup templates:', error)
   }
 }
 
 /**
- * Handle subfolder selection change
+ * Handle template selection change
  */
-async function handleSubfolderChange() {
-  const subfolderPath = mockupSubfolderSelector.value
+async function handleTemplateChange() {
+  // Get the selected checkbox (only one should be checked due to radio behavior)
+  const selectedCheckbox = mockupTemplateSelector.querySelector('input[type="checkbox"]:checked')
+  const templatePath = selectedCheckbox ? selectedCheckbox.value : ''
 
   // Reset file display
   mockupImagesPreview.style.display = 'none'
@@ -1016,28 +1102,31 @@ async function handleSubfolderChange() {
   mockupFile2.querySelector('span:last-child').textContent = ''
   mockupFile3.querySelector('span:last-child').textContent = ''
 
-  if (!subfolderPath) {
+  // Always validate button state (even when nothing selected)
+  validateStartButton()
+
+  if (!templatePath) {
     return
   }
 
   try {
-    addLog('info', `Loading images from ${subfolderPath}...`)
+    addLog('info', `Loading images from ${templatePath}...`)
 
-    // Split path to navigate
-    const [categoryName, subfolderName] = subfolderPath.split('/')
+    // Split path to navigate (e.g., "Cuisine/Grande cuisine")
+    const [categoryName, templateName] = templatePath.split('/')
 
     // Get category folder
     const categoryFolder = await mockupFolderPath.getEntry(categoryName)
-    // Get subfolder
-    const subfolder = await categoryFolder.getEntry(subfolderName)
+    // Get template folder
+    const templateFolder = await categoryFolder.getEntry(templateName)
 
-    if (!subfolder || !subfolder.isFolder) {
+    if (!templateFolder || !templateFolder.isFolder) {
       addLog('error', 'Template folder not found')
       return
     }
 
     // Get all image files
-    const entries = await subfolder.getEntries()
+    const entries = await templateFolder.getEntries()
     const imageFiles = entries.filter((entry) => {
       const ext = entry.name.toLowerCase().split('.').pop()
       return !entry.isFolder && ['jpg', 'jpeg', 'png', 'gif'].includes(ext)
@@ -1106,6 +1195,9 @@ async function handleSubfolderChange() {
     // Show preview
     mockupImagesPreview.style.display = 'block'
     addLog('success', `Loaded ${imageFiles.length} mockup images`)
+
+    // Validate button state
+    validateStartButton()
   } catch (error) {
     addLog('error', `Failed to load images: ${error.message}`)
     console.error('Error loading images:', error)
@@ -1138,7 +1230,8 @@ async function handleStartAutomation() {
   }
 
   // Validate mockup template is selected
-  const mockupTemplatePath = mockupSubfolderSelector.value
+  const selectedTemplate = mockupTemplateSelector.querySelector('input[type="checkbox"]:checked')
+  const mockupTemplatePath = selectedTemplate ? selectedTemplate.value : ''
   if (!mockupTemplatePath) {
     addLog('error', 'Please select a mockup template')
     return
@@ -1271,6 +1364,7 @@ async function processNextJob() {
         await client.send({
           jobId: job.id,
           resultPath: result.resultPath,
+          imageUrl: job.imageUrl,
           success: true,
         })
         jobsCompleted++
@@ -1335,7 +1429,7 @@ function updateConnectionStatus(connected) {
     statusIndicator.className = 'status-indicator connected'
     statusText.textContent = 'Connected'
     connectBtn.textContent = 'Disconnect'
-    connectBtn.className = 'button secondary'
+    connectBtn.className = 'button danger'
   } else {
     statusIndicator.className = 'status-indicator disconnected'
     statusText.textContent = 'Disconnected'
