@@ -1467,7 +1467,7 @@ async function handleStartAutomation() {
   startAutomationBtn.classList.add('processing')
   const allCheckboxes = collectionSelector.querySelectorAll('input[type="checkbox"]')
   allCheckboxes.forEach((cb) => (cb.disabled = true))
-  startAutomationBtn.textContent = 'Processing...'
+  startAutomationBtn.textContent = 'Traitement en cours...'
 
   try {
     addLog('info', `Starting automation for: ${collectionNames}`)
@@ -1514,7 +1514,7 @@ async function handleStartAutomation() {
 function enableStartButton() {
   startAutomationBtn.disabled = false
   startAutomationBtn.classList.remove('processing')
-  startAutomationBtn.textContent = 'Start Processing'
+  startAutomationBtn.textContent = 'Démarrer le traitement'
   const allCheckboxes = collectionSelector.querySelectorAll('input[type="checkbox"]')
   allCheckboxes.forEach((cb) => (cb.disabled = false))
 }
@@ -1998,13 +1998,13 @@ function handleError(error) {
 function updateConnectionStatus(connected) {
   if (connected) {
     statusIndicator.className = 'status-indicator connected'
-    statusText.textContent = 'Connected'
-    connectBtn.textContent = 'Disconnect'
+    statusText.textContent = 'Connecté'
+    connectBtn.textContent = 'Se déconnecter'
     connectBtn.className = 'button danger'
   } else {
     statusIndicator.className = 'status-indicator disconnected'
-    statusText.textContent = 'Disconnected'
-    connectBtn.textContent = 'Connect to Server'
+    statusText.textContent = 'Déconnecté'
+    connectBtn.textContent = 'Se connecter au serveur'
     connectBtn.className = 'button primary'
   }
 }
@@ -2043,7 +2043,7 @@ function showCurrentJob(productTitle) {
 function resetToIdle() {
   setTimeout(() => {
     currentJobSection.classList.remove('processing', 'success', 'error')
-    jobTitle.textContent = 'Waiting for job...'
+    jobTitle.textContent = 'En attente...'
     resetSteps()
   }, 3000) // Keep completion state visible for 3 seconds
 }
@@ -2065,7 +2065,7 @@ function resetSteps() {
     icon.innerHTML = '○'
   })
   progressBar.style.width = '0%'
-  progressText.textContent = 'Step 0 of 7'
+  progressText.textContent = 'Étape 0 sur 7'
 }
 
 /**
@@ -2101,7 +2101,7 @@ function resetSteps() {
 
   // Reset progress bar
   progressBar.style.width = '0%'
-  progressText.textContent = 'Ready to start'
+  progressText.textContent = 'Prêt à démarrer'
 }
 
 /**
@@ -2168,7 +2168,7 @@ function updateStep(stepNumber, status = 'active') {
   // Update progress bar
   const progress = (stepNumber / 7) * 100
   progressBar.style.width = `${progress}%`
-  progressText.textContent = `Step ${stepNumber} of 7`
+  progressText.textContent = `Étape ${stepNumber} sur 7`
 
   // Mark previous steps as completed
   for (let i = 0; i < stepNumber - 1; i++) {
@@ -2188,7 +2188,7 @@ function markJobCompleted(success = true) {
     currentJobSection.classList.add('success')
     progressBar.classList.add('complete')
     progressBar.style.width = '100%'
-    progressText.textContent = 'Completed!'
+    progressText.textContent = 'Terminé !'
 
     // Mark all steps as completed
     const steps = [step1, step2, step3, step4, step5, step6, step7]
@@ -2200,7 +2200,7 @@ function markJobCompleted(success = true) {
     })
   } else {
     currentJobSection.classList.add('error')
-    progressText.textContent = 'Failed!'
+    progressText.textContent = 'Échec !'
   }
 
   // Don't reset here - let the next job reset when it starts,

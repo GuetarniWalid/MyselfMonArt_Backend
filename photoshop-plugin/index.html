@@ -1,9 +1,9 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="fr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mockup Automation</title>
+    <title>Automatisation de Mockup</title>
     <style>
       * {
         box-sizing: border-box;
@@ -66,11 +66,13 @@
       .status-indicator.connected {
         background-color: #4caf50;
         box-shadow: 0 0 8px rgba(76, 175, 80, 0.6);
+        margin-right: 5px;
       }
 
       .status-indicator.disconnected {
         background-color: #f44336;
         box-shadow: 0 0 8px rgba(244, 67, 54, 0.6);
+        margin-right: 5px;
       }
 
       .status-text {
@@ -144,7 +146,8 @@
       }
 
       @keyframes pulse {
-        0%, 100% {
+        0%,
+        100% {
           opacity: 0.8;
         }
         50% {
@@ -623,7 +626,8 @@
       }
 
       @-webkit-keyframes pulse {
-        0%, 100% {
+        0%,
+        100% {
           opacity: 1;
         }
         50% {
@@ -632,7 +636,8 @@
       }
 
       @keyframes pulse {
-        0%, 100% {
+        0%,
+        100% {
           opacity: 1;
         }
         50% {
@@ -662,243 +667,405 @@
   <body>
     <div class="main-container">
       <div class="header">
-        <h1>Mockup Automation</h1>
+        <h1>Automatisation de Mockup</h1>
         <div class="status-row">
           <div class="status-indicator disconnected" id="statusIndicator"></div>
-          <span class="status-text" id="statusText">Disconnected</span>
+          <span class="status-text" id="statusText">Déconnecté</span>
         </div>
       </div>
 
-    <div class="automation-section" id="automationSection" style="display: none;">
-      <h3>Start Mockup Automation</h3>
+      <div class="automation-section" id="automationSection" style="display: none">
+        <h3>Démarrer l'automatisation</h3>
 
-      <!-- Loader -->
-      <div id="collectionLoader" class="collection-loader" style="display: none;">
-        <div class="loader-dots">
-          <div class="dot"></div>
-          <div class="dot"></div>
-          <div class="dot"></div>
+        <!-- Loader -->
+        <div id="collectionLoader" class="collection-loader" style="display: none">
+          <div class="loader-dots">
+            <div class="dot"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+          </div>
+          <div class="loader-text">Chargement des collections...</div>
         </div>
-        <div class="loader-text">Loading collections...</div>
-      </div>
 
-      <!-- Collection selector -->
-      <div id="collectionSelectorWrapper" style="display: none;">
-        <div class="form-group" style="margin-bottom: 20px;">
-          <label class="form-label">Select Collection(s):</label>
-          <div id="collectionSelector" class="collection-checkboxes">
-            <div class="checkbox-item">
-              <label>
-                <input type="checkbox" disabled />
-                <span>Loading collections...</span>
-              </label>
+        <!-- Collection selector -->
+        <div id="collectionSelectorWrapper" style="display: none">
+          <div class="form-group" style="margin-bottom: 20px">
+            <label class="form-label">Sélectionner la/les collection(s) :</label>
+            <div style="font-size: 11px; color: #999; margin-bottom: 8px">
+              Un produit est considéré dans une collection par sa collection parente (le champ méta "Breadcrumb: lien vers la collection mère" présent sur chaque fiche produit) et non selon qu'il se trouve dans une collection car sinon un produit peut être dans plusieurs collections à la fois.
             </div>
-          </div>
-        </div>
-
-        <!-- Mockup Template Selector -->
-        <div class="form-group" style="margin-bottom: 20px;">
-          <label class="form-label">Select Mockup Template:</label>
-
-          <div class="collection-checkboxes" id="mockupTemplateSelector" style="max-height: none;">
-            <!-- Templates will be populated here -->
-          </div>
-
-          <div id="mockupImagesPreview" style="display: none;">
-            <label class="form-label">Selected mockup files (click to preview):</label>
-            <div style="background-color: #1e1e1e; padding: 12px; border-radius: 4px; border: 1px solid #444;">
-              <div id="mockupFile1" class="mockup-file-item" style="font-size: 13px; color: #4caf50; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background-color 0.2s;">
-                <span style="font-size: 16px;">🖼️</span>
-                <span style="text-decoration: underline;"></span>
-              </div>
-              <div id="mockupFile2" class="mockup-file-item" style="font-size: 13px; color: #4caf50; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background-color 0.2s;">
-                <span style="font-size: 16px;">🖼️</span>
-                <span style="text-decoration: underline;"></span>
-              </div>
-              <div id="mockupFile3" class="mockup-file-item" style="font-size: 13px; color: #4caf50; display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background-color 0.2s;">
-                <span style="font-size: 16px;">🖼️</span>
-                <span style="text-decoration: underline;"></span>
+            <div id="collectionSelector" class="collection-checkboxes">
+              <div class="checkbox-item">
+                <label>
+                  <input type="checkbox" disabled />
+                  <span>Loading collections...</span>
+                </label>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- Image Position Selector -->
-        <div class="form-group" style="margin-bottom: 20px;">
-          <label class="form-label">Replace Image Position:</label>
-          <div style="font-size: 11px; color: #999; margin-bottom: 8px;">
-            Select which image in the product to replace with the mockup
-          </div>
-          <div class="collection-checkboxes" style="max-height: none;">
-            <div class="checkbox-item">
-              <label>
-                <input type="checkbox" class="image-position-checkbox" data-position="0" checked />
-                <span>Position 1 (First image)</span>
-              </label>
+          <!-- Mockup Template Selector -->
+          <div class="form-group" style="margin-bottom: 20px">
+            <label class="form-label">Sélectionner le modèle de mockup :</label>
+
+            <div class="collection-checkboxes" id="mockupTemplateSelector" style="max-height: none">
+              <!-- Templates will be populated here -->
             </div>
-            <div class="checkbox-item">
-              <label>
-                <input type="checkbox" class="image-position-checkbox" data-position="1" />
-                <span>Position 2</span>
-              </label>
+
+            <div id="mockupImagesPreview" style="display: none">
+              <label class="form-label">Fichiers mockup sélectionnés (cliquer pour aperçu) :</label>
+              <div
+                style="
+                  background-color: #1e1e1e;
+                  padding: 12px;
+                  border-radius: 4px;
+                  border: 1px solid #444;
+                "
+              >
+                <div
+                  id="mockupFile1"
+                  class="mockup-file-item"
+                  style="
+                    font-size: 13px;
+                    color: #4caf50;
+                    margin-bottom: 6px;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    cursor: pointer;
+                    padding: 6px;
+                    border-radius: 4px;
+                    transition: background-color 0.2s;
+                  "
+                >
+                  <span style="font-size: 16px">🖼️</span>
+                  <span style="text-decoration: underline; color: #2196f3"></span>
+                </div>
+                <div
+                  id="mockupFile2"
+                  class="mockup-file-item"
+                  style="
+                    font-size: 13px;
+                    color: #4caf50;
+                    margin-bottom: 6px;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    cursor: pointer;
+                    padding: 6px;
+                    border-radius: 4px;
+                    transition: background-color 0.2s;
+                  "
+                >
+                  <span style="font-size: 16px">🖼️</span>
+                  <span style="text-decoration: underline; color: #2196f3"></span>
+                </div>
+                <div
+                  id="mockupFile3"
+                  class="mockup-file-item"
+                  style="
+                    font-size: 13px;
+                    color: #4caf50;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    cursor: pointer;
+                    padding: 6px;
+                    border-radius: 4px;
+                    transition: background-color 0.2s;
+                  "
+                >
+                  <span style="font-size: 16px">🖼️</span>
+                  <span style="text-decoration: underline; color: #2196f3"></span>
+                </div>
+              </div>
             </div>
-            <div class="checkbox-item">
-              <label>
-                <input type="checkbox" class="image-position-checkbox" data-position="2" />
-                <span>Position 3</span>
-              </label>
+          </div>
+
+          <!-- Image Position Selector -->
+          <div class="form-group" style="margin-bottom: 20px">
+            <label class="form-label">Position de remplacement de l'image :</label>
+            <div style="font-size: 11px; color: #999; margin-bottom: 8px">
+              Sélectionner quelle image du produit remplacer par le mockup
             </div>
-            <div class="checkbox-item">
-              <label>
-                <input type="checkbox" class="image-position-checkbox" data-position="3" />
-                <span>Position 4</span>
-              </label>
+            <div class="collection-checkboxes" style="max-height: none">
+              <div class="checkbox-item">
+                <label>
+                  <input
+                    type="checkbox"
+                    class="image-position-checkbox"
+                    data-position="0"
+                    checked
+                  />
+                  <span>Position 1 (Première image)</span>
+                </label>
+              </div>
+              <div class="checkbox-item">
+                <label>
+                  <input type="checkbox" class="image-position-checkbox" data-position="1" />
+                  <span>Position 2</span>
+                </label>
+              </div>
+              <div class="checkbox-item">
+                <label>
+                  <input type="checkbox" class="image-position-checkbox" data-position="2" />
+                  <span>Position 3</span>
+                </label>
+              </div>
+              <div class="checkbox-item">
+                <label>
+                  <input type="checkbox" class="image-position-checkbox" data-position="3" />
+                  <span>Position 4</span>
+                </label>
+              </div>
+              <div class="checkbox-item">
+                <label>
+                  <input type="checkbox" class="image-position-checkbox" data-position="4" />
+                  <span>Position 5 (Dernière image)</span>
+                </label>
+              </div>
             </div>
-            <div class="checkbox-item">
-              <label>
-                <input type="checkbox" class="image-position-checkbox" data-position="4" />
-                <span>Position 5 (Last image)</span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <button class="button success" id="startAutomationBtn" disabled>Start Processing</button>
-      </div>
-    </div>
-
-    <div class="stats-section" id="statsSection" style="display: none;">
-      <h4 style="color: white; margin-bottom: 12px; font-size: 14px;">Statistics</h4>
-      <div style="display: flex; gap: 16px;">
-        <div style="flex: 1; text-align: center;">
-          <div id="jobsReceived" style="font-size: 32px; font-weight: bold; color: #2196f3; margin-bottom: 4px;">0</div>
-          <div style="font-size: 11px; color: #999; text-transform: uppercase;">Jobs Received</div>
-        </div>
-        <div style="flex: 1; text-align: center;">
-          <div id="jobsCompleted" style="font-size: 32px; font-weight: bold; color: #2196f3; margin-bottom: 4px;">0</div>
-          <div style="font-size: 11px; color: #999; text-transform: uppercase;">Jobs Completed</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="current-job-section" id="currentJobSection" style="display: none;">
-      <div class="job-title-label">Current Job</div>
-      <div class="job-title" id="jobTitle">Waiting for job...</div>
-
-      <div class="progress-bar-container">
-        <div class="progress-bar" id="progressBar"></div>
-      </div>
-      <div class="progress-text" id="progressText">Step 0 of 7</div>
-
-      <!-- Polling Status Display -->
-      <div id="pollingStatus" style="display: none; margin-bottom: 12px; padding: 12px; background: #1e1e1e; border-radius: 4px; border-left: 3px solid #2196f3;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <div class="spinner"></div>
-          <div style="flex: 1;">
-            <div style="font-size: 11px; color: #999; margin-bottom: 4px;">Shopify File Processing:</div>
-            <div id="pollingMessage" style="font-size: 12px; color: #2196f3; font-weight: 500;">Checking file status...</div>
-            <div id="pollingAttempt" style="font-size: 10px; color: #666; margin-top: 2px;">Attempt 1 of 15</div>
-          </div>
-        </div>
-      </div>
-
-      <ul class="steps-list">
-        <li class="step-item" id="step1">
-          <span class="step-icon">○</span>
-          <span>Downloading product image</span>
-        </li>
-        <li class="step-item" id="step2">
-          <span class="step-icon">○</span>
-          <span>Loading mockup template</span>
-        </li>
-        <li class="step-item" id="step3">
-          <span class="step-icon">○</span>
-          <span>Opening template in Photoshop</span>
-        </li>
-        <li class="step-item" id="step4">
-          <span class="step-icon">○</span>
-          <span>Inserting product image</span>
-        </li>
-        <li class="step-item" id="step5">
-          <span class="step-icon">○</span>
-          <span>Generating mockup</span>
-        </li>
-        <li class="step-item" id="step6">
-          <span class="step-icon">○</span>
-          <span>Uploading to Shopify</span>
-        </li>
-        <li class="step-item" id="step7">
-          <span class="step-icon">○</span>
-          <span>Saved on Shopify</span>
-        </li>
-      </ul>
-    </div>
-
-    <!-- Error Modal -->
-    <div id="errorModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; padding: 20px; overflow-y: auto;">
-      <div style="max-width: 500px; margin: 40px auto; background: #2d2d2d; border: 2px solid #f44336; border-radius: 8px; padding: 24px;">
-        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-          <span style="font-size: 32px;">⚠️</span>
-          <h3 style="color: #f44336; margin: 0;">Shopify Upload Failed</h3>
-        </div>
-
-        <div style="background: #1e1e1e; padding: 16px; border-radius: 4px; margin-bottom: 16px;">
-          <div style="margin-bottom: 12px;">
-            <div style="font-size: 11px; color: #999; text-transform: uppercase; margin-bottom: 4px;">Product</div>
-            <div id="errorProductName" style="color: #fff; font-weight: 500;">-</div>
           </div>
 
-          <div style="margin-bottom: 12px;">
-            <div style="font-size: 11px; color: #999; text-transform: uppercase; margin-bottom: 4px;">Error</div>
-            <div id="errorMessage" style="color: #f44336;">-</div>
-          </div>
-
-          <div>
-            <div style="font-size: 11px; color: #999; text-transform: uppercase; margin-bottom: 4px;">Mockup File Path (Server)</div>
-            <div id="errorFilePath" style="color: #4caf50; font-family: monospace; font-size: 11px; word-break: break-all; cursor: pointer; padding: 8px; background: #1e1e1e; border: 1px solid #333; border-radius: 2px; transition: background-color 0.2s; text-decoration: underline;">-</div>
-            <div style="font-size: 10px; color: #666; margin-top: 4px;">Click URL to open in browser</div>
-          </div>
-        </div>
-
-        <div style="background: #1e1e1e; padding: 16px; border-radius: 4px; margin-bottom: 20px; border-left: 3px solid #ff9800;">
-          <div style="font-weight: 600; margin-bottom: 8px; color: #ff9800;">📋 Manual Steps Required:</div>
-          <ol style="margin: 0; padding-left: 20px; color: #e0e0e0; font-size: 13px; line-height: 1.8;">
-            <li>Open Shopify Admin</li>
-            <li>Navigate to the product (name shown above)</li>
-            <li>Upload the mockup file manually at the specified position</li>
-            <li>Click "Continue" below to resume processing remaining products</li>
-          </ol>
-        </div>
-
-        <div style="display: flex; gap: 12px;">
-          <button id="errorContinueBtn" class="button success" style="flex: 1;">
-            Continue Processing
-          </button>
-          <button id="errorCancelBtn" class="button danger" style="flex: 1;">
-            Cancel All
+          <button class="button success" id="startAutomationBtn" disabled>
+            Démarrer le traitement
           </button>
         </div>
       </div>
-    </div>
 
-    <div class="logs-section">
-      <div class="logs-header">
-        <span class="logs-title">Activity Log</span>
-        <button class="clear-logs" id="clearLogsBtn">Clear</button>
-      </div>
-      <div class="logs-container" id="logsContainer">
-        <div class="log-entry">
-          <span class="log-time">--:--:--</span>
-          <span class="log-level info">INFO</span>
-          <span class="log-message">Waiting to connect...</span>
+      <div class="stats-section" id="statsSection" style="display: none">
+        <h4 style="color: white; margin-bottom: 12px; font-size: 14px">Statistiques</h4>
+        <div style="display: flex; gap: 16px">
+          <div style="flex: 1; text-align: center">
+            <div
+              id="jobsReceived"
+              style="font-size: 32px; font-weight: bold; color: #2196f3; margin-bottom: 4px"
+            >
+              0
+            </div>
+            <div style="font-size: 11px; color: #999; text-transform: uppercase">Tâches reçues</div>
+          </div>
+          <div style="flex: 1; text-align: center">
+            <div
+              id="jobsCompleted"
+              style="font-size: 32px; font-weight: bold; color: #2196f3; margin-bottom: 4px"
+            >
+              0
+            </div>
+            <div style="font-size: 11px; color: #999; text-transform: uppercase">
+              Tâches terminées
+            </div>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Connection Control -->
-    <div class="status-section">
-      <button class="button primary" id="connectBtn">Connect to Server</button>
-    </div>
+      <div class="current-job-section" id="currentJobSection" style="display: none">
+        <div class="job-title-label">Tâche en cours</div>
+        <div class="job-title" id="jobTitle">En attente...</div>
+
+        <div class="progress-bar-container">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div class="progress-text" id="progressText">Étape 0 of 7</div>
+
+        <!-- Polling Status Display -->
+        <div
+          id="pollingStatus"
+          style="
+            display: none;
+            margin-bottom: 12px;
+            padding: 12px;
+            background: #1e1e1e;
+            border-radius: 4px;
+            border-left: 3px solid #2196f3;
+          "
+        >
+          <div style="display: flex; align-items: center; gap: 8px">
+            <div class="spinner"></div>
+            <div style="flex: 1">
+              <div style="font-size: 11px; color: #999; margin-bottom: 4px">
+                Shopify File Processing:
+              </div>
+              <div id="pollingMessage" style="font-size: 12px; color: #2196f3; font-weight: 500">
+                Checking file status...
+              </div>
+              <div id="pollingAttempt" style="font-size: 10px; color: #666; margin-top: 2px">
+                Attempt 1 of 15
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <ul class="steps-list">
+          <li class="step-item" id="step1">
+            <span class="step-icon">○</span>
+            <span>Téléchargement de l'image</span>
+          </li>
+          <li class="step-item" id="step2">
+            <span class="step-icon">○</span>
+            <span>Chargement du mockup</span>
+          </li>
+          <li class="step-item" id="step3">
+            <span class="step-icon">○</span>
+            <span>Ouverture dans Photoshop</span>
+          </li>
+          <li class="step-item" id="step4">
+            <span class="step-icon">○</span>
+            <span>Insertion de l'image dans le mockup</span>
+          </li>
+          <li class="step-item" id="step5">
+            <span class="step-icon">○</span>
+            <span>Génération de la nouvelle image en jpg</span>
+          </li>
+          <li class="step-item" id="step6">
+            <span class="step-icon">○</span>
+            <span>Envoi vers Shopify</span>
+          </li>
+          <li class="step-item" id="step7">
+            <span class="step-icon">○</span>
+            <span>Enregistré sur Shopify</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Error Modal -->
+      <div
+        id="errorModal"
+        style="
+          display: none;
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.8);
+          z-index: 1000;
+          padding: 20px;
+          overflow-y: auto;
+        "
+      >
+        <div
+          style="
+            max-width: 500px;
+            margin: 40px auto;
+            background: #2d2d2d;
+            border: 2px solid #f44336;
+            border-radius: 8px;
+            padding: 24px;
+          "
+        >
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px">
+            <span style="font-size: 32px">⚠️</span>
+            <h3 style="color: #f44336; margin: 0">Échec de l'envoi vers Shopify</h3>
+          </div>
+
+          <div style="background: #1e1e1e; padding: 16px; border-radius: 4px; margin-bottom: 16px">
+            <div style="margin-bottom: 12px">
+              <div
+                style="font-size: 11px; color: #999; text-transform: uppercase; margin-bottom: 4px"
+              >
+                Produit
+              </div>
+              <div id="errorProductName" style="color: #fff; font-weight: 500">-</div>
+            </div>
+
+            <div style="margin-bottom: 12px">
+              <div
+                style="font-size: 11px; color: #999; text-transform: uppercase; margin-bottom: 4px"
+              >
+                Erreur
+              </div>
+              <div id="errorMessage" style="color: #f44336">-</div>
+            </div>
+
+            <div>
+              <div
+                style="font-size: 11px; color: #999; text-transform: uppercase; margin-bottom: 4px"
+              >
+                Fichier Mockup (Serveur)
+              </div>
+              <div
+                id="errorFilePath"
+                style="
+                  color: #4caf50;
+                  font-family: monospace;
+                  font-size: 11px;
+                  word-break: break-all;
+                  cursor: pointer;
+                  padding: 8px;
+                  background: #1e1e1e;
+                  border: 1px solid #333;
+                  border-radius: 2px;
+                  transition: background-color 0.2s;
+                  text-decoration: underline;
+                "
+              >
+                -
+              </div>
+              <div style="font-size: 10px; color: #666; margin-top: 4px">
+                Cliquer sur l'URL pour ouvrir dans le navigateur
+              </div>
+            </div>
+          </div>
+
+          <div
+            style="
+              background: #1e1e1e;
+              padding: 16px;
+              border-radius: 4px;
+              margin-bottom: 20px;
+              border-left: 3px solid #ff9800;
+            "
+          >
+            <div style="font-weight: 600; margin-bottom: 8px; color: #ff9800">
+              📋 Étapes manuelles requises :
+            </div>
+            <ol
+              style="
+                margin: 0;
+                padding-left: 20px;
+                color: #e0e0e0;
+                font-size: 13px;
+                line-height: 1.8;
+              "
+            >
+              <li>Ouvrir l'administration Shopify</li>
+              <li>Accéder au produit (nom affiché ci-dessus)</li>
+              <li>Télécharger le fichier mockup manuellement à la position spécifiée</li>
+              <li>
+                Cliquer sur "Continuer" ci-dessous pour reprendre le traitement des produits
+                restants
+              </li>
+            </ol>
+          </div>
+
+          <div style="display: flex; gap: 12px">
+            <button id="errorContinueBtn" class="button success" style="flex: 1">
+              Continuer le traitement
+            </button>
+            <button id="errorCancelBtn" class="button danger" style="flex: 1">Tout annuler</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="logs-section">
+        <div class="logs-header">
+          <span class="logs-title">Logs</span>
+          <button class="clear-logs" id="clearLogsBtn">Effacer</button>
+        </div>
+        <div class="logs-container" id="logsContainer">
+          <div class="log-entry">
+            <span class="log-time">--:--:--</span>
+            <span class="log-level info">INFO</span>
+            <span class="log-message">Waiting to connect...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Connection Control -->
+      <div class="status-section">
+        <button class="button primary" id="connectBtn">Se connecter</button>
+      </div>
     </div>
 
     <script src="./src/bundle.js"></script>
