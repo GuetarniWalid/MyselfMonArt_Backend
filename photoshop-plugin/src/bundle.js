@@ -910,8 +910,23 @@ function init() {
       // Cleanup current job's files before continuing
       await cleanupCurrentJobFiles()
       hideErrorModal()
-      // Resume processing next job
-      processNextJob()
+
+      // Count the manually handled job as completed
+      jobsCompleted++
+      updateStats()
+      addLog('info', 'Job marked as manually completed')
+
+      // Check if there are more jobs
+      if (jobQueue.length > 0) {
+        // Resume processing next job
+        processNextJob()
+      } else {
+        // No more jobs - complete the batch
+        addLog('success', 'All jobs completed!')
+        await cleanupBatchFiles()
+        enableStartButton()
+        resetToIdle()
+      }
     })
   }
 
@@ -929,6 +944,8 @@ function init() {
       await cleanupBatchFiles()
       // Re-enable the start button
       enableStartButton()
+      // Reset to idle state
+      resetToIdle()
     })
   }
 
@@ -1962,6 +1979,8 @@ async function processNextJob() {
       await cleanupBatchFiles()
       // Re-enable the start button
       enableStartButton()
+      // Reset to idle after showing final state
+      resetToIdle()
     }
   }
 }
@@ -2047,6 +2066,42 @@ function resetSteps() {
   })
   progressBar.style.width = '0%'
   progressText.textContent = 'Step 0 of 7'
+}
+
+/**
+ * Reset all processing steps to initial state
+ */
+function resetSteps() {
+  const steps = [step1, step2, step3, step4, step5, step6, step7]
+
+  // Clear any existing dot animation
+  if (dotAnimationInterval) {
+    clearInterval(dotAnimationInterval)
+    dotAnimationInterval = null
+  }
+
+  // Reset each step
+  steps.forEach((step) => {
+    if (!step) return
+
+    // Remove all status classes
+    step.classList.remove('active', 'completed', 'error')
+
+    // Reset icon to circle
+    const icon = step.querySelector('.step-icon')
+    if (icon) icon.innerHTML = '○'
+
+    // Remove animated dots if they exist
+    const textSpan = step.querySelector('span:nth-child(2)')
+    if (textSpan) {
+      const dotsSpan = textSpan.querySelector('.animated-dots')
+      if (dotsSpan) dotsSpan.remove()
+    }
+  })
+
+  // Reset progress bar
+  progressBar.style.width = '0%'
+  progressText.textContent = 'Ready to start'
 }
 
 /**
@@ -2148,7 +2203,8 @@ function markJobCompleted(success = true) {
     progressText.textContent = 'Failed!'
   }
 
-  resetToIdle()
+  // Don't reset here - let the next job reset when it starts,
+  // or let the batch completion reset after showing final state
 }
 
 /**
