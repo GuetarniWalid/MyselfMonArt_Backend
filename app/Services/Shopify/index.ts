@@ -1,6 +1,7 @@
 import type { Resource } from 'Types/Resource'
 import Collection from './Collection'
 import Discount from './Discount'
+import File from './File'
 import Metafield from './Metafield'
 import Metaobject from './Metaobject'
 import Page from './Page'
@@ -14,6 +15,7 @@ import Webhook from './Webhook'
 export default class Shopify {
   public collection: Collection
   public discount: Discount
+  public file: File
   public metafield: Metafield
   public metaobject: Metaobject
   public page: Page
@@ -26,6 +28,7 @@ export default class Shopify {
   constructor() {
     this.collection = new Collection()
     this.discount = new Discount()
+    this.file = new File()
     this.metafield = new Metafield()
     this.metaobject = new Metaobject()
     this.page = new Page()

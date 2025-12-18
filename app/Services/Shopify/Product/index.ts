@@ -143,13 +143,13 @@ export default class Product extends Authentication {
     }
   }
 
-  public async getAll(): Promise<ShopifyProduct[]> {
+  public async getAll(includeUnpublished: boolean = false): Promise<ShopifyProduct[]> {
     const allProducts = [] as any[]
     let cursor = null
     let hasNextPage = true
 
     while (hasNextPage) {
-      const { query, variables } = this.getAllProductsQuery(cursor)
+      const { query, variables } = this.getAllProductsQuery(cursor, includeUnpublished)
       const productsData = await this.fetchGraphQL(query, variables, 100) // Complex query with many fields
       const products = productsData.products.edges
 
@@ -170,10 +170,11 @@ export default class Product extends Authentication {
     return allProducts
   }
 
-  private getAllProductsQuery(cursor: string | null = null) {
+  private getAllProductsQuery(cursor: string | null = null, includeUnpublished: boolean = false) {
+    const statusQuery = includeUnpublished ? '' : 'published_status:published'
     return {
       query: `query GetAllProducts($cursor: String) {
-                products(first: 250, after: $cursor, query: "published_status:published") {
+                products(first: 250, after: $cursor${statusQuery ? `, query: "${statusQuery}"` : ''}) {
                   edges {
                     node {
                       id
@@ -664,6 +665,80 @@ export default class Product extends Authentication {
             id: variantId,
             inventoryPolicy: 'CONTINUE',
             ...payload,
+          },
+        ],
+      },
+    }
+  }
+
+  public async deleteMedia(productId: string, mediaIds: string[]) {
+    const { query, variables } = this.getDeleteMediaQuery(productId, mediaIds)
+    const response = await this.fetchGraphQL(query, variables)
+
+    if (response.productDeleteMedia.userErrors?.length) {
+      throw new Error(response.productDeleteMedia.userErrors[0].message)
+    }
+
+    return response.productDeleteMedia.deletedMediaIds
+  }
+
+  private getDeleteMediaQuery(productId: string, mediaIds: string[]) {
+    return {
+      query: `mutation productDeleteMedia($productId: ID!, $mediaIds: [ID!]!) {
+        productDeleteMedia(productId: $productId, mediaIds: $mediaIds) {
+          deletedMediaIds
+          deletedProductImageIds
+          product {
+            id
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }`,
+      variables: {
+        productId,
+        mediaIds,
+      },
+    }
+  }
+
+  public async createMedia(productId: string, mediaId: string) {
+    const { query, variables } = this.getCreateMediaQuery(productId, mediaId)
+    const response = await this.fetchGraphQL(query, variables)
+
+    if (response.productCreateMedia.userErrors?.length) {
+      throw new Error(response.productCreateMedia.userErrors[0].message)
+    }
+
+    return response.productCreateMedia.media
+  }
+
+  private getCreateMediaQuery(productId: string, mediaId: string) {
+    return {
+      query: `mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+        productCreateMedia(productId: $productId, media: $media) {
+          media {
+            id
+            alt
+            mediaContentType
+          }
+          product {
+            id
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }`,
+      variables: {
+        productId,
+        media: [
+          {
+            mediaContentType: 'IMAGE',
+            originalSource: mediaId,
           },
         ],
       },

@@ -4,6 +4,7 @@ import fs from 'fs'
 import path from 'path'
 import Application from '@ioc:Adonis/Core/Application'
 import axios from 'axios'
+import Env from '@ioc:Adonis/Core/Env'
 import Shopify from 'App/Services/Shopify'
 import MockupQueue from 'App/Services/MockupQueue'
 
@@ -51,6 +52,53 @@ export default class MockupController {
     if (data.jobId) {
       this.queue.completeJob(data.jobId, data)
 
+      // Upload to Shopify if successful
+      if (data.success && data.resultPath && data.productId) {
+        console.log('🔍 DEBUG: Starting Shopify upload with:', {
+          resultPath: data.resultPath,
+          productId: data.productId,
+          targetImagePosition: data.targetImagePosition,
+        })
+
+        try {
+          await this.uploadMockupToShopify({
+            productId: data.productId,
+            mockupFilePath: data.resultPath,
+            targetImagePosition: data.targetImagePosition || 0,
+          })
+          console.log(`✅ DEBUG: Mockup uploaded to Shopify for product ${data.productId}`)
+          console.log(`🎨 Mockup uploaded to Shopify for product ${data.productId}`)
+
+          // Return success with uploaded flag
+          const successResult = {
+            success: true,
+            uploaded: true,
+          }
+          console.log('🔍 DEBUG: Returning success result:', successResult)
+          return response.ok(successResult)
+        } catch (error) {
+          console.error(`❌ DEBUG: Failed to upload mockup to Shopify:`, error)
+          console.error('❌ DEBUG: Error details:', {
+            message: error.message,
+            stack: error.stack,
+            productId: data.productId,
+            resultPath: data.resultPath,
+          })
+
+          // Return error to frontend (don't throw, return controlled error)
+          const errorResult = {
+            success: false,
+            error: true,
+            errorMessage: error.message,
+            productId: data.productId,
+            resultPath: data.resultPath,
+          }
+
+          console.log('🔍 DEBUG: Returning error result:', errorResult)
+          return response.ok(errorResult)
+        }
+      }
+
       // Clean up source image file if job was successful
       if (data.success && data.imageUrl) {
         try {
@@ -62,9 +110,90 @@ export default class MockupController {
           console.error(`⚠️  Failed to delete source image: ${error.message}`)
         }
       }
+
+      // Clean up mockup result after upload
+      if (data.success && data.resultPath) {
+        try {
+          if (fs.existsSync(data.resultPath)) {
+            fs.unlinkSync(data.resultPath)
+            console.log(`🗑️  Cleaned up mockup result: ${data.resultPath}`)
+          }
+        } catch (error) {
+          console.error(`⚠️  Failed to delete mockup result: ${error.message}`)
+        }
+      }
     }
 
     return response.ok({ success: true })
+  }
+
+  // Upload mockup file from plugin
+  public async uploadMockup({ request, response }: HttpContextContract) {
+    console.log('🔍 DEBUG: uploadMockup endpoint called')
+
+    try {
+      const mockupFile = request.file('mockup', {
+        size: '20mb',
+        extnames: ['jpg', 'jpeg', 'png'],
+      })
+
+      console.log('🔍 DEBUG: mockupFile:', {
+        hasFile: !!mockupFile,
+        fileName: mockupFile?.clientName,
+        size: mockupFile?.size,
+        extname: mockupFile?.extname,
+      })
+
+      if (!mockupFile) {
+        console.error('❌ DEBUG: No file in request')
+        return response.badRequest({ error: 'No file uploaded' })
+      }
+
+      const fileName = request.input('fileName')
+      console.log('🔍 DEBUG: fileName from request:', fileName)
+
+      if (!fileName) {
+        console.error('❌ DEBUG: No fileName in request')
+        return response.badRequest({ error: 'fileName is required' })
+      }
+
+      // Ensure assets directory exists
+      const assetsDir = Application.publicPath('assets')
+      console.log('🔍 DEBUG: assetsDir:', assetsDir)
+
+      if (!fs.existsSync(assetsDir)) {
+        console.log('🔍 DEBUG: Creating assets directory')
+        fs.mkdirSync(assetsDir, { recursive: true })
+      }
+
+      // Save file to public/assets
+      const filePath = path.join(assetsDir, fileName)
+      console.log('🔍 DEBUG: Saving to filePath:', filePath)
+
+      await mockupFile.move(Application.publicPath('assets'), {
+        name: fileName,
+        overwrite: true,
+      })
+
+      console.log('✅ DEBUG: File saved successfully')
+      console.log(`📤 Mockup file uploaded: ${fileName}`)
+
+      const result = {
+        success: true,
+        filePath: filePath,
+        fileName: fileName,
+      }
+
+      console.log('🔍 DEBUG: Returning upload result:', result)
+      return response.ok(result)
+    } catch (error) {
+      console.error('❌ DEBUG: uploadMockup error:', error)
+      console.error('❌ DEBUG: error stack:', error.stack)
+      return response.internalServerError({
+        error: 'Failed to upload file',
+        details: error.message,
+      })
+    }
   }
 
   // Download image file
@@ -119,7 +248,7 @@ export default class MockupController {
       console.log(`📦 Found ${paintingCollections.length} painting collections`)
 
       // Get all products to count products per collection
-      const allProducts = await shopify.product.getAll()
+      const allProducts = await shopify.product.getAll(true)
 
       // Build response with ID, title, and product count
       const collectionsWithCounts = paintingCollections.map((collection) => {
@@ -172,9 +301,10 @@ export default class MockupController {
 
   // Start mockup automation for specific collection(s)
   public async startAutomation({ request, response }: HttpContextContract) {
-    const { collectionIds, mockupTemplatePath } = request.only([
+    const { collectionIds, mockupTemplatePath, targetImagePosition } = request.only([
       'collectionIds',
       'mockupTemplatePath',
+      'targetImagePosition',
     ])
 
     // Validate template path
@@ -185,6 +315,14 @@ export default class MockupController {
       })
     }
 
+    // Validate image position
+    if (targetImagePosition === undefined || targetImagePosition < 0 || targetImagePosition > 4) {
+      return response.badRequest({
+        success: false,
+        message: 'Target image position must be between 0 and 4',
+      })
+    }
+
     console.log('🎨 Starting Mockup Automation via API')
     console.log(`   Collection IDs: ${JSON.stringify(collectionIds)}`)
     console.log(`   Mockup Template: ${mockupTemplatePath}`)
@@ -192,8 +330,8 @@ export default class MockupController {
     try {
       const shopify = new Shopify()
 
-      // Get all products from Shopify and filter painting products first
-      const allProducts = await shopify.product.getAll()
+      // Get all products from Shopify (including unpublished) and filter painting products first
+      const allProducts = await shopify.product.getAll(true)
       const paintingProducts = allProducts.filter(
         (product) => product.templateSuffix === 'painting'
       )
@@ -278,7 +416,7 @@ export default class MockupController {
         console.log(`   ✅ Downloaded to: ${filePath}`)
 
         // Create and send mockup job
-        const jobId = `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        const jobId = `job-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
         const job = {
           id: jobId,
           productId: product.id,
@@ -286,6 +424,7 @@ export default class MockupController {
           imageUrl: filePath,
           mockupTemplatePath: mockupTemplatePath,
           orientation: orientation,
+          targetImagePosition: targetImagePosition,
         }
 
         this.queue.addJob(job)
@@ -363,5 +502,60 @@ export default class MockupController {
     } catch (error) {
       throw new Error(`Failed to download image: ${error.message}`)
     }
+  }
+
+  /**
+   * Upload mockup to Shopify and replace product image
+   */
+  private async uploadMockupToShopify({
+    productId,
+    mockupFilePath,
+    targetImagePosition,
+  }: {
+    productId: string
+    mockupFilePath: string
+    targetImagePosition: number
+  }): Promise<void> {
+    const shopify = new Shopify()
+
+    // 1. Get product to check current media
+    const product = await shopify.product.getProductById(productId)
+    const currentMediaCount = product.media?.nodes?.length || 0
+
+    console.log(
+      `📸 Product has ${currentMediaCount} images, target position: ${targetImagePosition + 1}`
+    )
+
+    // 2. Generate public URL for mockup (file already uploaded by plugin)
+    const fileName = path.basename(mockupFilePath)
+
+    // Verify file exists in public/assets
+    if (!fs.existsSync(mockupFilePath)) {
+      throw new Error(`Mockup file not found at: ${mockupFilePath}`)
+    }
+
+    const baseUrl = Env.get('BACKEND_URL') || Env.get('APP_URL')
+    const publicUrl = `${baseUrl}/assets/${fileName}`
+
+    console.log(`🌐 Public URL: ${publicUrl}`)
+
+    // 4. Upload file to Shopify
+    const shopifyMediaId = await shopify.file.create(publicUrl, 'Product mockup')
+    console.log(`✅ File uploaded to Shopify with ID: ${shopifyMediaId}`)
+
+    // 5. If position exists, delete old media; otherwise append
+    if (currentMediaCount > targetImagePosition) {
+      const targetMediaId = (product.media.nodes[targetImagePosition] as any).id
+      console.log(`🗑️  Deleting old media at position ${targetImagePosition + 1}: ${targetMediaId}`)
+      await shopify.product.deleteMedia(productId, [targetMediaId])
+    } else {
+      console.log(
+        `➕ Appending mockup as new image (position ${targetImagePosition + 1} doesn't exist)`
+      )
+    }
+
+    // 6. Add new media to product
+    await shopify.product.createMedia(productId, shopifyMediaId)
+    console.log(`🎨 Mockup added to product`)
   }
 }

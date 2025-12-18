@@ -136,6 +136,22 @@
         opacity: 0.6;
       }
 
+      .button.processing {
+        background-color: #ff9800 !important;
+        color: white !important;
+        opacity: 0.8;
+        animation: pulse 1.5s ease-in-out infinite;
+      }
+
+      @keyframes pulse {
+        0%, 100% {
+          opacity: 0.8;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+
       .logs-section {
         margin-top: 16px;
       }
@@ -391,6 +407,14 @@
         }
       }
 
+      .animated-dots {
+        display: inline-block;
+        min-width: 20px;
+        color: #2196f3;
+        font-weight: bold;
+        text-align: left;
+      }
+
       /* Custom Radio Button Styles */
       .radio-group {
         display: flex;
@@ -401,15 +425,15 @@
       .radio-label {
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 8px;
         cursor: pointer;
-        padding: 8px 16px;
+        padding: 12px 8px;
         border-radius: 6px;
         background-color: #1e1e1e;
         border: 2px solid #444;
         transition: all 0.2s ease;
-        flex: 1;
-        justify-content: center;
+        min-width: 0;
       }
 
       .radio-label:hover {
@@ -485,6 +509,7 @@
         border-radius: 6px;
         background-color: #1e1e1e;
         padding: 8px;
+        margin-bottom: 20px;
       }
 
       .checkbox-item {
@@ -675,12 +700,12 @@
         <div class="form-group" style="margin-bottom: 20px;">
           <label class="form-label">Select Mockup Template:</label>
 
-          <div class="collection-checkboxes" id="mockupTemplateSelector" style="max-height: 200px;">
+          <div class="collection-checkboxes" id="mockupTemplateSelector" style="max-height: none;">
             <!-- Templates will be populated here -->
           </div>
 
           <div id="mockupImagesPreview" style="display: none;">
-            <label style="font-size: 12px; color: #999; margin-bottom: 8px; display: block;">Selected mockup files (click to preview):</label>
+            <label class="form-label">Selected mockup files (click to preview):</label>
             <div style="background-color: #1e1e1e; padding: 12px; border-radius: 4px; border: 1px solid #444;">
               <div id="mockupFile1" class="mockup-file-item" style="font-size: 13px; color: #4caf50; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background-color 0.2s;">
                 <span style="font-size: 16px;">🖼️</span>
@@ -694,6 +719,46 @@
                 <span style="font-size: 16px;">🖼️</span>
                 <span style="text-decoration: underline;"></span>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Image Position Selector -->
+        <div class="form-group" style="margin-bottom: 20px;">
+          <label class="form-label">Replace Image Position:</label>
+          <div style="font-size: 11px; color: #999; margin-bottom: 8px;">
+            Select which image in the product to replace with the mockup
+          </div>
+          <div class="collection-checkboxes" style="max-height: none;">
+            <div class="checkbox-item">
+              <label>
+                <input type="checkbox" class="image-position-checkbox" data-position="0" checked />
+                <span>Position 1 (First image)</span>
+              </label>
+            </div>
+            <div class="checkbox-item">
+              <label>
+                <input type="checkbox" class="image-position-checkbox" data-position="1" />
+                <span>Position 2</span>
+              </label>
+            </div>
+            <div class="checkbox-item">
+              <label>
+                <input type="checkbox" class="image-position-checkbox" data-position="2" />
+                <span>Position 3</span>
+              </label>
+            </div>
+            <div class="checkbox-item">
+              <label>
+                <input type="checkbox" class="image-position-checkbox" data-position="3" />
+                <span>Position 4</span>
+              </label>
+            </div>
+            <div class="checkbox-item">
+              <label>
+                <input type="checkbox" class="image-position-checkbox" data-position="4" />
+                <span>Position 5 (Last image)</span>
+              </label>
             </div>
           </div>
         </div>
@@ -723,30 +788,97 @@
       <div class="progress-bar-container">
         <div class="progress-bar" id="progressBar"></div>
       </div>
-      <div class="progress-text" id="progressText">Step 0 of 5</div>
+      <div class="progress-text" id="progressText">Step 0 of 7</div>
+
+      <!-- Polling Status Display -->
+      <div id="pollingStatus" style="display: none; margin-bottom: 12px; padding: 12px; background: #1e1e1e; border-radius: 4px; border-left: 3px solid #2196f3;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div class="spinner"></div>
+          <div style="flex: 1;">
+            <div style="font-size: 11px; color: #999; margin-bottom: 4px;">Shopify File Processing:</div>
+            <div id="pollingMessage" style="font-size: 12px; color: #2196f3; font-weight: 500;">Checking file status...</div>
+            <div id="pollingAttempt" style="font-size: 10px; color: #666; margin-top: 2px;">Attempt 1 of 15</div>
+          </div>
+        </div>
+      </div>
 
       <ul class="steps-list">
         <li class="step-item" id="step1">
           <span class="step-icon">○</span>
-          <span>Downloading image</span>
+          <span>Downloading product image</span>
         </li>
         <li class="step-item" id="step2">
           <span class="step-icon">○</span>
-          <span>Selecting template</span>
+          <span>Loading mockup template</span>
         </li>
         <li class="step-item" id="step3">
           <span class="step-icon">○</span>
-          <span>Opening in Photoshop</span>
+          <span>Opening template in Photoshop</span>
         </li>
         <li class="step-item" id="step4">
           <span class="step-icon">○</span>
-          <span>Replacing smart object</span>
+          <span>Inserting product image</span>
         </li>
         <li class="step-item" id="step5">
           <span class="step-icon">○</span>
-          <span>Saving result</span>
+          <span>Generating mockup</span>
+        </li>
+        <li class="step-item" id="step6">
+          <span class="step-icon">○</span>
+          <span>Uploading to Shopify</span>
+        </li>
+        <li class="step-item" id="step7">
+          <span class="step-icon">○</span>
+          <span>Saved on Shopify</span>
         </li>
       </ul>
+    </div>
+
+    <!-- Error Modal -->
+    <div id="errorModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; padding: 20px; overflow-y: auto;">
+      <div style="max-width: 500px; margin: 40px auto; background: #2d2d2d; border: 2px solid #f44336; border-radius: 8px; padding: 24px;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+          <span style="font-size: 32px;">⚠️</span>
+          <h3 style="color: #f44336; margin: 0;">Shopify Upload Failed</h3>
+        </div>
+
+        <div style="background: #1e1e1e; padding: 16px; border-radius: 4px; margin-bottom: 16px;">
+          <div style="margin-bottom: 12px;">
+            <div style="font-size: 11px; color: #999; text-transform: uppercase; margin-bottom: 4px;">Product</div>
+            <div id="errorProductName" style="color: #fff; font-weight: 500;">-</div>
+          </div>
+
+          <div style="margin-bottom: 12px;">
+            <div style="font-size: 11px; color: #999; text-transform: uppercase; margin-bottom: 4px;">Error</div>
+            <div id="errorMessage" style="color: #f44336;">-</div>
+          </div>
+
+          <div>
+            <div style="font-size: 11px; color: #999; text-transform: uppercase; margin-bottom: 4px;">Mockup File Path (Server)</div>
+            <div id="errorFilePath" style="color: #4caf50; font-family: monospace; font-size: 11px; word-break: break-all; cursor: pointer; padding: 8px; background: #1e1e1e; border: 1px solid #333; border-radius: 2px; transition: background-color 0.2s;">-</div>
+            <div style="font-size: 10px; color: #666; margin-top: 4px;">Click the path to open file location</div>
+          </div>
+        </div>
+
+        <div style="background: #1e1e1e; padding: 16px; border-radius: 4px; margin-bottom: 20px; border-left: 3px solid #ff9800;">
+          <div style="font-weight: 600; margin-bottom: 8px; color: #ff9800;">📋 Manual Steps Required:</div>
+          <ol style="margin: 0; padding-left: 20px; color: #e0e0e0; font-size: 13px; line-height: 1.8;">
+            <li>Open Shopify Admin</li>
+            <li>Navigate to the product (name shown above)</li>
+            <li>Upload the mockup file manually at the specified position</li>
+            <li>Click "Continue" below to resume processing remaining products</li>
+          </ol>
+        </div>
+
+        <div style="display: flex; gap: 12px;">
+          <button id="errorContinueBtn" class="button success" style="flex: 1;">
+            Continue Processing
+          </button>
+          <button id="errorCancelBtn" class="button danger" style="flex: 1;">
+            Cancel All
+          </button>
+        </div>
+      </div>
     </div>
 
     <div class="logs-section">

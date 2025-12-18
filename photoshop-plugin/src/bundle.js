@@ -4,6 +4,8 @@
 
 const fs = require('uxp').storage.localFileSystem
 const { app } = require('photoshop')
+const { shell } = require('uxp')
+const clipboard = require('uxp').clipboard
 
 class MockupProcessor {
   constructor(onLog, onStep) {
@@ -484,13 +486,13 @@ class MockupProcessor {
           // Step 5: Save result
           this.step(5, 'active')
           this.log('info', 'Step 5/5: Saving result...')
-          // Extract numeric ID from Shopify GID (e.g., "gid://shopify/Product/7890767380735" -> "7890767380735")
           const numericId = job.productId.split('/').pop()
           const outputName = `mockup-${numericId}-${Date.now()}.jpg`
+
           outputFile = await this.saveAsJPEG(doc, outputName)
           this.step(5, 'completed')
 
-          // Close document without saving
+          // Close document
           await this.closeDocument(doc, false)
 
           return {
@@ -632,11 +634,15 @@ class HTTPPollingClient {
 
       if (response.ok) {
         this.log('info', `Sent: ${message.type}`)
+        // Return the response data so caller can check for errors
+        const data = await response.json()
+        return data
       } else {
         throw new Error(`Server returned ${response.status}`)
       }
     } catch (error) {
       this.log('error', `Failed to send: ${error.message}`)
+      throw error
     }
   }
 
@@ -674,6 +680,8 @@ const step2 = document.getElementById('step2')
 const step3 = document.getElementById('step3')
 const step4 = document.getElementById('step4')
 const step5 = document.getElementById('step5')
+const step6 = document.getElementById('step6')
+const step7 = document.getElementById('step7')
 
 // Automation Form Elements
 const automationSection = document.getElementById('automationSection')
@@ -709,6 +717,12 @@ let selectedMockupImages = []
 // Job queue for sequential processing
 let jobQueue = []
 let isProcessingJob = false
+
+// Image position and error handling
+let targetImagePosition = 0 // Default to first image (0-indexed)
+let isPaused = false
+let failedJob = null
+let dotAnimationInterval = null // Track the dot animation interval
 
 /**
  * Validate if Start Processing button should be enabled
@@ -757,6 +771,49 @@ function validateStartButton() {
 }
 
 /**
+ * Show error modal and pause processing
+ */
+function showErrorModal(job, error) {
+  console.log('🔍 DEBUG: showErrorModal called with:', {
+    job: job,
+    error: {
+      message: error.message,
+      resultPath: error.resultPath,
+      productId: error.productId,
+    },
+  })
+
+  isPaused = true
+  failedJob = job
+
+  const productName = job.productTitle || 'Unknown'
+  const errorMessage = error.message || 'Unknown error'
+  const filePath = error.resultPath || 'N/A'
+
+  console.log('🔍 DEBUG: Modal display values:', {
+    productName,
+    errorMessage,
+    filePath,
+  })
+
+  document.getElementById('errorProductName').textContent = productName
+  document.getElementById('errorMessage').textContent = errorMessage
+  document.getElementById('errorFilePath').textContent = filePath
+  document.getElementById('errorModal').style.display = 'block'
+
+  addLog('error', `❌ Processing paused: ${error.message}`)
+}
+
+/**
+ * Hide error modal and resume processing
+ */
+function hideErrorModal() {
+  document.getElementById('errorModal').style.display = 'none'
+  isPaused = false
+  failedJob = null
+}
+
+/**
  * Initialize the plugin
  */
 function init() {
@@ -782,6 +839,86 @@ function init() {
   // Automation form event listeners
   startAutomationBtn.addEventListener('click', handleStartAutomation)
   // Template change listeners are added when radio buttons are created
+
+  // Image position selector event listeners (checkbox with radio behavior)
+  const imagePositionCheckboxes = document.querySelectorAll('.image-position-checkbox')
+  imagePositionCheckboxes.forEach((checkbox) => {
+    checkbox.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        // Uncheck all other checkboxes (radio behavior)
+        imagePositionCheckboxes.forEach((cb) => {
+          if (cb !== e.target) {
+            cb.checked = false
+          }
+        })
+        // Update target position
+        targetImagePosition = parseInt(e.target.dataset.position)
+        addLog('info', `Image position set to ${targetImagePosition + 1}`)
+        validateStartButton()
+      } else {
+        // Don't allow unchecking - at least one must be selected
+        e.target.checked = true
+      }
+    })
+  })
+
+  // Error modal event listeners
+  const errorContinueBtn = document.getElementById('errorContinueBtn')
+  const errorCancelBtn = document.getElementById('errorCancelBtn')
+
+  if (errorContinueBtn) {
+    errorContinueBtn.addEventListener('click', () => {
+      addLog('info', 'User chose to continue processing')
+      hideErrorModal()
+      // Resume processing next job
+      processNextJob()
+    })
+  }
+
+  if (errorCancelBtn) {
+    errorCancelBtn.addEventListener('click', () => {
+      addLog('warning', 'User cancelled batch processing')
+      hideErrorModal()
+      // Clear remaining jobs
+      jobQueue = []
+      isProcessingJob = false
+      addLog('info', 'All remaining jobs cancelled')
+      // Re-enable the start button
+      enableStartButton()
+    })
+  }
+
+  // Make file path clickable to open the actual file
+  const errorFilePath = document.getElementById('errorFilePath')
+
+  if (errorFilePath) {
+    errorFilePath.addEventListener('click', async () => {
+      const filePath = errorFilePath.textContent
+      console.log('🔍 DEBUG: File path clicked:', filePath)
+
+      if (filePath && filePath !== 'N/A' && filePath !== '-') {
+        try {
+          // Open the file directly (not the directory)
+          console.log('🔍 DEBUG: Opening file:', filePath)
+          await shell.openPath(filePath)
+          addLog('success', 'Opened mockup file')
+        } catch (err) {
+          console.error('❌ DEBUG: Failed to open file:', err)
+          addLog('error', `Failed to open file: ${err.message}`)
+        }
+      } else {
+        console.log('⚠️ DEBUG: No valid path to open')
+      }
+    })
+
+    // Add hover effect
+    errorFilePath.addEventListener('mouseenter', () => {
+      errorFilePath.style.backgroundColor = '#252525'
+    })
+    errorFilePath.addEventListener('mouseleave', () => {
+      errorFilePath.style.backgroundColor = '#1e1e1e'
+    })
+  }
 
   addLog('info', 'Plugin initialized. Click "Connect to Server" to start.')
   addLog('info', 'Using HTTP polling (WebSocket requires WebView in UXP)')
@@ -1258,9 +1395,10 @@ async function handleStartAutomation() {
 
   // Disable button and checkboxes during processing
   startAutomationBtn.disabled = true
+  startAutomationBtn.classList.add('processing')
   const allCheckboxes = collectionSelector.querySelectorAll('input[type="checkbox"]')
   allCheckboxes.forEach((cb) => (cb.disabled = true))
-  startAutomationBtn.textContent = 'Starting...'
+  startAutomationBtn.textContent = 'Processing...'
 
   try {
     addLog('info', `Starting automation for: ${collectionNames}`)
@@ -1273,6 +1411,7 @@ async function handleStartAutomation() {
       body: JSON.stringify({
         collectionIds: collectionIds,
         mockupTemplatePath: mockupTemplatePath,
+        targetImagePosition: targetImagePosition,
       }),
     })
 
@@ -1283,15 +1422,25 @@ async function handleStartAutomation() {
     } else {
       const error = await response.json()
       addLog('error', `Failed to start automation: ${error.message || response.statusText}`)
+      // Re-enable button if start fails
+      enableStartButton()
     }
   } catch (error) {
     addLog('error', `Error starting automation: ${error.message}`)
-  } finally {
-    // Re-enable button and checkboxes
-    startAutomationBtn.disabled = false
-    allCheckboxes.forEach((cb) => (cb.disabled = false))
-    startAutomationBtn.textContent = 'Start Processing'
+    // Re-enable button if error occurs
+    enableStartButton()
   }
+}
+
+/**
+ * Enable the start button and checkboxes
+ */
+function enableStartButton() {
+  startAutomationBtn.disabled = false
+  startAutomationBtn.classList.remove('processing')
+  startAutomationBtn.textContent = 'Start Processing'
+  const allCheckboxes = collectionSelector.querySelectorAll('input[type="checkbox"]')
+  allCheckboxes.forEach((cb) => (cb.disabled = false))
 }
 
 /**
@@ -1334,6 +1483,12 @@ function handleNewJob(message) {
  * Process jobs sequentially from the queue
  */
 async function processNextJob() {
+  // Check if paused
+  if (isPaused) {
+    addLog('info', 'Processing paused, waiting for user action')
+    return
+  }
+
   // If already processing or queue is empty, return
   if (isProcessingJob || jobQueue.length === 0) {
     return
@@ -1356,20 +1511,154 @@ async function processNextJob() {
     const result = await processor.processJob(job)
 
     if (result.success) {
-      // Mark job as completed successfully
-      markJobCompleted(true)
+      // Mockup generation complete (step 5)
+      updateStep(5, 'completed')
+      addLog('success', 'Mockup generated successfully')
 
-      // Send completion message to backend
+      console.log('🔍 DEBUG: result object:', {
+        success: result.success,
+        resultPath: result.resultPath,
+        hasOutputFile: !!result.outputFile,
+      })
+
+      // Send completion message to backend (includes Shopify upload trigger)
       if (client && client.isConnected()) {
-        await client.send({
-          jobId: job.id,
-          resultPath: result.resultPath,
-          imageUrl: job.imageUrl,
-          success: true,
-        })
-        jobsCompleted++
-        updateStats()
-        addLog('success', `Job ${job.id} completed and reported to backend`)
+        try {
+          // Step 6: Uploading mockup file to backend server
+          updateStep(6, 'active')
+          addLog('info', 'Uploading mockup file to server...')
+
+          // Read file AFTER modal scope using returned file object
+          console.log('🔍 DEBUG: result.outputFile:', result.outputFile)
+          console.log('🔍 DEBUG: result.resultPath:', result.resultPath)
+
+          if (!result.outputFile) {
+            console.error('❌ DEBUG: No outputFile in result')
+            throw new Error('No mockup file available for upload')
+          }
+
+          // Try to read the file
+          console.log('🔍 DEBUG: Reading file after modal scope...')
+          const fileData = await result.outputFile.read({
+            format: require('uxp').storage.formats.binary,
+          })
+          console.log('🔍 DEBUG: File data read, size:', fileData.byteLength)
+
+          // Create FormData for file upload
+          const formData = new FormData()
+          const fileName = result.fileName || result.resultPath.split(/[/\\]/).pop()
+          console.log('🔍 DEBUG: fileName:', fileName)
+
+          const blob = new Blob([fileData], { type: 'image/jpeg' })
+          console.log('🔍 DEBUG: Blob created, size:', blob.size)
+
+          formData.append('mockup', blob, fileName)
+          formData.append('fileName', fileName)
+
+          // Upload file to backend
+          const serverUrl = 'http://localhost:3333'
+          console.log('🔍 DEBUG: Uploading to:', `${serverUrl}/api/mockup/upload`)
+          const uploadResponse = await fetch(`${serverUrl}/api/mockup/upload`, {
+            method: 'POST',
+            body: formData,
+          })
+          console.log('🔍 DEBUG: Upload response status:', uploadResponse.status)
+
+          if (!uploadResponse.ok) {
+            const errorText = await uploadResponse.text()
+            console.error('❌ DEBUG: Upload failed:', errorText)
+            throw new Error(`File upload failed: ${uploadResponse.status} - ${errorText}`)
+          }
+
+          const uploadResult = await uploadResponse.json()
+          console.log('🔍 DEBUG: Upload result:', uploadResult)
+          addLog('success', `Mockup uploaded: ${uploadResult.fileName}`)
+
+          // Now send completion message with server file path
+          addLog('info', 'Uploading to Shopify...')
+          console.log('🔍 DEBUG: Sending completion with filePath:', uploadResult.filePath)
+
+          const response = await client.send({
+            jobId: job.id,
+            resultPath: uploadResult.filePath,
+            imageUrl: job.imageUrl,
+            productId: job.productId,
+            targetImagePosition: job.targetImagePosition,
+            success: true,
+          })
+
+          console.log('🔍 DEBUG: Completion response:', response)
+
+          // Check if backend returned an error (Shopify upload failed)
+          if (response && response.error) {
+            console.error('❌ DEBUG: Backend returned error:', response)
+            console.log('🔍 DEBUG: Error details:', {
+              errorMessage: response.errorMessage,
+              resultPath: response.resultPath,
+              productId: response.productId,
+            })
+
+            updateStep(6, 'error')
+            const error = new Error(response.errorMessage || 'Shopify upload failed')
+            // Attach response data to error for modal display
+            error.resultPath = response.resultPath || uploadResult.filePath || result.resultPath
+            error.productId = response.productId
+
+            console.log('🔍 DEBUG: Error object being thrown:', {
+              message: error.message,
+              resultPath: error.resultPath,
+              productId: error.productId,
+            })
+
+            throw error
+          }
+
+          // Step 6 complete, Step 7: Waiting for Shopify processing
+          updateStep(6, 'completed')
+          updateStep(7, 'active')
+          addLog('info', 'Waiting for Shopify to process file...')
+
+          // Step 7 complete (backend already waited for processing)
+          updateStep(7, 'completed')
+          addLog('success', 'File processed and saved on Shopify')
+
+          // Mark job as fully completed
+          markJobCompleted(true)
+
+          jobsCompleted++
+          updateStats()
+          addLog('success', `Job ${job.id} completed successfully`)
+        } catch (error) {
+          console.error('❌ DEBUG: Error in upload/Shopify flow:', error)
+          console.log('🔍 DEBUG: Error object:', {
+            message: error.message,
+            resultPath: error.resultPath,
+            productId: error.productId,
+            stack: error.stack,
+          })
+
+          addLog('error', `Failed to upload to Shopify: ${error.message}`)
+
+          // Mark current step as error
+          updateStep(7, 'error')
+
+          console.log('🔍 DEBUG: Showing error modal with job:', {
+            jobTitle: job.productTitle,
+            jobId: job.id,
+          })
+
+          // Show error modal and pause
+          showErrorModal(job, error)
+
+          // Mark as no longer processing so we can resume later
+          isProcessingJob = false
+
+          // Don't process next job - wait for user to click Continue
+          return
+        }
+      } else {
+        // No backend connection, just mark as complete
+        markJobCompleted(true)
       }
     } else {
       // Mark job as failed
@@ -1410,6 +1699,8 @@ async function processNextJob() {
       setTimeout(() => processNextJob(), 500)
     } else {
       addLog('success', 'All jobs completed!')
+      // Re-enable the start button
+      enableStartButton()
     }
   }
 }
@@ -1478,49 +1769,90 @@ function resetToIdle() {
 }
 
 /**
- * Reset all steps
+ * Reset all steps to initial state
  */
 function resetSteps() {
-  const steps = [step1, step2, step3, step4, step5]
+  // Clear any dot animation
+  if (dotAnimationInterval) {
+    clearInterval(dotAnimationInterval)
+    dotAnimationInterval = null
+  }
+
+  const steps = [step1, step2, step3, step4, step5, step6, step7]
   steps.forEach((step) => {
     step.classList.remove('active', 'completed', 'error')
     const icon = step.querySelector('.step-icon')
     icon.innerHTML = '○'
   })
   progressBar.style.width = '0%'
-  progressBar.classList.remove('complete')
-  progressText.textContent = 'Step 0 of 5'
+  progressText.textContent = 'Step 0 of 7'
 }
 
 /**
  * Update processing step
  */
 function updateStep(stepNumber, status = 'active') {
-  const steps = [step1, step2, step3, step4, step5]
+  const steps = [step1, step2, step3, step4, step5, step6, step7]
   const step = steps[stepNumber - 1]
 
   if (!step) return
+
+  // Clear any existing dot animation
+  if (dotAnimationInterval) {
+    clearInterval(dotAnimationInterval)
+    dotAnimationInterval = null
+  }
 
   // Remove all status classes from this step
   step.classList.remove('active', 'completed', 'error')
 
   // Update icon and class based on status
   const icon = step.querySelector('.step-icon')
+  const textSpan = step.querySelector('span:nth-child(2)') // Get the text span (second child)
+
   if (status === 'active') {
     step.classList.add('active')
-    icon.innerHTML = '<div class="spinner"></div>'
+    // Keep the circle in the icon
+    icon.innerHTML = '○'
+
+    // Add animated dots after the text
+    if (textSpan && !textSpan.querySelector('.animated-dots')) {
+      const dotsSpan = document.createElement('span')
+      dotsSpan.className = 'animated-dots'
+      textSpan.appendChild(dotsSpan)
+    }
+
+    // Start JavaScript-based dot animation
+    let dotCount = 0
+    dotAnimationInterval = setInterval(() => {
+      const dotsSpan = step.querySelector('.animated-dots')
+      if (dotsSpan) {
+        dotCount = (dotCount + 1) % 4 // Cycle 0, 1, 2, 3
+        dotsSpan.textContent = '.'.repeat(dotCount)
+      }
+    }, 500) // Change every 500ms
   } else if (status === 'completed') {
     step.classList.add('completed')
     icon.innerHTML = '✓'
+    // Remove dots if they exist
+    if (textSpan) {
+      const dotsSpan = textSpan.querySelector('.animated-dots')
+      if (dotsSpan) dotsSpan.remove()
+    }
   } else if (status === 'error') {
     step.classList.add('error')
     icon.innerHTML = '✗'
+    // Remove dots if they exist
+    if (textSpan) {
+      const dotsSpan = textSpan.querySelector('.animated-dots')
+      if (dotsSpan) dotsSpan.remove()
+    }
   }
 
   // Update progress bar
-  const progress = (stepNumber / 5) * 100
+  const progress = (stepNumber / 7) * 100
   progressBar.style.width = `${progress}%`
-  progressText.textContent = `Step ${stepNumber} of 5`
+  progressText.textContent = `Step ${stepNumber} of 7`
 
   // Mark previous steps as completed
   for (let i = 0; i < stepNumber - 1; i++) {
@@ -1543,7 +1875,7 @@ function markJobCompleted(success = true) {
     progressText.textContent = 'Completed!'
 
     // Mark all steps as completed
-    const steps = [step1, step2, step3, step4, step5]
+    const steps = [step1, step2, step3, step4, step5, step6, step7]
     steps.forEach((step) => {
       step.classList.remove('active', 'error')
       step.classList.add('completed')
