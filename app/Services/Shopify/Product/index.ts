@@ -306,6 +306,7 @@ export default class Product extends Authentication {
           templateSuffix
           media(first: 10) {
             nodes {
+              id
               alt
               ... on MediaImage {
                 image {
@@ -671,61 +672,74 @@ export default class Product extends Authentication {
     }
   }
 
-  public async deleteMedia(productId: string, mediaIds: string[]) {
-    const { query, variables } = this.getDeleteMediaQuery(productId, mediaIds)
+  /**
+   * Delete media files from Shopify
+   * Uses fileDelete mutation (replaces deprecated productDeleteMedia)
+   * Requires: write_files access scope
+   * Note: File deletion is permanent and cannot be undone
+   * @param _productId - Kept for backward compatibility, not used by fileDelete
+   */
+  public async deleteMedia(_productId: string, mediaIds: string[]) {
+    const { query, variables } = this.getDeleteMediaQuery(mediaIds)
     const response = await this.fetchGraphQL(query, variables)
 
-    if (response.productDeleteMedia.userErrors?.length) {
-      throw new Error(response.productDeleteMedia.userErrors[0].message)
+    if (response.fileDelete.userErrors?.length) {
+      throw new Error(response.fileDelete.userErrors[0].message)
     }
 
-    return response.productDeleteMedia.deletedMediaIds
+    return response.fileDelete.deletedFileIds
   }
 
-  private getDeleteMediaQuery(productId: string, mediaIds: string[]) {
+  private getDeleteMediaQuery(mediaIds: string[]) {
     return {
-      query: `mutation productDeleteMedia($productId: ID!, $mediaIds: [ID!]!) {
-        productDeleteMedia(productId: $productId, mediaIds: $mediaIds) {
-          deletedMediaIds
-          deletedProductImageIds
-          product {
-            id
-          }
+      query: `mutation fileDelete($fileIds: [ID!]!) {
+        fileDelete(fileIds: $fileIds) {
+          deletedFileIds
           userErrors {
             field
             message
+            code
           }
         }
       }`,
       variables: {
-        productId,
-        mediaIds,
+        fileIds: mediaIds,
       },
     }
   }
 
+  /**
+   * Add media to a product
+   * Uses productUpdate mutation (replaces deprecated productCreateMedia)
+   * Requires: write_products access scope
+   * Note: Media is asynchronously uploaded and associated with the product
+   * @returns All media nodes for the product (newly added media is at the end)
+   */
   public async createMedia(productId: string, mediaId: string) {
     const { query, variables } = this.getCreateMediaQuery(productId, mediaId)
     const response = await this.fetchGraphQL(query, variables)
 
-    if (response.productCreateMedia.userErrors?.length) {
-      throw new Error(response.productCreateMedia.userErrors[0].message)
+    if (response.productUpdate.userErrors?.length) {
+      throw new Error(response.productUpdate.userErrors[0].message)
     }
 
-    return response.productCreateMedia.media
+    // Return media nodes from the updated product
+    return response.productUpdate.product.media.nodes
   }
 
   private getCreateMediaQuery(productId: string, mediaId: string) {
     return {
-      query: `mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-        productCreateMedia(productId: $productId, media: $media) {
-          media {
-            id
-            alt
-            mediaContentType
-          }
+      query: `mutation productUpdate($product: ProductUpdateInput!, $media: [CreateMediaInput!]) {
+        productUpdate(product: $product, media: $media) {
           product {
             id
+            media(first: 250) {
+              nodes {
+                id
+                alt
+                mediaContentType
+              }
+            }
           }
           userErrors {
             field
@@ -734,13 +748,111 @@ export default class Product extends Authentication {
         }
       }`,
       variables: {
-        productId,
+        product: {
+          id: productId,
+        },
         media: [
           {
             mediaContentType: 'IMAGE',
             originalSource: mediaId,
           },
         ],
+      },
+    }
+  }
+
+  public async reorderMedia(productId: string, moves: Array<{ id: string; newPosition: string }>) {
+    const { query, variables } = this.getReorderMediaQuery(productId, moves)
+    const response = await this.fetchGraphQL(query, variables)
+
+    if (response.productReorderMedia.userErrors?.length) {
+      throw new Error(response.productReorderMedia.userErrors[0].message)
+    }
+
+    const job = response.productReorderMedia.job
+
+    // Wait for the reorder job to complete (it's asynchronous)
+    await this.waitForJobCompletion(job.id)
+
+    return job
+  }
+
+  /**
+   * Poll Shopify to check if job is completed
+   * Default: 20 attempts × 1.5s = 30 seconds max wait time
+   */
+  private async waitForJobCompletion(
+    jobId: string,
+    maxRetries: number = 20,
+    delayMs: number = 1500
+  ): Promise<void> {
+    console.log(`⏳ Polling job completion (max ${maxRetries} attempts, ${delayMs}ms interval)`)
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const { query, variables } = this.getJobStatusQuery(jobId)
+        const response = await this.fetchGraphQL(query, variables)
+
+        // Check if job is done
+        const done = response?.job?.done
+
+        if (done === true) {
+          console.log(
+            `✅ Job completed successfully on attempt ${attempt} (${(attempt * delayMs) / 1000}s)`
+          )
+          return
+        }
+
+        console.log(`⏳ Job not complete yet, attempt ${attempt}/${maxRetries}`)
+      } catch (error) {
+        console.warn(`⚠️  Error checking job status on attempt ${attempt}:`, error.message)
+      }
+
+      // Wait before next retry (unless this was the last attempt)
+      if (attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+      }
+    }
+
+    throw new Error(
+      `Job completion timeout: Job not done after ${maxRetries} attempts (${(maxRetries * delayMs) / 1000}s)`
+    )
+  }
+
+  private getJobStatusQuery(jobId: string) {
+    return {
+      query: `query GetJob($jobId: ID!) {
+        job(id: $jobId) {
+          id
+          done
+        }
+      }`,
+      variables: {
+        jobId,
+      },
+    }
+  }
+
+  private getReorderMediaQuery(
+    productId: string,
+    moves: Array<{ id: string; newPosition: string }>
+  ) {
+    return {
+      query: `mutation productReorderMedia($id: ID!, $moves: [MoveInput!]!) {
+        productReorderMedia(id: $id, moves: $moves) {
+          job {
+            id
+            done
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }`,
+      variables: {
+        id: productId,
+        moves,
       },
     }
   }

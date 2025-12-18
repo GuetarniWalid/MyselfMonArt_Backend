@@ -180,7 +180,7 @@ export default class MockupController {
         })
 
         try {
-          await this.uploadMockupToShopify({
+          const uploadResult = await this.uploadMockupToShopify({
             productId: data.productId,
             mockupFilePath: data.resultPath,
             targetImagePosition: data.targetImagePosition || 0,
@@ -188,10 +188,11 @@ export default class MockupController {
           console.log(`✅ DEBUG: Mockup uploaded to Shopify for product ${data.productId}`)
           console.log(`🎨 Mockup uploaded to Shopify for product ${data.productId}`)
 
-          // Return success with uploaded flag
+          // Return success with uploaded and reordered flags
           const successResult = {
             success: true,
             uploaded: true,
+            reordered: uploadResult.reordered,
           }
           console.log('🔍 DEBUG: Returning success result:', successResult)
           return response.ok(successResult)
@@ -663,7 +664,7 @@ export default class MockupController {
   }
 
   /**
-   * Upload mockup to Shopify and replace product image
+   * Upload mockup to Shopify and replace product image at target position
    */
   private async uploadMockupToShopify({
     productId,
@@ -673,16 +674,23 @@ export default class MockupController {
     productId: string
     mockupFilePath: string
     targetImagePosition: number
-  }): Promise<void> {
+  }): Promise<{ reordered: boolean }> {
     const shopify = new Shopify()
 
-    // 1. Get product to check current media
+    // 1. Get product to check current media and save old media ID at target position
     const product = await shopify.product.getProductById(productId)
     const currentMediaCount = product.media?.nodes?.length || 0
 
     console.log(
       `📸 Product has ${currentMediaCount} images, target position: ${targetImagePosition + 1}`
     )
+
+    // Save the old media ID at target position (if exists) - we'll delete it after reordering
+    let oldMediaId: string | null = null
+    if (currentMediaCount > targetImagePosition && product.media?.nodes) {
+      oldMediaId = (product.media.nodes[targetImagePosition] as any).id
+      console.log(`📝 Old media at position ${targetImagePosition + 1}: ${oldMediaId}`)
+    }
 
     // 2. Generate public URL for mockup (file already uploaded by plugin)
     const fileName = path.basename(mockupFilePath)
@@ -697,23 +705,59 @@ export default class MockupController {
 
     console.log(`🌐 Public URL: ${publicUrl}`)
 
-    // 4. Upload file to Shopify
-    const shopifyMediaId = await shopify.file.create(publicUrl, 'Product mockup')
-    console.log(`✅ File uploaded to Shopify with ID: ${shopifyMediaId}`)
+    // 3. Upload file to Shopify
+    const shopifyFileId = await shopify.file.create(publicUrl, 'Product mockup')
+    console.log(`✅ File uploaded to Shopify with ID: ${shopifyFileId}`)
 
-    // 5. If position exists, delete old media; otherwise append
-    if (currentMediaCount > targetImagePosition) {
-      const targetMediaId = (product.media.nodes[targetImagePosition] as any).id
-      console.log(`🗑️  Deleting old media at position ${targetImagePosition + 1}: ${targetMediaId}`)
-      await shopify.product.deleteMedia(productId, [targetMediaId])
-    } else {
-      console.log(
-        `➕ Appending mockup as new image (position ${targetImagePosition + 1} doesn't exist)`
-      )
+    // 4. Add new media to product (it will append to the end)
+    const allMedia = await shopify.product.createMedia(productId, shopifyFileId)
+
+    // Validate that we got media back
+    if (!allMedia || allMedia.length === 0) {
+      throw new Error('Failed to add media to product: No media returned from Shopify')
     }
 
-    // 6. Add new media to product
-    await shopify.product.createMedia(productId, shopifyMediaId)
-    console.log(`🎨 Mockup added to product`)
+    // productUpdate returns ALL media nodes - the new one is at the end
+    const newMediaId = allMedia[allMedia.length - 1].id
+    console.log(`✅ New media added with ID: ${newMediaId} (appended to end)`)
+
+    // 5. Get updated product to see current media state
+    const updatedProduct = await shopify.product.getProductById(productId)
+    const newMediaCount = updatedProduct.media?.nodes?.length || 0
+    console.log(`📸 Product now has ${newMediaCount} images`)
+
+    // 6. Reorder media to move new media from end to target position
+    // New media is currently at position (newMediaCount - 1), we want it at targetImagePosition
+    const currentNewMediaPosition = newMediaCount - 1
+    let reordered = false
+
+    if (currentNewMediaPosition !== targetImagePosition) {
+      console.log(
+        `🔄 Reordering: moving new media from position ${currentNewMediaPosition + 1} to position ${targetImagePosition + 1}`
+      )
+
+      await shopify.product.reorderMedia(productId, [
+        {
+          id: newMediaId,
+          newPosition: targetImagePosition.toString(),
+        },
+      ])
+
+      console.log(`✅ Media reordered successfully`)
+      reordered = true
+    } else {
+      console.log(`✅ New media already at correct position ${targetImagePosition + 1}`)
+    }
+
+    // 7. Delete old media if it existed at target position
+    // After reordering, the old media has been shifted one position to the right
+    if (oldMediaId) {
+      console.log(`🗑️  Deleting old media: ${oldMediaId}`)
+      await shopify.product.deleteMedia(productId, [oldMediaId])
+      console.log(`✅ Old media deleted`)
+    }
+
+    console.log(`🎨 Mockup replacement complete at position ${targetImagePosition + 1}`)
+    return { reordered }
   }
 }
