@@ -1490,6 +1490,20 @@ async function handleStartAutomation() {
     if (response.ok) {
       const data = await response.json()
 
+      // Validate response success field
+      if (!data.success) {
+        addLog('error', `Failed to start automation: ${data.message || 'Unknown error'}`)
+        enableStartButton()
+        return
+      }
+
+      // Validate required fields
+      if (!data.batchId || data.totalJobs === undefined) {
+        addLog('error', 'Invalid response from server: missing required fields')
+        enableStartButton()
+        return
+      }
+
       // Store batch ID for cleanup
       currentBatchId = data.batchId
       console.log('📦 Batch ID received:', currentBatchId)
@@ -1562,8 +1576,13 @@ async function cleanupCurrentJobFiles() {
 
       if (response.ok) {
         const data = await response.json()
-        console.log('   ✅ Cleaned up server files:', data)
-        addLog('success', `Cleaned up ${data.deletedCount} server file(s)`)
+        if (data.success && data.deletedCount !== undefined) {
+          console.log('   ✅ Cleaned up server files:', data)
+          addLog('success', `Cleaned up ${data.deletedCount} server file(s)`)
+        } else {
+          console.error('   ❌ Server cleanup returned error:', data)
+          addLog('warning', data.message || 'Failed to cleanup server files')
+        }
       } else {
         console.error('   ❌ Server cleanup failed:', response.status)
         addLog('warning', 'Failed to cleanup some server files')
@@ -1623,13 +1642,18 @@ async function cleanupBatchFiles() {
 
     if (response.ok) {
       const data = await response.json()
-      const totalDeleted = tempFilesDeleted + data.deletedCount
-      addLog(
-        'success',
-        `Cleaned up ${totalDeleted} file(s) (${tempFilesDeleted} local, ${data.deletedCount} server)`
-      )
-      console.log('✅ Cleanup complete:', data)
-      currentBatchId = null
+      if (data.success && data.deletedCount !== undefined) {
+        const totalDeleted = tempFilesDeleted + data.deletedCount
+        addLog(
+          'success',
+          `Cleaned up ${totalDeleted} file(s) (${tempFilesDeleted} local, ${data.deletedCount} server)`
+        )
+        console.log('✅ Cleanup complete:', data)
+        currentBatchId = null
+      } else {
+        console.error('❌ Cleanup returned error:', data)
+        addLog('warning', data.message || 'Failed to cleanup some files')
+      }
     } else {
       console.error('❌ Cleanup failed:', response.status)
       addLog('warning', 'Failed to cleanup some files')
@@ -1860,13 +1884,24 @@ async function processNextJob() {
             throw error
           }
 
-          // Step 6 complete, Step 7: Waiting for Shopify processing
+          // Step 6 complete: Upload to Shopify done
           updateStep(6, 'completed')
-          updateStep(7, 'active')
-          addLog('info', 'Waiting for Shopify to process file...')
 
-          // Step 7 complete (backend already waited for processing)
-          updateStep(7, 'completed')
+          // Step 7: Reorder media (if needed)
+          if (response && response.reordered) {
+            updateStep(7, 'active')
+            addLog('info', 'Reordering images on Shopify...')
+            updateStep(7, 'completed')
+            addLog('success', 'Images reordered successfully')
+          } else {
+            updateStep(7, 'completed')
+            addLog('info', 'No reordering needed')
+          }
+
+          // Step 8: Final - Saved on Shopify
+          updateStep(8, 'active')
+          addLog('info', 'Finalizing on Shopify...')
+          updateStep(8, 'completed')
           addLog('success', 'File processed and saved on Shopify')
 
           // Clean up temp mockup file after successful Shopify upload
@@ -2065,7 +2100,7 @@ function resetSteps() {
     icon.innerHTML = '○'
   })
   progressBar.style.width = '0%'
-  progressText.textContent = 'Étape 0 sur 7'
+  progressText.textContent = 'Étape 0 sur 8'
 }
 
 /**
@@ -2166,9 +2201,9 @@ function updateStep(stepNumber, status = 'active') {
   }
 
   // Update progress bar
-  const progress = (stepNumber / 7) * 100
+  const progress = (stepNumber / 8) * 100
   progressBar.style.width = `${progress}%`
-  progressText.textContent = `Étape ${stepNumber} sur 7`
+  progressText.textContent = `Étape ${stepNumber} sur 8`
 
   // Mark previous steps as completed
   for (let i = 0; i < stepNumber - 1; i++) {
