@@ -18,6 +18,7 @@
       "domains": [
         "http://localhost:3333",
         "http://127.0.0.1:3333",
+        "https://YOUR_BACKEND_DOMAIN",
         "https://*.shopify.com"
       ]
     },
