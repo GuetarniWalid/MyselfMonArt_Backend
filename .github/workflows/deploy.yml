@@ -1,10 +1,13 @@
 name: Deploy to DigitalOcean with Docker
 
+# Deploys to production server on push to specified branches
+# WARNING: All branches deploy to the SAME production environment
 on:
   push:
     branches:
       - main
       - test
+      - feature/automated-mockup-generation  # Testing automated mockup feature in production
 
 jobs:
   build-and-push:
