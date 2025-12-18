@@ -705,12 +705,8 @@ export default class MockupController {
 
     console.log(`🌐 Public URL: ${publicUrl}`)
 
-    // 3. Upload file to Shopify
-    const shopifyFileId = await shopify.file.create(publicUrl, 'Product mockup')
-    console.log(`✅ File uploaded to Shopify with ID: ${shopifyFileId}`)
-
-    // 4. Add new media to product (it will append to the end)
-    const allMedia = await shopify.product.createMedia(productId, shopifyFileId)
+    // 3. Add new media to product using public URL (productUpdate handles upload internally)
+    const allMedia = await shopify.product.createMedia(productId, publicUrl)
 
     // Validate that we got media back
     if (!allMedia || allMedia.length === 0) {

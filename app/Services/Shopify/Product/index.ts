@@ -713,10 +713,12 @@ export default class Product extends Authentication {
    * Uses productUpdate mutation (replaces deprecated productCreateMedia)
    * Requires: write_products access scope
    * Note: Media is asynchronously uploaded and associated with the product
+   * @param productId - The product ID
+   * @param mediaUrl - The public URL of the image to add (not a file ID)
    * @returns All media nodes for the product (newly added media is at the end)
    */
-  public async createMedia(productId: string, mediaId: string) {
-    const { query, variables } = this.getCreateMediaQuery(productId, mediaId)
+  public async createMedia(productId: string, mediaUrl: string) {
+    const { query, variables } = this.getCreateMediaQuery(productId, mediaUrl)
     const response = await this.fetchGraphQL(query, variables)
 
     if (response.productUpdate.userErrors?.length) {
@@ -727,7 +729,7 @@ export default class Product extends Authentication {
     return response.productUpdate.product.media.nodes
   }
 
-  private getCreateMediaQuery(productId: string, mediaId: string) {
+  private getCreateMediaQuery(productId: string, mediaUrl: string) {
     return {
       query: `mutation productUpdate($product: ProductUpdateInput!, $media: [CreateMediaInput!]) {
         productUpdate(product: $product, media: $media) {
@@ -754,7 +756,7 @@ export default class Product extends Authentication {
         media: [
           {
             mediaContentType: 'IMAGE',
-            originalSource: mediaId,
+            originalSource: mediaUrl,
           },
         ],
       },
