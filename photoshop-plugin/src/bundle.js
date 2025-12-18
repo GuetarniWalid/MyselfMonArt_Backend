@@ -10,9 +10,9 @@ const clipboard = require('uxp').clipboard
 // ============================================
 // Plugin Configuration
 // ============================================
-// Change BACKEND_URL based on your environment:
+// IMPORTANT: Set your backend URL here before building
 // Development: 'http://localhost:3333'
-// Production: 'https://backend.myselfmonart.com'
+// Production: 'https://YOUR_BACKEND_DOMAIN'
 const config = {
   BACKEND_URL: 'http://localhost:3333',
   ENV: 'development',

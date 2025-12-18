@@ -18,14 +18,38 @@ Photoshop plugin for automated mockup generation. This plugin connects to the ba
 
 ## Setup
 
-### 1. Install Dependencies
+### 1. Configure Backend URL
+
+Before building the plugin, you need to configure your backend URL:
+
+**Option A: For Development (Local Testing)**
+- The default configuration in `src/bundle.js` uses `http://localhost:3333`
+- No changes needed for local development
+
+**Option B: For Production Deployment**
+1. Open `src/bundle.js`
+2. Find the config section (around line 16)
+3. Change:
+   ```javascript
+   const config = {
+     BACKEND_URL: 'https://YOUR_BACKEND_DOMAIN',
+     ENV: 'production',
+   }
+   ```
+4. Open `manifest.json`
+5. Find the network domains section (around line 21)
+6. Replace `https://YOUR_BACKEND_DOMAIN` with your actual backend URL
+
+**IMPORTANT**: Never commit your actual backend URL to git. Keep it in your local environment only.
+
+### 2. Install Dependencies
 
 ```bash
 cd photoshop-plugin
 npm install
 ```
 
-### 2. Build the Plugin
+### 3. Build the Plugin
 
 Compile TypeScript to JavaScript:
 
