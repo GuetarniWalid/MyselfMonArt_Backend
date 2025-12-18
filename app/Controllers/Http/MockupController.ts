@@ -469,10 +469,10 @@ export default class MockupController {
     }
 
     // Validate image position
-    if (targetImagePosition === undefined || targetImagePosition < 0 || targetImagePosition > 4) {
+    if (targetImagePosition === undefined || targetImagePosition < 0 || targetImagePosition > 5) {
       return response.badRequest({
         success: false,
-        message: 'Target image position must be between 0 and 4',
+        message: 'Target image position must be between 0 and 5',
       })
     }
 
