@@ -54,9 +54,18 @@ export default class File extends Authentication {
    */
   public async waitForProcessing(
     fileId: string,
-    maxRetries: number = 30,
+    maxRetries: number = 15,
     delayMs: number = 2000
   ): Promise<void> {
+    // Skip file processing in dev mode (Shopify can't access localhost URLs)
+    const Env = (await import('@ioc:Adonis/Core/Env')).default
+    if (Env.get('NODE_ENV') === 'development') {
+      console.log('⚠️  Skipping file processing check (development mode)')
+      throw new Error(
+        'File processing skipped: Development mode (Shopify cannot access localhost URLs)'
+      )
+    }
+
     console.log(
       `⏳ Polling file processing status (max ${maxRetries} attempts, ${delayMs}ms interval)`
     )

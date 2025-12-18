@@ -73,6 +73,68 @@ export default class MockupController {
     }
   }
 
+  // Cleanup files for a specific product in a batch
+  public async cleanupProductFiles({ request, response }: HttpContextContract) {
+    try {
+      const { batchId, productId } = request.only(['batchId', 'productId'])
+
+      if (!batchId || !productId) {
+        return response.badRequest({ error: 'Both batchId and productId are required' })
+      }
+
+      console.log(`🗑️  Cleaning up files for product ${productId} in batch ${batchId}`)
+
+      const batchFiles = MockupController.batchFiles.get(batchId) || []
+      let deletedCount = 0
+      let failedCount = 0
+
+      // Find and delete files that match this product ID
+      // Files are named like: mockup-1234567890-timestamp.jpg
+      const productIdNumeric = productId.replace('gid://shopify/Product/', '')
+      const filesToDelete = batchFiles.filter((filePath) => {
+        const fileName = path.basename(filePath)
+        return fileName.includes(productIdNumeric)
+      })
+
+      console.log(`   Found ${filesToDelete.length} file(s) to delete`)
+
+      for (const filePath of filesToDelete) {
+        try {
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath)
+            deletedCount++
+            console.log(`   ✅ Deleted: ${path.basename(filePath)}`)
+          }
+        } catch (error) {
+          failedCount++
+          console.error(`   ❌ Failed to delete ${path.basename(filePath)}: ${error.message}`)
+        }
+      }
+
+      // Remove deleted files from batch tracking
+      const remainingFiles = batchFiles.filter((f) => !filesToDelete.includes(f))
+      MockupController.batchFiles.set(batchId, remainingFiles)
+
+      console.log(
+        `✅ Product cleanup complete: ${deletedCount} deleted, ${failedCount} failed, ${remainingFiles.length} remaining in batch`
+      )
+
+      return response.ok({
+        success: true,
+        deletedCount,
+        failedCount,
+        remainingFiles: remainingFiles.length,
+        message: `Cleaned up ${deletedCount} file(s) for product`,
+      })
+    } catch (error) {
+      console.error('❌ Product cleanup error:', error)
+      return response.internalServerError({
+        success: false,
+        message: error.message || 'Failed to cleanup product files',
+      })
+    }
+  }
+
   // Get pending jobs
   public async getPendingJobs({ response }: HttpContextContract) {
     const jobs = this.queue.getPendingJobs()
@@ -142,13 +204,18 @@ export default class MockupController {
             resultPath: data.resultPath,
           })
 
+          // Generate public URL for the mockup file (so user can view it in browser)
+          const fileName = path.basename(data.resultPath)
+          const baseUrl = Env.get('BACKEND_URL')
+          const publicUrl = `${baseUrl}/assets/${fileName}`
+
           // Return error to frontend (don't throw, return controlled error)
           const errorResult = {
             success: false,
             error: true,
             errorMessage: error.message,
             productId: data.productId,
-            resultPath: data.resultPath,
+            resultPath: publicUrl, // Use public URL instead of local file path
           }
 
           console.log('🔍 DEBUG: Returning error result:', errorResult)
@@ -261,23 +328,43 @@ export default class MockupController {
     }
   }
 
-  // Download image file
+  // Download image file (supports both local paths and Shopify URLs for on-demand download)
   public async downloadImage({ request, response }: HttpContextContract) {
     const filePath = request.input('path')
+    const batchId = request.input('batchId')
+    const productId = request.input('productId')
 
     if (!filePath) {
       return response.badRequest({ error: 'No file path provided' })
     }
 
     try {
+      let actualFilePath = filePath
+
+      // Check if it's a Shopify URL - download on-demand
+      if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+        console.log('📥 Downloading image on-demand from Shopify...')
+        console.log(`   URL: ${filePath}`)
+
+        // Download the image from Shopify
+        actualFilePath = await this.downloadProductImage(filePath, productId)
+        console.log(`   ✅ Downloaded to: ${actualFilePath}`)
+
+        // Track file to batch for cleanup
+        if (batchId && MockupController.batchFiles.has(batchId)) {
+          MockupController.batchFiles.get(batchId)?.push(actualFilePath)
+          console.log(`   📝 Tracked on-demand download to batch ${batchId}`)
+        }
+      }
+
       // Check if file exists
-      if (!fs.existsSync(filePath)) {
+      if (!fs.existsSync(actualFilePath)) {
         return response.notFound({ error: 'File not found' })
       }
 
       // Read file
-      const fileBuffer = fs.readFileSync(filePath)
-      const fileName = path.basename(filePath)
+      const fileBuffer = fs.readFileSync(actualFilePath)
+      const fileName = path.basename(actualFilePath)
 
       // Send file
       response.header('Content-Type', 'image/jpeg')
@@ -481,12 +568,8 @@ export default class MockupController {
           `   📐 Orientation: ${orientation} (${secondImage.width}x${secondImage.height})`
         )
 
-        // Download image
-        const filePath = await this.downloadProductImage(secondImage.url, product.id)
-        console.log(`   ✅ Downloaded to: ${filePath}`)
-
-        // Track file for cleanup
-        MockupController.batchFiles.get(batchId)?.push(filePath)
+        // Store Shopify URL directly - image will be downloaded on-demand when plugin requests it
+        console.log(`   📋 Image URL: ${secondImage.url}`)
 
         // Create and send mockup job
         const jobId = `job-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
@@ -494,7 +577,7 @@ export default class MockupController {
           id: jobId,
           productId: product.id,
           productTitle: product.title,
-          imageUrl: filePath,
+          imageUrl: secondImage.url, // Shopify URL (will be downloaded on-demand)
           mockupTemplatePath: mockupTemplatePath,
           orientation: orientation,
           targetImagePosition: targetImagePosition,
@@ -609,7 +692,7 @@ export default class MockupController {
       throw new Error(`Mockup file not found at: ${mockupFilePath}`)
     }
 
-    const baseUrl = Env.get('BACKEND_URL') || Env.get('APP_URL')
+    const baseUrl = Env.get('BACKEND_URL')
     const publicUrl = `${baseUrl}/assets/${fileName}`
 
     console.log(`🌐 Public URL: ${publicUrl}`)

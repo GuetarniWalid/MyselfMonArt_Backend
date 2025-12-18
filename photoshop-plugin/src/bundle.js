@@ -7,6 +7,17 @@ const { app } = require('photoshop')
 const { shell } = require('uxp')
 const clipboard = require('uxp').clipboard
 
+// ============================================
+// Plugin Configuration
+// ============================================
+// Change BACKEND_URL based on your environment:
+// Development: 'http://localhost:3333'
+// Production: 'https://backend.myselfmonart.com'
+const config = {
+  BACKEND_URL: 'http://localhost:3333',
+  ENV: 'development',
+}
+
 class MockupProcessor {
   constructor(onLog, onStep) {
     this.onLog = onLog
@@ -57,14 +68,17 @@ class MockupProcessor {
   /**
    * Download image from URL
    */
-  async downloadImage(imageUrl) {
+  async downloadImage(imageUrl, batchId, productId) {
     this.log('info', `Downloading image from: ${imageUrl}`)
 
     try {
-      // Download from backend endpoint
-      const response = await fetch(
-        `http://localhost:3333/api/mockup/download?path=${encodeURIComponent(imageUrl)}`
-      )
+      // Download from backend endpoint (supports both local paths and Shopify URLs)
+      const url = new URL(`${config.BACKEND_URL}/api/mockup/download`)
+      url.searchParams.append('path', imageUrl)
+      if (batchId) url.searchParams.append('batchId', batchId)
+      if (productId) url.searchParams.append('productId', productId)
+
+      const response = await fetch(url.toString())
 
       if (!response.ok) {
         throw new Error(`Download failed: ${response.status}`)
@@ -453,10 +467,10 @@ class MockupProcessor {
     let outputFile = null
 
     try {
-      // Step 1: Download product image
+      // Step 1: Download product image (on-demand from Shopify)
       this.step(1, 'active')
       this.log('info', 'Step 1/5: Downloading product image...')
-      productImage = await this.downloadImage(job.imageUrl)
+      productImage = await this.downloadImage(job.imageUrl, job.batchId, job.productId)
       this.step(1, 'completed')
 
       // Step 2: Get mockup template based on orientation
@@ -492,13 +506,30 @@ class MockupProcessor {
           outputFile = await this.saveAsJPEG(doc, outputName)
           this.step(5, 'completed')
 
+          // Read file data INSIDE modal scope to ensure it's accessible
+          let fileData = null
+          try {
+            this.log('info', 'Reading file data inside modal scope...')
+            const fs = require('uxp').storage
+            fileData = await outputFile.read({ format: fs.formats.binary })
+            this.log('info', `File data read, size: ${fileData.byteLength}`)
+          } catch (readError) {
+            this.log(
+              'error',
+              `Failed to read file in modal scope: ${readError?.message || 'Unknown error'}`
+            )
+            // We'll try to read it outside the modal scope later
+          }
+
           // Close document
           await this.closeDocument(doc, false)
 
           return {
             success: true,
             resultPath: outputFile.nativePath,
-            outputFile: outputFile,
+            fileName: outputFile.name,
+            fileData: fileData, // Return binary data (might be null if read failed)
+            outputFile: fileData ? null : outputFile, // Keep file reference if read failed
           }
         },
         {
@@ -553,7 +584,7 @@ class HTTPPollingClient {
     this.polling = false
     this.pollInterval = null
     this.pollDelay = 2000 // Poll every 2 seconds
-    this.serverUrl = 'http://localhost:3333'
+    this.serverUrl = config.BACKEND_URL
   }
 
   async connect() {
@@ -719,6 +750,7 @@ let jobQueue = []
 let isProcessingJob = false
 let currentBatchId = null // Track current batch for cleanup
 let tempMockupFiles = [] // Track temp mockup files for cleanup
+let currentJobFileInfo = null // Track current job's file info for cleanup on error
 
 // Image position and error handling
 let targetImagePosition = 0 // Default to first image (0-indexed)
@@ -785,7 +817,9 @@ function showErrorModal(job, error) {
     },
   })
 
+  console.log('🔍 DEBUG: showErrorModal SETTING isPaused = true')
   isPaused = true
+  console.log('🔍 DEBUG: showErrorModal isPaused is now:', isPaused)
   failedJob = job
 
   const productName = job.productTitle || 'Unknown'
@@ -810,8 +844,10 @@ function showErrorModal(job, error) {
  * Hide error modal and resume processing
  */
 function hideErrorModal() {
+  console.log('🔍 DEBUG: hideErrorModal called - SETTING isPaused = false')
   document.getElementById('errorModal').style.display = 'none'
   isPaused = false
+  console.log('🔍 DEBUG: hideErrorModal isPaused is now:', isPaused)
   failedJob = null
 }
 
@@ -869,8 +905,10 @@ function init() {
   const errorCancelBtn = document.getElementById('errorCancelBtn')
 
   if (errorContinueBtn) {
-    errorContinueBtn.addEventListener('click', () => {
+    errorContinueBtn.addEventListener('click', async () => {
       addLog('info', 'User chose to continue processing')
+      // Cleanup current job's files before continuing
+      await cleanupCurrentJobFiles()
       hideErrorModal()
       // Resume processing next job
       processNextJob()
@@ -880,6 +918,8 @@ function init() {
   if (errorCancelBtn) {
     errorCancelBtn.addEventListener('click', async () => {
       addLog('warning', 'User cancelled batch processing')
+      // Cleanup current job's files before cancelling
+      await cleanupCurrentJobFiles()
       hideErrorModal()
       // Clear remaining jobs
       jobQueue = []
@@ -902,13 +942,21 @@ function init() {
 
       if (filePath && filePath !== 'N/A' && filePath !== '-') {
         try {
-          // Open the file directly (not the directory)
-          console.log('🔍 DEBUG: Opening file:', filePath)
-          await shell.openPath(filePath)
-          addLog('success', 'Opened mockup file')
+          // UXP shell.openPath works for both URLs and file paths
+          console.log('🔍 DEBUG: Opening:', filePath)
+
+          // shell.openPath returns a result object, not a promise
+          const result = shell.openPath(filePath)
+          console.log('🔍 DEBUG: Open result:', result)
+
+          if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+            addLog('success', 'Opened mockup in browser')
+          } else {
+            addLog('success', 'Opened mockup file')
+          }
         } catch (err) {
-          console.error('❌ DEBUG: Failed to open file:', err)
-          addLog('error', `Failed to open file: ${err.message}`)
+          console.error('❌ DEBUG: Failed to open:', err)
+          addLog('error', `Failed to open: ${err.message}`)
         }
       } else {
         console.log('⚠️ DEBUG: No valid path to open')
@@ -1029,7 +1077,7 @@ async function handleConnect() {
   // Fetch painting collections
   try {
     addLog('info', 'Fetching painting collections...')
-    const response = await fetch('http://localhost:3333/api/mockup/painting-collections')
+    const response = await fetch(`${config.BACKEND_URL}/api/mockup/painting-collections`)
 
     if (response.ok) {
       paintingCollections = await response.json()
@@ -1407,7 +1455,10 @@ async function handleStartAutomation() {
   try {
     addLog('info', `Starting automation for: ${collectionNames}`)
 
-    const response = await fetch('http://localhost:3333/api/mockup/start-automation', {
+    // Give immediate visual feedback - activate step 1 right away
+    updateStep(1, 'active')
+
+    const response = await fetch(`${config.BACKEND_URL}/api/mockup/start-automation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1452,6 +1503,67 @@ function enableStartButton() {
 }
 
 /**
+ * Cleanup files for the current failed job
+ */
+async function cleanupCurrentJobFiles() {
+  if (!currentJobFileInfo) {
+    console.log('🗑️  No current job files to cleanup')
+    return
+  }
+
+  console.log('🗑️  Cleaning up current job files:', currentJobFileInfo)
+
+  // Cleanup temp mockup file in plugin
+  try {
+    const fs = require('uxp').storage.localFileSystem
+    const tempFolder = await fs.getTemporaryFolder()
+    const tempFile = await tempFolder.getEntry(currentJobFileInfo.fileName)
+    await tempFile.delete()
+    console.log('   ✅ Deleted temp mockup file:', currentJobFileInfo.fileName)
+    addLog('success', `Cleaned up temp mockup file`)
+  } catch (err) {
+    console.error('   ❌ Failed to delete temp mockup:', err.message || err)
+    // File might not exist if it was already cleaned up, that's okay
+  }
+
+  // Cleanup downloaded product image on server
+  if (currentBatchId && currentJobFileInfo.productId) {
+    console.log(
+      `🔍 Calling backend cleanup for batch ${currentBatchId}, product ${currentJobFileInfo.productId}`
+    )
+    try {
+      const response = await fetch(`${config.BACKEND_URL}/api/mockup/cleanup-product`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          batchId: currentBatchId,
+          productId: currentJobFileInfo.productId,
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log('   ✅ Cleaned up server files:', data)
+        addLog('success', `Cleaned up ${data.deletedCount} server file(s)`)
+      } else {
+        console.error('   ❌ Server cleanup failed:', response.status)
+        addLog('warning', 'Failed to cleanup some server files')
+      }
+    } catch (error) {
+      console.error('   ❌ Server cleanup error:', error.message || error)
+      addLog('warning', `Server cleanup error: ${error.message}`)
+    }
+  } else {
+    console.log('   ⚠️  No batch ID or product ID for server cleanup')
+  }
+
+  // Clear current job file info
+  currentJobFileInfo = null
+}
+
+/**
  * Cleanup all files for the current batch
  */
 async function cleanupBatchFiles() {
@@ -1482,7 +1594,7 @@ async function cleanupBatchFiles() {
   }
 
   try {
-    const response = await fetch('http://localhost:3333/api/mockup/cleanup', {
+    const response = await fetch(`${config.BACKEND_URL}/api/mockup/cleanup`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1541,9 +1653,19 @@ function handleNewJob(message) {
   jobQueue.push(job)
   addLog('info', `Job added to queue (${jobQueue.length} job(s) in queue)`)
 
+  console.log('🔍 DEBUG addJobToQueue:', {
+    jobId: job.id,
+    isProcessingJob,
+    isPaused,
+    queueLength: jobQueue.length,
+  })
+
   // Start processing if not already processing
   if (!isProcessingJob) {
+    console.log('🔍 DEBUG addJobToQueue: calling processNextJob()')
     processNextJob()
+  } else {
+    console.log('🔍 DEBUG addJobToQueue: NOT calling processNextJob (already processing)')
   }
 }
 
@@ -1551,16 +1673,30 @@ function handleNewJob(message) {
  * Process jobs sequentially from the queue
  */
 async function processNextJob() {
+  console.log('🔍 DEBUG processNextJob called:', {
+    isPaused,
+    isProcessingJob,
+    queueLength: jobQueue.length,
+    timestamp: Date.now(),
+  })
+
   // Check if paused
   if (isPaused) {
+    console.log('🔍 DEBUG processNextJob: PAUSED - returning')
     addLog('info', 'Processing paused, waiting for user action')
     return
   }
 
   // If already processing or queue is empty, return
   if (isProcessingJob || jobQueue.length === 0) {
+    console.log('🔍 DEBUG processNextJob: already processing or queue empty - returning', {
+      isProcessingJob,
+      queueLength: jobQueue.length,
+    })
     return
   }
+
+  console.log('🔍 DEBUG processNextJob: starting to process job')
 
   // Mark as processing
   isProcessingJob = true
@@ -1583,17 +1719,22 @@ async function processNextJob() {
       updateStep(5, 'completed')
       addLog('success', 'Mockup generated successfully')
 
-      // Track temp file for cleanup
-      if (result.outputFile) {
-        tempMockupFiles.push(result.outputFile)
-        console.log('📝 Tracked temp mockup file for cleanup')
-      }
-
       console.log('🔍 DEBUG: result object:', {
         success: result.success,
         resultPath: result.resultPath,
-        hasOutputFile: !!result.outputFile,
+        fileName: result.fileName,
+        hasFileData: !!result.fileData,
+        fileDataSize: result.fileData ? result.fileData.byteLength : 0,
       })
+
+      // Track current job's file info for cleanup on error
+      currentJobFileInfo = {
+        fileName: result.fileName,
+        resultPath: result.resultPath,
+        jobId: job.id,
+        productId: job.productId,
+      }
+      console.log('🗂️  Tracking file for cleanup:', currentJobFileInfo)
 
       // Send completion message to backend (includes Shopify upload trigger)
       if (client && client.isConnected()) {
@@ -1602,38 +1743,52 @@ async function processNextJob() {
           updateStep(6, 'active')
           addLog('info', 'Uploading mockup file to server...')
 
-          // Read file AFTER modal scope using returned file object
-          console.log('🔍 DEBUG: result.outputFile:', result.outputFile)
           console.log('🔍 DEBUG: result.resultPath:', result.resultPath)
+          console.log('🔍 DEBUG: result.fileName:', result.fileName)
+          console.log(
+            '🔍 DEBUG: Has fileData:',
+            !!result.fileData,
+            'Has outputFile:',
+            !!result.outputFile
+          )
 
-          if (!result.outputFile) {
-            console.error('❌ DEBUG: No outputFile in result')
-            throw new Error('No mockup file available for upload')
+          let fileData = result.fileData
+
+          // Fallback: If file wasn't read in modal scope, try reading it now
+          if (!fileData && result.outputFile) {
+            console.log('🔍 DEBUG: Attempting fallback file read from outputFile')
+            try {
+              const fs = require('uxp').storage
+              fileData = await result.outputFile.read({ format: fs.formats.binary })
+              console.log('🔍 DEBUG: Fallback read successful, size:', fileData.byteLength)
+            } catch (fallbackError) {
+              console.error('❌ DEBUG: Fallback read failed:', fallbackError)
+              throw new Error(
+                `Failed to read mockup file: ${fallbackError?.message || 'Unknown error'}`
+              )
+            }
           }
 
-          // Try to read the file
-          console.log('🔍 DEBUG: Reading file after modal scope...')
-          const fileData = await result.outputFile.read({
-            format: require('uxp').storage.formats.binary,
-          })
-          console.log('🔍 DEBUG: File data read, size:', fileData.byteLength)
+          if (!fileData) {
+            console.error('❌ DEBUG: No fileData available')
+            throw new Error('No mockup file data available for upload')
+          }
+
+          console.log('🔍 DEBUG: Using fileData, size:', fileData.byteLength)
 
           // Create FormData for file upload
           const formData = new FormData()
-          const fileName = result.fileName || result.resultPath.split(/[/\\]/).pop()
-          console.log('🔍 DEBUG: fileName:', fileName)
 
           const blob = new Blob([fileData], { type: 'image/jpeg' })
           console.log('🔍 DEBUG: Blob created, size:', blob.size)
 
-          formData.append('mockup', blob, fileName)
-          formData.append('fileName', fileName)
+          formData.append('mockup', blob, result.fileName)
+          formData.append('fileName', result.fileName)
           formData.append('batchId', currentBatchId) // Track file to batch for cleanup
 
           // Upload file to backend
-          const serverUrl = 'http://localhost:3333'
-          console.log('🔍 DEBUG: Uploading to:', `${serverUrl}/api/mockup/upload`)
-          const uploadResponse = await fetch(`${serverUrl}/api/mockup/upload`, {
+          console.log('🔍 DEBUG: Uploading to:', `${config.BACKEND_URL}/api/mockup/upload`)
+          const uploadResponse = await fetch(`${config.BACKEND_URL}/api/mockup/upload`, {
             method: 'POST',
             body: formData,
           })
@@ -1697,16 +1852,17 @@ async function processNextJob() {
           updateStep(7, 'completed')
           addLog('success', 'File processed and saved on Shopify')
 
-          // Clean up temp mockup file after successful upload
-          if (result.outputFile) {
-            try {
-              await result.outputFile.delete()
-              addLog('info', 'Cleaned up temp mockup file')
-              // Remove from tracking array
-              tempMockupFiles = tempMockupFiles.filter((f) => f !== result.outputFile)
-            } catch (deleteErr) {
-              console.error('⚠️  Failed to delete temp mockup:', deleteErr)
-            }
+          // Clean up temp mockup file after successful Shopify upload
+          try {
+            const fs = require('uxp').storage.localFileSystem
+            const tempFolder = await fs.getTemporaryFolder()
+            const tempFile = await tempFolder.getEntry(result.fileName)
+            await tempFile.delete()
+            console.log('🗑️  Cleaned up temp mockup file after success:', result.fileName)
+            // Clear file info since we successfully cleaned it up
+            currentJobFileInfo = null
+          } catch (cleanupErr) {
+            console.error('⚠️  Failed to delete temp mockup:', cleanupErr.message)
           }
 
           // Mark job as fully completed
@@ -1776,12 +1932,28 @@ async function processNextJob() {
       })
     }
   } finally {
+    console.log('🔍 DEBUG finally block:', {
+      isPaused,
+      isProcessingJob,
+      queueLength: jobQueue.length,
+    })
+
     // Mark as not processing
     isProcessingJob = false
+
+    // Only process next job if not paused (waiting for user input from error modal)
+    if (isPaused) {
+      console.log('⏸️  Processing paused - waiting for user input')
+      console.log('🔍 DEBUG finally: returning because isPaused is true')
+      return
+    }
+
+    console.log('🔍 DEBUG finally: NOT paused, checking queue')
 
     // Process next job if any
     if (jobQueue.length > 0) {
       addLog('info', `Processing next job (${jobQueue.length} remaining)`)
+      console.log('🔍 DEBUG finally: scheduling processNextJob() with 500ms delay')
       // Small delay before next job to ensure UI updates
       setTimeout(() => processNextJob(), 500)
     } else {
