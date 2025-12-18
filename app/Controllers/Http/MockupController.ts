@@ -10,10 +10,67 @@ import MockupQueue from 'App/Services/MockupQueue'
 
 export default class MockupController {
   private queue = MockupQueue.getInstance()
+  // Track files created for each automation batch for cleanup (static to persist across requests)
+  private static batchFiles: Map<string, string[]> = new Map()
 
   // Simple status endpoint
   public async status({ response }: HttpContextContract) {
     return response.ok({ status: 'ok', message: 'Mockup service is running' })
+  }
+
+  // Cleanup files for a batch or specific file paths
+  public async cleanupFiles({ request, response }: HttpContextContract) {
+    try {
+      const { batchId, filePaths } = request.only(['batchId', 'filePaths'])
+      let pathsToDelete: string[] = []
+
+      if (batchId) {
+        // Get all files for this batch
+        pathsToDelete = MockupController.batchFiles.get(batchId) || []
+        console.log(`🗑️  Cleaning up batch ${batchId}: ${pathsToDelete.length} files`)
+      } else if (filePaths && Array.isArray(filePaths)) {
+        pathsToDelete = filePaths
+        console.log(`🗑️  Cleaning up ${pathsToDelete.length} specific files`)
+      } else {
+        return response.badRequest({ error: 'Either batchId or filePaths is required' })
+      }
+
+      let deletedCount = 0
+      let failedCount = 0
+
+      for (const filePath of pathsToDelete) {
+        try {
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath)
+            deletedCount++
+            console.log(`   ✅ Deleted: ${path.basename(filePath)}`)
+          }
+        } catch (error) {
+          failedCount++
+          console.error(`   ❌ Failed to delete ${path.basename(filePath)}: ${error.message}`)
+        }
+      }
+
+      // Remove batch tracking if it was a batch cleanup
+      if (batchId) {
+        MockupController.batchFiles.delete(batchId)
+      }
+
+      console.log(`✅ Cleanup complete: ${deletedCount} deleted, ${failedCount} failed`)
+
+      return response.ok({
+        success: true,
+        deletedCount,
+        failedCount,
+        message: `Cleaned up ${deletedCount} file(s)`,
+      })
+    } catch (error) {
+      console.error('❌ Cleanup error:', error)
+      return response.internalServerError({
+        success: false,
+        message: error.message || 'Failed to cleanup files',
+      })
+    }
   }
 
   // Get pending jobs
@@ -150,7 +207,9 @@ export default class MockupController {
       }
 
       const fileName = request.input('fileName')
+      const batchId = request.input('batchId')
       console.log('🔍 DEBUG: fileName from request:', fileName)
+      console.log('🔍 DEBUG: batchId from request:', batchId)
 
       if (!fileName) {
         console.error('❌ DEBUG: No fileName in request')
@@ -177,6 +236,12 @@ export default class MockupController {
 
       console.log('✅ DEBUG: File saved successfully')
       console.log(`📤 Mockup file uploaded: ${fileName}`)
+
+      // Track file to batch for cleanup
+      if (batchId && MockupController.batchFiles.has(batchId)) {
+        MockupController.batchFiles.get(batchId)?.push(filePath)
+        console.log(`📝 Tracked file to batch ${batchId} for cleanup`)
+      }
 
       const result = {
         success: true,
@@ -287,7 +352,7 @@ export default class MockupController {
 
   /**
    * Determine image orientation from dimensions
-   * Reuses same logic as Midjourney service (app/Services/Midjourney/index.ts:19-30)
+   * Reuses same logic as Midjourney service (app/Services/Midjourney/index.ts)
    */
   private getImageOrientation(width: number, height: number): 'square' | 'portrait' | 'landscape' {
     if (width === height) {
@@ -326,6 +391,11 @@ export default class MockupController {
     console.log('🎨 Starting Mockup Automation via API')
     console.log(`   Collection IDs: ${JSON.stringify(collectionIds)}`)
     console.log(`   Mockup Template: ${mockupTemplatePath}`)
+
+    // Generate unique batch ID for file tracking and cleanup
+    const batchId = `batch-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+    MockupController.batchFiles.set(batchId, [])
+    console.log(`📦 Batch ID: ${batchId}`)
 
     try {
       const shopify = new Shopify()
@@ -415,6 +485,9 @@ export default class MockupController {
         const filePath = await this.downloadProductImage(secondImage.url, product.id)
         console.log(`   ✅ Downloaded to: ${filePath}`)
 
+        // Track file for cleanup
+        MockupController.batchFiles.get(batchId)?.push(filePath)
+
         // Create and send mockup job
         const jobId = `job-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
         const job = {
@@ -425,6 +498,7 @@ export default class MockupController {
           mockupTemplatePath: mockupTemplatePath,
           orientation: orientation,
           targetImagePosition: targetImagePosition,
+          batchId: batchId, // Track batch for cleanup
         }
 
         this.queue.addJob(job)
@@ -436,6 +510,7 @@ export default class MockupController {
         success: true,
         totalJobs: jobs.length,
         jobIds: jobs,
+        batchId: batchId, // Return batch ID for cleanup
         message: `Started processing ${jobs.length} product(s)`,
       })
     } catch (error) {

@@ -42,6 +42,7 @@ Route.group(() => {
   Route.post('/upload', 'MockupController.uploadMockup')
   Route.get('/download', 'MockupController.downloadImage')
   Route.post('/start-automation', 'MockupController.startAutomation')
+  Route.post('/cleanup', 'MockupController.cleanupFiles')
 }).prefix('/api/mockup')
 
 Route.group(() => {

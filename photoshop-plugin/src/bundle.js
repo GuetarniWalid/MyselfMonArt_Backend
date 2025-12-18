@@ -717,6 +717,8 @@ let selectedMockupImages = []
 // Job queue for sequential processing
 let jobQueue = []
 let isProcessingJob = false
+let currentBatchId = null // Track current batch for cleanup
+let tempMockupFiles = [] // Track temp mockup files for cleanup
 
 // Image position and error handling
 let targetImagePosition = 0 // Default to first image (0-indexed)
@@ -876,13 +878,15 @@ function init() {
   }
 
   if (errorCancelBtn) {
-    errorCancelBtn.addEventListener('click', () => {
+    errorCancelBtn.addEventListener('click', async () => {
       addLog('warning', 'User cancelled batch processing')
       hideErrorModal()
       // Clear remaining jobs
       jobQueue = []
       isProcessingJob = false
       addLog('info', 'All remaining jobs cancelled')
+      // Cleanup all files for this batch
+      await cleanupBatchFiles()
       // Re-enable the start button
       enableStartButton()
     })
@@ -1418,6 +1422,10 @@ async function handleStartAutomation() {
     if (response.ok) {
       const data = await response.json()
 
+      // Store batch ID for cleanup
+      currentBatchId = data.batchId
+      console.log('📦 Batch ID received:', currentBatchId)
+
       addLog('success', `Automation started! Processing ${data.totalJobs} product(s)`)
     } else {
       const error = await response.json()
@@ -1441,6 +1449,66 @@ function enableStartButton() {
   startAutomationBtn.textContent = 'Start Processing'
   const allCheckboxes = collectionSelector.querySelectorAll('input[type="checkbox"]')
   allCheckboxes.forEach((cb) => (cb.disabled = false))
+}
+
+/**
+ * Cleanup all files for the current batch
+ */
+async function cleanupBatchFiles() {
+  addLog('info', 'Cleaning up temporary files...')
+
+  // Cleanup temp mockup files in plugin
+  let tempFilesDeleted = 0
+  if (tempMockupFiles.length > 0) {
+    console.log(`🗑️  Cleaning up ${tempMockupFiles.length} temp mockup file(s) in plugin`)
+    for (const file of tempMockupFiles) {
+      try {
+        await file.delete()
+        tempFilesDeleted++
+        console.log('   ✅ Deleted temp mockup file')
+      } catch (err) {
+        console.error('   ❌ Failed to delete temp mockup:', err)
+      }
+    }
+    tempMockupFiles = []
+  }
+
+  // Cleanup server-side files
+  if (!currentBatchId) {
+    if (tempFilesDeleted > 0) {
+      addLog('success', `Cleaned up ${tempFilesDeleted} temp file(s)`)
+    }
+    return
+  }
+
+  try {
+    const response = await fetch('http://localhost:3333/api/mockup/cleanup', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        batchId: currentBatchId,
+      }),
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      const totalDeleted = tempFilesDeleted + data.deletedCount
+      addLog(
+        'success',
+        `Cleaned up ${totalDeleted} file(s) (${tempFilesDeleted} local, ${data.deletedCount} server)`
+      )
+      console.log('✅ Cleanup complete:', data)
+      currentBatchId = null
+    } else {
+      console.error('❌ Cleanup failed:', response.status)
+      addLog('warning', 'Failed to cleanup some files')
+    }
+  } catch (error) {
+    console.error('❌ Cleanup error:', error)
+    addLog('warning', `Cleanup error: ${error.message}`)
+  }
 }
 
 /**
@@ -1515,6 +1583,12 @@ async function processNextJob() {
       updateStep(5, 'completed')
       addLog('success', 'Mockup generated successfully')
 
+      // Track temp file for cleanup
+      if (result.outputFile) {
+        tempMockupFiles.push(result.outputFile)
+        console.log('📝 Tracked temp mockup file for cleanup')
+      }
+
       console.log('🔍 DEBUG: result object:', {
         success: result.success,
         resultPath: result.resultPath,
@@ -1554,6 +1628,7 @@ async function processNextJob() {
 
           formData.append('mockup', blob, fileName)
           formData.append('fileName', fileName)
+          formData.append('batchId', currentBatchId) // Track file to batch for cleanup
 
           // Upload file to backend
           const serverUrl = 'http://localhost:3333'
@@ -1621,6 +1696,18 @@ async function processNextJob() {
           // Step 7 complete (backend already waited for processing)
           updateStep(7, 'completed')
           addLog('success', 'File processed and saved on Shopify')
+
+          // Clean up temp mockup file after successful upload
+          if (result.outputFile) {
+            try {
+              await result.outputFile.delete()
+              addLog('info', 'Cleaned up temp mockup file')
+              // Remove from tracking array
+              tempMockupFiles = tempMockupFiles.filter((f) => f !== result.outputFile)
+            } catch (deleteErr) {
+              console.error('⚠️  Failed to delete temp mockup:', deleteErr)
+            }
+          }
 
           // Mark job as fully completed
           markJobCompleted(true)
@@ -1699,6 +1786,8 @@ async function processNextJob() {
       setTimeout(() => processNextJob(), 500)
     } else {
       addLog('success', 'All jobs completed!')
+      // Cleanup all temporary files
+      await cleanupBatchFiles()
       // Re-enable the start button
       enableStartButton()
     }
