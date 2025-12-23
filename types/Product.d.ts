@@ -235,6 +235,19 @@ export interface ProductByTag {
       }
     }>
   }
+  bundleProductsMetafield?: {
+    id: string
+    namespace: string
+    key: string
+    type: string
+    references?: {
+      edges: Array<{
+        node: {
+          id: string
+        }
+      }>
+    }
+  }
   options: {
     id: string
     name: string
@@ -244,6 +257,7 @@ export interface ProductByTag {
     nodes: Array<{
       id: string
       price: string
+      inventoryPolicy?: 'DENY' | 'CONTINUE'
       selectedOptions: {
         name: string
         value: string
@@ -303,6 +317,19 @@ export interface ProductById {
       }
     }[]
   }
+  bundleProductsMetafield?: {
+    id: string
+    namespace: string
+    key: string
+    type: string
+    references?: {
+      edges: {
+        node: {
+          id: string
+        }
+      }[]
+    }
+  }
   options: {
     id: string
     name: string
@@ -322,6 +349,7 @@ export interface ProductById {
     nodes: {
       id: string
       price: string
+      inventoryPolicy?: 'DENY' | 'CONTINUE'
       selectedOptions: {
         name: string
         value: string

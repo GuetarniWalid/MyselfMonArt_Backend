@@ -3,14 +3,15 @@ import Shopify from '../..'
 import ModelCopier from './index'
 
 export default class TapestryCopier extends ModelCopier {
+  /**
+   * Main entry point - uses differential update system
+   * Replaces legacy full recreation approach
+   */
   public async copyModelDataOnProduct(product: ProductById) {
     const model = await this.getTapestryModel()
     if (!model) return
 
-    await this.deleteProductOptions(product)
-    await this.copyModelOptions(product, model)
-    await this.copyModelVariants(product, model)
-    await this.translateProductOptionsInAllLanguages(product)
+    await this.updateProductDifferentially(product, model)
   }
 
   public isModelProduct(product: ProductById | Product): boolean {

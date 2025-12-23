@@ -357,6 +357,21 @@ export default class Product extends Authentication {
               }
             }
           }
+          bundleProductsMetafield: metafield(namespace: "bundle", key: "products") {
+            id
+            namespace
+            key
+            type
+            references(first: 30) {
+              edges {
+                node {
+                  ... on Product {
+                    id
+                  }
+                }
+              }
+            }
+          }
           options(first: 10) {
             id
             name
@@ -537,6 +552,21 @@ export default class Product extends Authentication {
                   }
                 }
               }
+              bundleProductsMetafield: metafield(namespace: "bundle", key: "products") {
+                id
+                namespace
+                key
+                type
+                references(first: 30) {
+                  edges {
+                    node {
+                      ... on Product {
+                        id
+                      }
+                    }
+                  }
+                }
+              }
               options(first: 3) {
                 id
                 name
@@ -568,6 +598,7 @@ export default class Product extends Authentication {
         name: string
         optionName: string
       }[]
+      inventoryPolicy?: 'DENY' | 'CONTINUE'
     }>
   ) {
     const { query, variables } = this.getCreateVariantsBulkQuery(productId, variants)
@@ -588,6 +619,7 @@ export default class Product extends Authentication {
         name: string
         optionName: string
       }[]
+      inventoryPolicy?: 'DENY' | 'CONTINUE'
     }>
   ) {
     return {
@@ -614,7 +646,8 @@ export default class Product extends Authentication {
           inventoryItem: {
             tracked: false,
           },
-          inventoryPolicy: 'CONTINUE',
+          // Inherit inventory policy from model, default to CONTINUE if not specified
+          inventoryPolicy: variant.inventoryPolicy || 'CONTINUE',
         })),
       },
     }
@@ -668,6 +701,296 @@ export default class Product extends Authentication {
             ...payload,
           },
         ],
+      },
+    }
+  }
+
+  /**
+   * Update multiple variant prices in a single API call
+   * More efficient than updating variants individually
+   */
+  public async updateVariantsPricesBulk(
+    productId: string,
+    variants: Array<{ id: string; price: string; inventoryPolicy?: 'DENY' | 'CONTINUE' }>
+  ) {
+    const { query, variables } = this.getUpdateVariantsPricesBulkQuery(productId, variants)
+    const response = await this.fetchGraphQL(query, variables)
+
+    if (response.productVariantsBulkUpdate.userErrors?.length) {
+      throw new Error(response.productVariantsBulkUpdate.userErrors[0].message)
+    }
+
+    return response.productVariantsBulkUpdate.product
+  }
+
+  private getUpdateVariantsPricesBulkQuery(
+    productId: string,
+    variants: Array<{ id: string; price: string; inventoryPolicy?: 'DENY' | 'CONTINUE' }>
+  ) {
+    return {
+      query: `mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+                productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+                  product {
+                    id
+                  }
+                  userErrors {
+                    field
+                    message
+                  }
+                }
+              }`,
+      variables: {
+        productId,
+        variants: variants.map((variant) => ({
+          id: variant.id,
+          price: variant.price,
+          // Preserve existing inventory policy, default to CONTINUE if not specified
+          inventoryPolicy: variant.inventoryPolicy || 'CONTINUE',
+        })),
+      },
+    }
+  }
+
+  /**
+   * Delete specific variants from a product
+   * Uses productVariantsBulkDelete mutation with batching for large deletions
+   */
+  public async deleteVariants(productId: string, variantIds: string[]) {
+    if (variantIds.length === 0) return
+
+    // Shopify bulk operation limit - batch in chunks of 100
+    const BATCH_SIZE = 100
+
+    if (variantIds.length <= BATCH_SIZE) {
+      // Single batch - process directly
+      const { query, variables } = this.getDeleteVariantsQuery(productId, variantIds)
+      const response = await this.fetchGraphQL(query, variables)
+
+      if (response.productVariantsBulkDelete?.userErrors?.length) {
+        throw new Error(response.productVariantsBulkDelete.userErrors[0].message)
+      }
+
+      return response.productVariantsBulkDelete?.product
+    } else {
+      // Multiple batches required
+      console.info(`Deleting ${variantIds.length} variants in batches of ${BATCH_SIZE}`)
+
+      for (let i = 0; i < variantIds.length; i += BATCH_SIZE) {
+        const batch = variantIds.slice(i, i + BATCH_SIZE)
+        console.info(
+          `Deleting batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(variantIds.length / BATCH_SIZE)} (${batch.length} variants)`
+        )
+
+        const { query, variables } = this.getDeleteVariantsQuery(productId, batch)
+        const response = await this.fetchGraphQL(query, variables)
+
+        if (response.productVariantsBulkDelete?.userErrors?.length) {
+          throw new Error(
+            `Batch deletion failed: ${response.productVariantsBulkDelete.userErrors[0].message}`
+          )
+        }
+      }
+
+      console.info(`Successfully deleted all ${variantIds.length} variants`)
+      return null // No single product to return after batched operations
+    }
+  }
+
+  private getDeleteVariantsQuery(productId: string, variantIds: string[]) {
+    return {
+      query: `mutation productVariantsBulkDelete($productId: ID!, $variantsIds: [ID!]!) {
+                productVariantsBulkDelete(productId: $productId, variantsIds: $variantsIds) {
+                  product {
+                    id
+                  }
+                  userErrors {
+                    field
+                    message
+                  }
+                }
+              }`,
+      variables: {
+        productId,
+        variantsIds: variantIds,
+      },
+    }
+  }
+
+  /**
+   * Add new values to an existing product option
+   * More efficient than recreating the entire option
+   * @param option - Optional: pass existing option to avoid fetching product
+   */
+  public async addOptionValues(
+    productId: string,
+    optionId: string,
+    newValues: string[],
+    option?: { id: string; name: string; optionValues: { name: string }[] }
+  ) {
+    if (newValues.length === 0) return
+
+    // Get option from parameter or fetch product
+    let optionData = option
+    if (!optionData) {
+      const product = await this.getProductById(productId)
+      optionData = product.options.find((opt) => opt.id === optionId)
+      if (!optionData) throw new Error(`Option ${optionId} not found in product ${productId}`)
+    }
+
+    const currentValues = optionData.optionValues.map((v) => v.name)
+    const updatedValues = [...currentValues, ...newValues]
+
+    const { query, variables } = this.getUpdateOptionValuesQuery(
+      productId,
+      optionId,
+      optionData.name,
+      updatedValues,
+      []
+    )
+    const response = await this.fetchGraphQL(query, variables)
+
+    if (response.productOptionUpdate?.userErrors?.length) {
+      throw new Error(response.productOptionUpdate.userErrors[0].message)
+    }
+
+    return response.productOptionUpdate?.product
+  }
+
+  /**
+   * Remove values from an existing product option
+   * More efficient than recreating the entire option
+   * @param option - Optional: pass existing option to avoid fetching product
+   */
+  public async removeOptionValues(
+    productId: string,
+    optionId: string,
+    valuesToRemove: string[],
+    option?: { id: string; name: string; optionValues: { name: string }[] }
+  ) {
+    if (valuesToRemove.length === 0) return
+
+    // Get option from parameter or fetch product
+    let optionData = option
+    if (!optionData) {
+      const product = await this.getProductById(productId)
+      optionData = product.options.find((opt) => opt.id === optionId)
+      if (!optionData) throw new Error(`Option ${optionId} not found in product ${productId}`)
+    }
+
+    const currentValues = optionData.optionValues.map((v) => v.name)
+    const updatedValues = currentValues.filter((v) => !valuesToRemove.includes(v))
+
+    if (updatedValues.length === 0) {
+      throw new Error(
+        `Cannot remove all values from option ${optionData.name} in product ${productId}`
+      )
+    }
+
+    const { query, variables } = this.getUpdateOptionValuesQuery(
+      productId,
+      optionId,
+      optionData.name,
+      updatedValues,
+      []
+    )
+    const response = await this.fetchGraphQL(query, variables)
+
+    if (response.productOptionUpdate?.userErrors?.length) {
+      throw new Error(response.productOptionUpdate.userErrors[0].message)
+    }
+
+    return response.productOptionUpdate?.product
+  }
+
+  /**
+   * Update option values directly with final state
+   * Used when both adding and removing values from same option
+   * Calculates diff and uses proper Shopify GraphQL format (optionValuesToAdd/Delete)
+   */
+  public async updateOptionValues(
+    productId: string,
+    optionId: string,
+    optionName: string,
+    finalValues: string[],
+    currentValues: string[]
+  ) {
+    if (finalValues.length === 0) {
+      throw new Error(`Cannot set option ${optionName} to have zero values in product ${productId}`)
+    }
+
+    // Calculate which values to add and delete
+    const valuesToAdd = finalValues.filter((v) => !currentValues.includes(v))
+    const valuesToDelete = currentValues.filter((v) => !finalValues.includes(v))
+
+    // If no changes needed, return early
+    if (valuesToAdd.length === 0 && valuesToDelete.length === 0) {
+      return
+    }
+
+    // Get current option value IDs for deletion (need to fetch full product)
+    const product = await this.getProductById(productId)
+    const option = product.options?.find((opt) => opt.id === optionId)
+    if (!option) {
+      throw new Error(`Option ${optionId} not found in product ${productId}`)
+    }
+
+    const valueIdsToDelete = option.optionValues
+      .filter((ov) => valuesToDelete.includes(ov.name))
+      .map((ov) => ov.id)
+
+    const { query, variables } = this.getUpdateOptionValuesQuery(
+      productId,
+      optionId,
+      optionName,
+      valuesToAdd,
+      valueIdsToDelete
+    )
+    const response = await this.fetchGraphQL(query, variables)
+
+    if (response.productOptionUpdate?.userErrors?.length) {
+      throw new Error(response.productOptionUpdate.userErrors[0].message)
+    }
+
+    return response.productOptionUpdate?.product
+  }
+
+  private getUpdateOptionValuesQuery(
+    productId: string,
+    optionId: string,
+    optionName: string,
+    valuesToAdd: string[],
+    valueIdsToDelete: string[]
+  ) {
+    return {
+      query: `mutation productOptionUpdate(
+                $productId: ID!,
+                $option: OptionUpdateInput!,
+                $optionValuesToAdd: [OptionValueCreateInput!],
+                $optionValuesToDelete: [ID!]
+              ) {
+                productOptionUpdate(
+                  productId: $productId,
+                  option: $option,
+                  optionValuesToAdd: $optionValuesToAdd,
+                  optionValuesToDelete: $optionValuesToDelete
+                ) {
+                  product {
+                    id
+                  }
+                  userErrors {
+                    field
+                    message
+                  }
+                }
+              }`,
+      variables: {
+        productId,
+        option: {
+          id: optionId,
+          name: optionName,
+        },
+        optionValuesToAdd: valuesToAdd.map((value) => ({ name: value })),
+        optionValuesToDelete: valueIdsToDelete,
       },
     }
   }

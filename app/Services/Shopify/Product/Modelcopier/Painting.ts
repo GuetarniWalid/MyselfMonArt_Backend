@@ -1,26 +1,161 @@
 import { Product, ProductById, ProductByTag } from 'Types/Product'
 import Shopify from '../..'
 import ModelCopier from './index'
+import { DiffResult, MetafieldsDiff } from './types'
 
 export default class PaintingCopier extends ModelCopier {
+  /**
+   * Main entry point - uses differential update system
+   * Replaces legacy full recreation approach
+   */
   public async copyModelDataOnProduct(product: ProductById, model: ProductByTag) {
-    await this.deleteProductOptions(product)
-    await this.copyModelOptions(product, model)
-    await this.copyModelVariants(product, model)
-    await this.copyModelMetafields(product, model)
-    await this.translateProductOptionsInAllLanguages(product)
+    await this.updateProductDifferentially(product, model)
   }
 
-  private async copyModelMetafields(product: ProductById, model: ProductByTag) {
+  /**
+   * Override compareProducts to add metafield comparison for paintings
+   */
+  protected compareProducts(product: ProductById, model: ProductByTag): DiffResult {
+    const baseDiff = super.compareProducts(product, model)
+    baseDiff.metafieldsDiff = this.compareMetafields(product, model)
+    baseDiff.hasAnyChanges = baseDiff.hasAnyChanges || baseDiff.metafieldsDiff.needsUpdate
+    return baseDiff
+  }
+
+  /**
+   * Compare painting metafields between model and product
+   * Identifies specific metafields that need updating
+   */
+  private compareMetafields(product: ProductById, model: ProductByTag): MetafieldsDiff {
+    const diff: MetafieldsDiff = {
+      needsUpdate: false,
+      metafieldsToUpdate: [],
+      metafieldsToDelete: [],
+    }
+
+    // Quick check using existing method
+    if (this.areMetafieldsSimilar(product, model)) {
+      return diff
+    }
+
+    const productMetafields = product.paintingOptionsMetafields?.nodes || []
+    const modelMetafields = model.paintingOptionsMetafields?.nodes || []
+
+    // Create a map of product metafields for quick lookup
+    const productMetafieldsMap = new Map<string, (typeof productMetafields)[0]>()
+    productMetafields.forEach((metafield) => {
+      const key = `${metafield.namespace}:${metafield.key}`
+      productMetafieldsMap.set(key, metafield)
+    })
+
+    // Check each model metafield
+    modelMetafields.forEach((modelMetafield) => {
+      const key = `${modelMetafield.namespace}:${modelMetafield.key}`
+      const productMetafield = productMetafieldsMap.get(key)
+
+      const modelValue = JSON.stringify(modelMetafield.references.edges.map((edge) => edge.node.id))
+
+      if (!productMetafield) {
+        // Metafield exists in model but not in product - add it
+        diff.metafieldsToUpdate.push({
+          namespace: modelMetafield.namespace,
+          key: modelMetafield.key,
+          value: modelValue,
+        })
+        diff.needsUpdate = true
+      } else {
+        // Check if value is different
+        const productValue = JSON.stringify(
+          productMetafield.references.edges.map((edge) => edge.node.id)
+        )
+
+        if (productValue !== modelValue) {
+          diff.metafieldsToUpdate.push({
+            namespace: modelMetafield.namespace,
+            key: modelMetafield.key,
+            value: modelValue,
+          })
+          diff.needsUpdate = true
+        }
+      }
+    })
+
+    // Find metafields to delete (in product but not in model)
+    productMetafields.forEach((productMetafield) => {
+      const key = `${productMetafield.namespace}:${productMetafield.key}`
+      const hasMatchingModelMetafield = modelMetafields.some(
+        (m) => `${m.namespace}:${m.key}` === key
+      )
+
+      if (!hasMatchingModelMetafield) {
+        diff.metafieldsToDelete.push({
+          namespace: productMetafield.namespace,
+          key: productMetafield.key,
+        })
+        diff.needsUpdate = true
+      }
+    })
+
+    return diff
+  }
+
+  /**
+   * Update metafields selectively - only changed fields
+   * More efficient than updating all metafields
+   */
+  protected async updateMetafieldsSelectively(product: ProductById, diff: MetafieldsDiff) {
+    if (!diff.needsUpdate) return
+
     const shopify = new Shopify()
 
-    for (const metafield of model.paintingOptionsMetafields.nodes) {
-      await shopify.metafield.update(
-        product.id,
-        metafield.namespace,
-        metafield.key,
-        JSON.stringify(metafield.references.edges.map((edge) => edge.node.id))
+    // Update changed metafields
+    for (const metafield of diff.metafieldsToUpdate) {
+      try {
+        await shopify.metafield.update(
+          product.id,
+          metafield.namespace,
+          metafield.key,
+          metafield.value
+        )
+      } catch (error) {
+        console.error(
+          `⚠️  Failed to update metafield ${metafield.namespace}.${metafield.key}:`,
+          error.message
+        )
+      }
+    }
+
+    // Note: Metafield deletion not implemented yet as it requires different API
+    // For now, we only update existing or add new metafields
+    if (diff.metafieldsToDelete.length > 0) {
+      console.warn(
+        `⚠️  ${diff.metafieldsToDelete.length} metafields should be deleted but deletion not implemented`
       )
+    }
+  }
+
+  /**
+   * Override to add metafield update logic specific to paintings
+   * Called by base class orchestrator after options/variants are updated
+   */
+  protected async updateMetafieldsIfNeeded(product: ProductById, diff: DiffResult): Promise<void> {
+    if (!diff.metafieldsDiff?.needsUpdate) {
+      return
+    }
+
+    console.info(`🏷️  Updating metafields`)
+    console.info(`   - Metafields: ${diff.metafieldsDiff.metafieldsToUpdate.length} to update`)
+    if (diff.metafieldsDiff.metafieldsToDelete.length > 0) {
+      console.warn(
+        `     ⚠️  Note: ${diff.metafieldsDiff.metafieldsToDelete.length} metafield(s) should be deleted but automatic deletion is not yet implemented. Manual cleanup may be required.`
+      )
+    }
+
+    try {
+      await this.updateMetafieldsSelectively(product, diff.metafieldsDiff)
+    } catch (error) {
+      console.warn(`⚠️  Metafield update failed for ${product.id}: ${error.message}`)
+      // Don't throw - metafield failures shouldn't stop translation
     }
   }
 
@@ -115,6 +250,15 @@ export default class PaintingCopier extends ModelCopier {
 
     const imageWidth = image.width
     const imageHeight = image.height
+
+    // Validate image dimensions before calculating ratio
+    if (!imageWidth || !imageHeight || imageWidth <= 0 || imageHeight <= 0) {
+      console.warn(
+        `⚠️  Invalid image dimensions for product ${product.id}: width=${imageWidth}, height=${imageHeight}. Cannot determine model.`
+      )
+      return
+    }
+
     const ratio = imageWidth / imageHeight
 
     const isPersonalized = product.tags.includes('personnalisé')
@@ -141,6 +285,14 @@ export default class PaintingCopier extends ModelCopier {
     const image = product.media.nodes[1]?.image
     if (!image) {
       console.log(`No image found for product ${product.id}`)
+      return null
+    }
+
+    // Validate image dimensions before calculating ratio
+    if (!image.width || !image.height || image.width <= 0 || image.height <= 0) {
+      console.warn(
+        `⚠️  Invalid image dimensions for product ${product.id}: width=${image.width}, height=${image.height}. Cannot determine tag.`
+      )
       return null
     }
 

@@ -9,8 +9,8 @@ module.exports = {
     },
     {
       name: 'cron',
-      script: 'node',
-      args: 'ace scheduler:run',
+      script: 'npm',
+      args: 'run cron',
       autorestart: true,
       watch: false,
       max_restarts: 5,

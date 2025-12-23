@@ -6,6 +6,13 @@ import WebhookLog from 'App/Models/WebhookLog'
 import Database from '@ioc:Adonis/Lucid/Database'
 import { logTaskBoundary } from 'App/Utils/Logs'
 
+interface UpdateFailure {
+  productId: string
+  productTitle: string
+  error: string
+  timestamp: Date
+}
+
 export default class WebhooksController {
   private static processingProducts = new Set<string>()
   private static readonly COOLDOWN_PERIOD = 5000 // 5 seconds
@@ -57,6 +64,7 @@ export default class WebhooksController {
       let lastError = null
 
       while (retryCount < WebhooksController.MAX_RETRIES) {
+        let transactionCommitted = false
         try {
           const trx = await Database.transaction()
           try {
@@ -88,6 +96,7 @@ export default class WebhooksController {
               webhookLog.status = 'completed'
               await webhookLog.save()
               await trx.commit()
+              transactionCommitted = true
 
               // Remove from cooldown after delay
               setTimeout(() => {
@@ -100,10 +109,21 @@ export default class WebhooksController {
               webhookLog.error = error.message
               await webhookLog.save()
               await trx.commit()
+              transactionCommitted = true
+
+              // CRITICAL: Remove from processing set on error to prevent memory leak/deadlock
+              // Use shorter cooldown for failed products to allow faster retry
+              setTimeout(() => {
+                WebhooksController.processingProducts.delete(id)
+              }, 1000) // 1 second cooldown for failures
+
               throw error
             }
           } catch (error) {
-            await trx.rollback()
+            // Only rollback if transaction wasn't already committed
+            if (!transactionCommitted) {
+              await trx.rollback()
+            }
             throw error
           }
         } catch (error) {
@@ -113,6 +133,8 @@ export default class WebhooksController {
           // Check if it's a duplicate entry error (webhook was processed by another instance)
           if (error.code === 'ER_DUP_ENTRY') {
             console.info(`Webhook ${webhookId} was processed by another instance`)
+            // Remove from processing set
+            WebhooksController.processingProducts.delete(id)
             return response.status(200).send({ message: 'Webhook processed by another instance' })
           }
 
@@ -122,6 +144,8 @@ export default class WebhooksController {
               console.warn(
                 `Lock timeout after ${WebhooksController.MAX_RETRIES} retries for webhook ${webhookId}`
               )
+              // Remove from processing set after final retry failure
+              WebhooksController.processingProducts.delete(id)
               return response.status(200).send({ message: 'Webhook received' })
             }
             // Wait before retrying
@@ -131,6 +155,8 @@ export default class WebhooksController {
 
           // For other errors, log and return
           console.error(`Error processing webhook ${webhookId}:`, error)
+          // Remove from processing set on error
+          WebhooksController.processingProducts.delete(id)
           return response.status(200).send({ message: 'Webhook received' })
         }
       }
@@ -202,17 +228,65 @@ export default class WebhooksController {
       const products = await shopify.product.getAll()
       const relatedProducts = copier.getRelatedProducts(products, product)
 
+      console.info(`📊 Found ${relatedProducts.length} related products to update`)
+
+      const failures: UpdateFailure[] = []
+
       // Process related products sequentially to avoid overwhelming the system
       for (const relatedProduct of relatedProducts) {
         if (!WebhooksController.processingProducts.has(relatedProduct.id)) {
+          // Add to processing set BEFORE starting work to prevent concurrent processing
+          WebhooksController.processingProducts.add(relatedProduct.id)
+
           try {
             await this.handleProductCreate(relatedProduct.id)
+
+            // Remove from processing set after successful update (with cooldown)
+            setTimeout(() => {
+              WebhooksController.processingProducts.delete(relatedProduct.id)
+            }, WebhooksController.COOLDOWN_PERIOD)
           } catch (error) {
-            console.error('Error updating related product:', relatedProduct.id, error)
+            failures.push({
+              productId: relatedProduct.id,
+              productTitle: relatedProduct.title,
+              error: error.message || String(error),
+              timestamp: new Date(),
+            })
+            console.error(`❌ Failed to update product ${relatedProduct.id}: ${error.message}`)
+
+            // Remove from processing set on error (shorter cooldown for failures)
+            setTimeout(() => {
+              WebhooksController.processingProducts.delete(relatedProduct.id)
+            }, 1000) // 1 second cooldown for failures
+
+            // Continue processing other products
           }
         }
       }
-      console.info(`🚀 Related products updated: ${relatedProducts.length}`)
+
+      // Display summary
+      const successCount = relatedProducts.length - failures.length
+      console.info(`\n${'='.repeat(60)}`)
+      console.info(`📊 UPDATE SUMMARY`)
+      console.info(`${'='.repeat(60)}`)
+      console.info(`✅ Successfully updated: ${successCount}/${relatedProducts.length} products`)
+
+      if (failures.length > 0) {
+        console.error(`❌ Failed to update: ${failures.length} products`)
+        console.error(`\n${'━'.repeat(60)}`)
+        console.error(`FAILED PRODUCTS:`)
+        console.error(`${'━'.repeat(60)}`)
+        failures.forEach((f, index) => {
+          console.error(`\n${index + 1}. ${f.productTitle}`)
+          console.error(`   Product ID: ${f.productId}`)
+          console.error(`   Error: ${f.error}`)
+          console.error(`   Time: ${f.timestamp.toISOString()}`)
+        })
+        console.error(`${'━'.repeat(60)}\n`)
+      } else {
+        console.info(`🎉 All products updated successfully!`)
+      }
+      console.info(`${'='.repeat(60)}\n`)
     } catch (error) {
       console.error('Error during update related products:', error)
     }
