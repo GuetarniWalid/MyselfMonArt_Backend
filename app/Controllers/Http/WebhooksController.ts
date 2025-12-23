@@ -16,11 +16,14 @@ interface UpdateFailure {
 export default class WebhooksController {
   private static processingProducts = new Set<string>()
   private static readonly COOLDOWN_PERIOD = 5000 // 5 seconds
-  private static readonly MAX_RETRIES = 3
-  private static readonly RETRY_DELAY = 1000 // 1 second
 
   public async handle({ request, response }: HttpContextContract) {
     logTaskBoundary(true, 'Webhook received')
+
+    // Variables declared here to be accessible in catch/finally blocks
+    let productId: string | undefined
+    let webhookId: string | undefined
+    let topic: string | undefined
 
     try {
       const rawBody = (await request.raw()) ?? ''
@@ -31,16 +34,20 @@ export default class WebhooksController {
         return response.unauthorized({ error: 'Invalid webhook signature' })
       }
 
-      const topic = request.header('X-Shopify-Topic')
+      topic = request.header('X-Shopify-Topic')
       const shop = request.header('X-Shopify-Shop-Domain')
-      const webhookId = request.header('X-Shopify-Webhook-Id')
+      webhookId = request.header('X-Shopify-Webhook-Id')
 
       if (!webhookId) {
         console.warn('No webhook ID found in request')
         return response.status(200).send({ message: 'Webhook received' })
       }
 
-      // Check if webhook was already processed (outside transaction)
+      if (!topic) {
+        console.warn('No topic found in request')
+        return response.status(200).send({ message: 'Webhook received' })
+      }
+
       const existingLog = await WebhookLog.findBy('webhookId', webhookId)
       if (existingLog) {
         console.info(`Webhook ${webhookId} already processed, skipping`)
@@ -48,127 +55,69 @@ export default class WebhooksController {
       }
 
       const { id } = request.body()
-      if (!id) {
+      productId = id
+      if (!productId) {
         console.warn('No ID found in webhook request')
         return response.status(200).send({ message: 'Webhook received' })
       }
 
-      // Check if product is in cooldown
-      if (WebhooksController.processingProducts.has(id)) {
-        console.info(`Product ${id} is in cooldown, skipping`)
+      if (WebhooksController.processingProducts.has(productId)) {
+        console.info(`Product ${productId} is in cooldown, skipping`)
         return response.status(200).send({ message: 'Product in cooldown' })
       }
 
-      // Try to process the webhook with retries
-      let retryCount = 0
-      let lastError = null
+      // CRITICAL: Add to Set BEFORE responding to prevent race conditions with duplicate webhooks
+      WebhooksController.processingProducts.add(productId)
 
-      while (retryCount < WebhooksController.MAX_RETRIES) {
-        let transactionCommitted = false
+      try {
+        const trx = await Database.transaction()
         try {
-          const trx = await Database.transaction()
-          try {
-            // Create new webhook log
-            const webhookLog = await WebhookLog.create(
-              {
-                webhookId,
-                topic,
-                shop,
-                status: 'processing',
-              },
-              { client: trx }
-            )
+          await WebhookLog.create(
+            {
+              webhookId,
+              topic,
+              shop,
+              status: 'completed',
+            },
+            { client: trx }
+          )
 
-            WebhooksController.processingProducts.add(id)
+          await trx.commit()
+          console.info(`📝 Webhook ${webhookId} logged successfully`)
+        } catch (error: any) {
+          await trx.rollback()
 
-            try {
-              switch (topic) {
-                case 'products/create':
-                  await this.handleProductCreate(id)
-                  break
-                case 'products/update':
-                  await this.handleProductUpdate(id)
-                  break
-                default:
-                  console.warn(`Unhandled webhook topic: ${topic}`)
-              }
-
-              webhookLog.status = 'completed'
-              await webhookLog.save()
-              await trx.commit()
-              transactionCommitted = true
-
-              // Remove from cooldown after delay
-              setTimeout(() => {
-                WebhooksController.processingProducts.delete(id)
-              }, WebhooksController.COOLDOWN_PERIOD)
-
-              return response.status(200).send({ message: 'Webhook received' })
-            } catch (error) {
-              webhookLog.status = 'failed'
-              webhookLog.error = error.message
-              await webhookLog.save()
-              await trx.commit()
-              transactionCommitted = true
-
-              // CRITICAL: Remove from processing set on error to prevent memory leak/deadlock
-              // Use shorter cooldown for failed products to allow faster retry
-              setTimeout(() => {
-                WebhooksController.processingProducts.delete(id)
-              }, 1000) // 1 second cooldown for failures
-
-              throw error
-            }
-          } catch (error) {
-            // Only rollback if transaction wasn't already committed
-            if (!transactionCommitted) {
-              await trx.rollback()
-            }
-            throw error
-          }
-        } catch (error) {
-          lastError = error
-          retryCount++
-
-          // Check if it's a duplicate entry error (webhook was processed by another instance)
-          if (error.code === 'ER_DUP_ENTRY') {
-            console.info(`Webhook ${webhookId} was processed by another instance`)
-            // Remove from processing set
-            WebhooksController.processingProducts.delete(id)
-            return response.status(200).send({ message: 'Webhook processed by another instance' })
+          if (error?.code === 'ER_DUP_ENTRY') {
+            console.info(`Webhook ${webhookId} was already logged (duplicate)`)
+            WebhooksController.processingProducts.delete(productId!)
+            return response.status(200).send({ message: 'Webhook already processed' })
           }
 
-          // Check if it's a lock timeout error
-          if (error.code === 'ER_LOCK_WAIT_TIMEOUT') {
-            if (retryCount === WebhooksController.MAX_RETRIES) {
-              console.warn(
-                `Lock timeout after ${WebhooksController.MAX_RETRIES} retries for webhook ${webhookId}`
-              )
-              // Remove from processing set after final retry failure
-              WebhooksController.processingProducts.delete(id)
-              return response.status(200).send({ message: 'Webhook received' })
-            }
-            // Wait before retrying
-            await new Promise((resolve) => setTimeout(resolve, WebhooksController.RETRY_DELAY))
-            continue
-          }
-
-          // For other errors, log and return
-          console.error(`Error processing webhook ${webhookId}:`, error)
-          // Remove from processing set on error
-          WebhooksController.processingProducts.delete(id)
+          console.error(`Error logging webhook ${webhookId}:`, error)
+          WebhooksController.processingProducts.delete(productId!)
           return response.status(200).send({ message: 'Webhook received' })
         }
+      } catch (error: any) {
+        console.error(`Transaction error for webhook ${webhookId}:`, error)
+        WebhooksController.processingProducts.delete(productId!)
+        return response.status(200).send({ message: 'Webhook received' })
       }
 
-      // If we get here, all retries failed
-      console.error(
-        `Failed to process webhook ${webhookId} after ${WebhooksController.MAX_RETRIES} retries:`,
-        lastError
-      )
-      return response.status(200).send({ message: 'Webhook received' })
-    } catch (error) {
+      response.status(200).send({ message: 'Webhook received' })
+
+      // Fire-and-forget: process asynchronously after responding
+      setImmediate(() => {
+        this.processWebhookAsync(topic!, productId!).catch((error) => {
+          console.error(`❌ Uncaught error in async webhook processing for ${productId}:`, error)
+        })
+      })
+
+      return
+    } catch (error: any) {
       console.error('Error processing webhook:', error)
+      if (productId) {
+        WebhooksController.processingProducts.delete(productId)
+      }
       return response.status(200).send({ message: 'Webhook received' })
     } finally {
       logTaskBoundary(false, 'Webhook received')
@@ -210,8 +159,6 @@ export default class WebhooksController {
 
   private async handleProductUpdate(id: string) {
     console.info(`🚀 Handling product update: ${id}`)
-
-    // if the id come from a model, we need to update all related products
     await this.updateRelatedProductsFromModel(id)
   }
 
@@ -232,39 +179,33 @@ export default class WebhooksController {
 
       const failures: UpdateFailure[] = []
 
-      // Process related products sequentially to avoid overwhelming the system
       for (const relatedProduct of relatedProducts) {
         if (!WebhooksController.processingProducts.has(relatedProduct.id)) {
-          // Add to processing set BEFORE starting work to prevent concurrent processing
           WebhooksController.processingProducts.add(relatedProduct.id)
 
           try {
             await this.handleProductCreate(relatedProduct.id)
 
-            // Remove from processing set after successful update (with cooldown)
             setTimeout(() => {
               WebhooksController.processingProducts.delete(relatedProduct.id)
             }, WebhooksController.COOLDOWN_PERIOD)
-          } catch (error) {
+          } catch (error: any) {
+            const errorMessage = error?.message || String(error)
             failures.push({
               productId: relatedProduct.id,
               productTitle: relatedProduct.title,
-              error: error.message || String(error),
+              error: errorMessage,
               timestamp: new Date(),
             })
-            console.error(`❌ Failed to update product ${relatedProduct.id}: ${error.message}`)
+            console.error(`❌ Failed to update product ${relatedProduct.id}: ${errorMessage}`)
 
-            // Remove from processing set on error (shorter cooldown for failures)
             setTimeout(() => {
               WebhooksController.processingProducts.delete(relatedProduct.id)
-            }, 1000) // 1 second cooldown for failures
-
-            // Continue processing other products
+            }, 1000)
           }
         }
       }
 
-      // Display summary
       const successCount = relatedProducts.length - failures.length
       console.info(`\n${'='.repeat(60)}`)
       console.info(`📊 UPDATE SUMMARY`)
@@ -287,8 +228,39 @@ export default class WebhooksController {
         console.info(`🎉 All products updated successfully!`)
       }
       console.info(`${'='.repeat(60)}\n`)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error during update related products:', error)
+    }
+  }
+
+  /**
+   * Processes webhook in background after HTTP response sent.
+   * Product is already in processingProducts Set (added in handle() before responding).
+   */
+  private async processWebhookAsync(topic: string, id: string): Promise<void> {
+    try {
+      console.info(`🔄 Starting async processing for ${topic}: ${id}`)
+
+      switch (topic) {
+        case 'products/create':
+          await this.handleProductCreate(id)
+          break
+        case 'products/update':
+          await this.handleProductUpdate(id)
+          break
+        default:
+          console.warn(`Unhandled webhook topic in async processing: ${topic}`)
+      }
+
+      console.info(`✅ Async processing completed for ${id}`)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error(`❌ Async processing failed for ${id}:`, errorMessage)
+    } finally {
+      setTimeout(() => {
+        WebhooksController.processingProducts.delete(id)
+        console.info(`🧹 Removed ${id} from processing set (cooldown complete)`)
+      }, WebhooksController.COOLDOWN_PERIOD)
     }
   }
 

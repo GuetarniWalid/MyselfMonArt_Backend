@@ -22,11 +22,12 @@ export default class TestTask extends BaseCommand {
       //'gid://shopify/Product/10262925214043',
       //'gid://shopify/Product/10260536263003',
       //'gid://shopify/Product/10257951195483',
-      'gid://shopify/Product/9918679744859', // square model
+      //'gid://shopify/Product/9918679744859', // square model
+      'gid://shopify/Product/10195703628123', // boheme square
     ]
 
     // Set to 'create' or 'update' to test specific webhook type
-    const TEST_TYPE = 'update' as 'create' | 'update'
+    const TEST_TYPE = 'create' as 'create' | 'update'
 
     // SAFETY LIMIT: Maximum number of related products to update (for 'update' mode)
     // Set to a small number (e.g., 2-3) for safe testing
