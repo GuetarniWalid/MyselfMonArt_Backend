@@ -150,7 +150,9 @@ export default class Product extends Authentication {
 
     while (hasNextPage) {
       const { query, variables } = this.getAllProductsQuery(cursor, includeUnpublished)
-      const productsData = await this.fetchGraphQL(query, variables, 100) // Complex query with many fields
+      // Cost estimate: 250 products per page with nested fields (metafields, media, translations)
+      // Very complex query - tune based on actual costs in logs
+      const productsData = await this.fetchGraphQL(query, variables, 200)
       const products = productsData.products.edges
 
       // Store the current products
@@ -287,7 +289,9 @@ export default class Product extends Authentication {
 
   public async getProductById(productId: string) {
     const { query, variables } = this.getProductByIdQuery(productId)
-    const response = await this.fetchGraphQL(query, variables, 50) // Medium complexity query
+    // Cost estimate: Full product query with variants, options, metafields
+    // Tune this based on actual costs in logs (watch for "Cost estimate off by X")
+    const response = await this.fetchGraphQL(query, variables, 100)
     return response.product as ProductById
   }
 
@@ -602,7 +606,11 @@ export default class Product extends Authentication {
     }>
   ) {
     const { query, variables } = this.getCreateVariantsBulkQuery(productId, variants)
-    const response = await this.fetchGraphQL(query, variables)
+    // Cost estimate: Base mutation overhead + per-variant cost
+    // These are initial estimates - tune based on actual cost logs!
+    // Formula: BASE + (count * PER_ITEM)
+    const estimatedCost = 50 + variants.length * 2
+    const response = await this.fetchGraphQL(query, variables, estimatedCost)
 
     if (response.productVariantsBulkCreate.userErrors?.length) {
       throw new Error(response.productVariantsBulkCreate.userErrors[0].message)
@@ -714,7 +722,10 @@ export default class Product extends Authentication {
     variants: Array<{ id: string; price: string; inventoryPolicy?: 'DENY' | 'CONTINUE' }>
   ) {
     const { query, variables } = this.getUpdateVariantsPricesBulkQuery(productId, variants)
-    const response = await this.fetchGraphQL(query, variables)
+    // Cost estimate: Base mutation overhead + per-variant cost
+    // Tune based on actual cost logs! Formula: BASE + (count * PER_ITEM)
+    const estimatedCost = 50 + variants.length * 2
+    const response = await this.fetchGraphQL(query, variables, estimatedCost)
 
     if (response.productVariantsBulkUpdate.userErrors?.length) {
       throw new Error(response.productVariantsBulkUpdate.userErrors[0].message)

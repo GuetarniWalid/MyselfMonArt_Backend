@@ -1,45 +1,163 @@
 import Env from '@ioc:Adonis/Core/Env'
 import axios, { AxiosInstance } from 'axios'
 
-// Cost-aware rate limiter for Shopify API calls
+// Cost-aware rate limiter for Shopify API calls (Singleton)
 class ShopifyCostRateLimiter {
+  private static instance: ShopifyCostRateLimiter
   private availableCost: number
   private lastRefill: number
-  private readonly maxCost: number
+  private maxCost: number // Made mutable to adjust from Shopify responses
   private readonly restoreRate: number // cost points per second
+  private readonly safetyBuffer: number = 100 // Reserve 100 points as safety margin
+  private pendingRequests: number = 0 // Track concurrent requests
 
-  constructor(maxCost: number = 1000, restoreRate: number = 50) {
+  private constructor(maxCost: number = 2000, restoreRate: number = 100) {
+    // Standard Shopify: estimated 2000 bucket, 100 points/second
+    // Advanced: estimated 4000 bucket, 200 points/second
+    // Plus: estimated 10000 bucket, 1000 points/second
+    // Will auto-adjust maxCost from Shopify's throttleStatus.maximumAvailable
     this.maxCost = maxCost
     this.restoreRate = restoreRate
     this.availableCost = maxCost
     this.lastRefill = Date.now()
+    console.log(`[RateLimiter] Initialized with ${maxCost} max cost, ${restoreRate} points/second`)
+  }
+
+  public static getInstance(): ShopifyCostRateLimiter {
+    if (!ShopifyCostRateLimiter.instance) {
+      ShopifyCostRateLimiter.instance = new ShopifyCostRateLimiter()
+    }
+    return ShopifyCostRateLimiter.instance
   }
 
   private refillCost(): void {
     const now = Date.now()
     const timePassed = (now - this.lastRefill) / 1000 // Convert to seconds
-    const costToAdd = timePassed * this.restoreRate
+
+    // Protect against clock going backwards (NTP sync, DST, etc.)
+    if (timePassed < 0) {
+      console.warn(
+        `[RateLimiter] Clock went backwards by ${Math.abs(timePassed)}s, resetting refill timer`
+      )
+      this.lastRefill = now
+      return
+    }
+
+    // Avoid excessive refill if system was suspended
+    const maxTimePassed = 120 // Cap at 2 minutes to avoid huge refills after sleep
+    const effectiveTimePassed = Math.min(timePassed, maxTimePassed)
+    const costToAdd = effectiveTimePassed * this.restoreRate
 
     this.availableCost = Math.min(this.maxCost, this.availableCost + costToAdd)
     this.lastRefill = now
   }
 
   public async waitForCost(estimatedCost: number = 50): Promise<void> {
-    this.refillCost()
-
-    if (this.availableCost < estimatedCost) {
-      const waitTime = ((estimatedCost - this.availableCost) / this.restoreRate) * 1000
-      console.log(
-        `Cost limiter: Waiting ${waitTime}ms for cost refill (need ${estimatedCost}, have ${this.availableCost.toFixed(1)})`
-      )
-      await new Promise((resolve) => setTimeout(resolve, waitTime))
-      this.refillCost()
+    // Validate input
+    if (!Number.isFinite(estimatedCost) || estimatedCost < 0) {
+      throw new Error(`[RateLimiter] Invalid estimatedCost: ${estimatedCost}`)
     }
 
-    this.availableCost -= estimatedCost
+    // Warn if request exceeds bucket capacity
+    if (estimatedCost > this.maxCost) {
+      console.error(
+        `[RateLimiter] WARNING: Estimated cost (${estimatedCost}) exceeds max bucket (${this.maxCost})! This request may be throttled by Shopify.`
+      )
+    }
+
+    this.pendingRequests++
+
+    // Note: A rare race condition exists where multiple concurrent requests
+    // wake from await simultaneously and over-deduct. This is mitigated by:
+    // 1. Safety buffer (100 points) provides cushion
+    // 2. Actual cost tracking corrects errors via updateActualCost()
+    // 3. Negative clamp in updateActualCost() prevents crashes
+    // 4. Node.js single-threaded execution minimizes race window
+    // A full mutex would eliminate this but adds complexity/dependencies.
+    try {
+      this.refillCost()
+
+      // Add safety buffer
+      const requiredCost = estimatedCost + this.safetyBuffer
+
+      if (this.availableCost < requiredCost) {
+        const waitTime = ((requiredCost - this.availableCost) / this.restoreRate) * 1000
+
+        // Warn about long waits or high concurrency
+        if (waitTime > 30000) {
+          console.warn(
+            `[RateLimiter] Long wait: ${Math.ceil(waitTime / 1000)}s for ${estimatedCost} points (${this.pendingRequests} pending requests)`
+          )
+        }
+
+        if (this.pendingRequests > 5) {
+          console.warn(
+            `[RateLimiter] High concurrency: ${this.pendingRequests} pending requests. Consider queuing webhooks.`
+          )
+        }
+
+        console.log(
+          `[RateLimiter] Waiting ${Math.ceil(waitTime)}ms for cost refill (need ${estimatedCost}, have ${this.availableCost.toFixed(1)})`
+        )
+        await new Promise((resolve) => setTimeout(resolve, waitTime))
+        this.refillCost()
+      }
+
+      this.availableCost -= estimatedCost
+      console.log(
+        `[RateLimiter] Reserved ${estimatedCost} points. Available: ${this.availableCost.toFixed(1)}/${this.maxCost} (${this.pendingRequests} pending)`
+      )
+    } finally {
+      this.pendingRequests--
+    }
+  }
+
+  public updateActualCost(actualCost: number, estimatedCost: number): void {
+    // Validate inputs
+    if (!Number.isFinite(actualCost) || actualCost < 0) {
+      console.error(`[RateLimiter] Invalid actualCost: ${actualCost}, ignoring update`)
+      return
+    }
+
+    const difference = actualCost - estimatedCost
+
+    // Adjust available cost based on reality
+    this.availableCost -= difference
+
+    // Clamp to prevent negative (in case we severely underestimated)
+    if (this.availableCost < 0) {
+      console.error(
+        `[RateLimiter] CRITICAL: Available cost went negative (${this.availableCost.toFixed(1)})! We severely underestimated. Setting to 0.`
+      )
+      this.availableCost = 0
+      this.lastRefill = Date.now() // Reset refill timer
+    }
+
+    // Log if our estimate was way off
+    if (Math.abs(difference) > 50) {
+      console.warn(
+        `[RateLimiter] Cost estimate off by ${difference} (estimated: ${estimatedCost}, actual: ${actualCost})`
+      )
+    }
+
     console.log(
-      `Cost limiter: Cost consumed (${estimatedCost}). Remaining cost: ${this.availableCost.toFixed(1)}`
+      `[RateLimiter] Actual cost: ${actualCost}, Available: ${this.availableCost.toFixed(1)}/${this.maxCost}`
     )
+  }
+
+  // Update bucket size dynamically from Shopify responses
+  public updateMaxCost(newMaxCost: number): void {
+    if (newMaxCost !== this.maxCost && Number.isFinite(newMaxCost) && newMaxCost > 0) {
+      console.log(`[RateLimiter] Adjusting max cost: ${this.maxCost} → ${newMaxCost}`)
+      this.maxCost = newMaxCost
+      // Clamp current available to new max
+      this.availableCost = Math.min(this.availableCost, this.maxCost)
+    }
+  }
+
+  public get currentAvailable(): number {
+    this.refillCost()
+    return this.availableCost
   }
 }
 
@@ -103,7 +221,7 @@ export default class Authentication {
   protected accessToken = Env.get('SHOPIFY_ACCESS_TOKEN_SECRET')
   protected client: AxiosInstance
   private urlGraphQL = `${this.shopUrl}/${this.apiVersion}/graphql.json`
-  private costLimiter = new ShopifyCostRateLimiter(1000, 50) // 1000 max cost, 50 restore rate
+  private costLimiter = ShopifyCostRateLimiter.getInstance() // Shared singleton instance
   private circuitBreaker = new CircuitBreaker()
 
   constructor() {
@@ -201,6 +319,34 @@ export default class Authentication {
           }
 
           const responseBody = await response.json()
+
+          // CRITICAL: Extract actual cost from Shopify response
+          const actualCost = responseBody.extensions?.cost?.actualQueryCost
+          if (actualCost !== undefined) {
+            this.costLimiter.updateActualCost(actualCost, estimatedCost)
+          } else {
+            console.warn('[Authentication] No cost data in response - using estimate')
+          }
+
+          // Check throttle status from Shopify
+          const throttleStatus = responseBody.extensions?.cost?.throttleStatus
+          if (throttleStatus && typeof throttleStatus.currentlyAvailable === 'number') {
+            console.log(
+              `[Authentication] Shopify bucket: ${throttleStatus.currentlyAvailable}/${throttleStatus.maximumAvailable || 'unknown'} (restore: ${throttleStatus.restoreRate || 'unknown'}/s)`
+            )
+
+            // Dynamically adjust our bucket size to match Shopify's actual bucket
+            if (typeof throttleStatus.maximumAvailable === 'number') {
+              this.costLimiter.updateMaxCost(throttleStatus.maximumAvailable)
+            }
+
+            // Warn if Shopify's bucket is getting low
+            if (throttleStatus.currentlyAvailable < 500) {
+              console.warn(
+                `[Authentication] WARNING: Shopify bucket running low (${throttleStatus.currentlyAvailable} available)`
+              )
+            }
+          }
 
           if (responseBody.errors) {
             console.error('Shopify GraphQL errors:', JSON.stringify(responseBody.errors, null, 2))
