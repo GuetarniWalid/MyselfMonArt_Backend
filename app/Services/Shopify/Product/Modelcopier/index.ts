@@ -807,7 +807,7 @@ export default abstract class ModelCopier {
         await new Promise((resolve) => setTimeout(resolve, delayMs))
 
         console.info(
-          `   🔄 Retrying variant creation (attempt ${attempt + 2}/${DAILY_LIMIT_RETRY_DELAYS.length + 1})...`
+          `   🔄 Retrying variant creation for ${productId} (attempt ${attempt + 2}/${DAILY_LIMIT_RETRY_DELAYS.length + 1})...`
         )
       }
     }
