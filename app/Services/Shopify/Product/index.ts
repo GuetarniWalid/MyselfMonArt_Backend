@@ -1051,8 +1051,8 @@ export default class Product extends Authentication {
    * @param mediaUrl - The public URL of the image to add (not a file ID)
    * @returns All media nodes for the product (newly added media is at the end)
    */
-  public async createMedia(productId: string, mediaUrl: string) {
-    const { query, variables } = this.getCreateMediaQuery(productId, mediaUrl)
+  public async createMedia(productId: string, mediaUrl: string, alt?: string) {
+    const { query, variables } = this.getCreateMediaQuery(productId, mediaUrl, alt)
     const response = await this.fetchGraphQL(query, variables)
 
     if (response.productUpdate.userErrors?.length) {
@@ -1063,7 +1063,7 @@ export default class Product extends Authentication {
     return response.productUpdate.product.media.nodes
   }
 
-  private getCreateMediaQuery(productId: string, mediaUrl: string) {
+  private getCreateMediaQuery(productId: string, mediaUrl: string, alt?: string) {
     return {
       query: `mutation productUpdate($product: ProductUpdateInput!, $media: [CreateMediaInput!]) {
         productUpdate(product: $product, media: $media) {
@@ -1091,6 +1091,7 @@ export default class Product extends Authentication {
           {
             mediaContentType: 'IMAGE',
             originalSource: mediaUrl,
+            ...(alt && { alt }), // Conditionally add alt if provided
           },
         ],
       },

@@ -7,6 +7,7 @@ import axios from 'axios'
 import Env from '@ioc:Adonis/Core/Env'
 import Shopify from 'App/Services/Shopify'
 import MockupQueue from 'App/Services/MockupQueue'
+import Mockup from 'App/Services/ChatGPT/Mockup'
 
 export default class MockupController {
   private queue = MockupQueue.getInstance()
@@ -173,10 +174,15 @@ export default class MockupController {
 
       // Upload to Shopify if successful
       if (data.success && data.resultPath && data.productId) {
+        // Retrieve original job metadata (including mockupTemplatePath)
+        const jobMetadata = this.queue.getJobMetadata(data.jobId)
+        const mockupTemplatePath = jobMetadata?.mockupTemplatePath
+
         console.log('🔍 DEBUG: Starting Shopify upload with:', {
           resultPath: data.resultPath,
           productId: data.productId,
           targetImagePosition: data.targetImagePosition,
+          mockupTemplatePath: mockupTemplatePath,
         })
 
         try {
@@ -184,9 +190,13 @@ export default class MockupController {
             productId: data.productId,
             mockupFilePath: data.resultPath,
             targetImagePosition: data.targetImagePosition || 0,
+            mockupTemplatePath: mockupTemplatePath,
           })
           console.log(`✅ DEBUG: Mockup uploaded to Shopify for product ${data.productId}`)
           console.log(`🎨 Mockup uploaded to Shopify for product ${data.productId}`)
+
+          // Clean up job metadata after successful upload
+          this.queue.cleanupJob(data.jobId)
 
           // Return success with uploaded and reordered flags
           const successResult = {
@@ -204,6 +214,10 @@ export default class MockupController {
             productId: data.productId,
             resultPath: data.resultPath,
           })
+
+          // Clean up job metadata to prevent memory leak
+          this.queue.cleanupJob(data.jobId)
+          console.log(`🧹 Job metadata cleaned up after upload error: ${data.jobId}`)
 
           // Generate public URL for the mockup file (so user can view it in browser)
           const fileName = path.basename(data.resultPath)
@@ -670,10 +684,12 @@ export default class MockupController {
     productId,
     mockupFilePath,
     targetImagePosition,
+    mockupTemplatePath,
   }: {
     productId: string
     mockupFilePath: string
     targetImagePosition: number
+    mockupTemplatePath?: string
   }): Promise<{ reordered: boolean }> {
     const shopify = new Shopify()
 
@@ -705,8 +721,65 @@ export default class MockupController {
 
     console.log(`🌐 Public URL: ${publicUrl}`)
 
-    // 3. Add new media to product using public URL (productUpdate handles upload internally)
-    const allMedia = await shopify.product.createMedia(productId, publicUrl)
+    // 2.5. Generate AI alt text for mockup image
+    let altText: string | undefined
+    try {
+      const isVierge = mockupTemplatePath?.toLowerCase().includes('vierge') ?? false
+      console.log(
+        `🤖 Generating AI alt text for ${isVierge ? 'VIERGE (artwork-focused)' : 'LIFESTYLE'} mockup...`
+      )
+      if (mockupTemplatePath) {
+        console.log(`   📁 Template: ${mockupTemplatePath}`)
+      }
+
+      const mockupService = new Mockup()
+
+      const productContext = {
+        title: product.title,
+        description: product.description || '',
+        templateSuffix: product.templateSuffix,
+        tags: product.tags || [],
+        mockupTemplatePath: mockupTemplatePath,
+      }
+
+      const altResult = await mockupService.generateMockupAlt(productContext, publicUrl)
+
+      // Validate length (50-125 characters)
+      if (altResult.alt.length >= 50 && altResult.alt.length <= 125) {
+        altText = altResult.alt
+        console.log(`✅ Generated alt text (${altText.length} chars): ${altText}`)
+        console.log(`   🎨 Subject detected: ${altResult.subjectDetected}`)
+
+        if (isVierge) {
+          // Vierge mockup - artwork-focused
+          if ('artisticStyle' in altResult && 'dominantColors' in altResult) {
+            console.log(`   🎨 Artistic style: ${altResult.artisticStyle}`)
+            console.log(`   🎨 Colors: ${altResult.dominantColors}`)
+          }
+        } else {
+          // Lifestyle mockup - room context
+          if ('isLifestyle' in altResult && 'roomType' in altResult) {
+            if (altResult.isLifestyle && altResult.roomType) {
+              console.log(`   📍 Lifestyle image in ${altResult.roomType}`)
+            } else {
+              console.log(`   📦 Product-only detected (no room visible)`)
+            }
+          }
+        }
+      } else {
+        console.warn(
+          `⚠️  Alt text length (${altResult.alt.length}) outside 50-125 range, using fallback`
+        )
+        altText = this.generateFallbackAlt(product)
+      }
+    } catch (error) {
+      console.error('❌ Failed to generate AI alt text:', error.message)
+      console.log('   Using fallback alt text')
+      altText = this.generateFallbackAlt(product)
+    }
+
+    // 3. Add new media to product using public URL with alt text (productUpdate handles upload internally)
+    const allMedia = await shopify.product.createMedia(productId, publicUrl, altText)
 
     // Validate that we got media back
     if (!allMedia || allMedia.length === 0) {
@@ -755,5 +828,16 @@ export default class MockupController {
 
     console.log(`🎨 Mockup replacement complete at position ${targetImagePosition + 1}`)
     return { reordered }
+  }
+
+  /**
+   * Generate fallback alt text when AI generation fails
+   * @param product Product object with title and templateSuffix
+   * @returns Fallback alt text (respects 125 character limit)
+   */
+  private generateFallbackAlt(product: any): string {
+    const suffix = product.templateSuffix === 'tapestry' ? 'tapisserie' : 'tableau'
+    const alt = `${product.title} - ${suffix} décoratif mural en situation`
+    return alt
   }
 }

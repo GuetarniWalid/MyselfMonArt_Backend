@@ -5,7 +5,6 @@
 const fs = require('uxp').storage.localFileSystem
 const { app } = require('photoshop')
 const { shell } = require('uxp')
-const clipboard = require('uxp').clipboard
 
 // ============================================
 // Plugin Configuration
@@ -729,8 +728,6 @@ const startAutomationBtn = document.getElementById('startAutomationBtn')
 // Loader animation
 let loaderInterval = null
 let loaderDots = null
-let dotPositions = [0, 0, 0]
-let dotDirections = [1, 1, 1]
 
 // Stats
 let jobsReceived = 0
@@ -755,7 +752,6 @@ let currentJobFileInfo = null // Track current job's file info for cleanup on er
 // Image position and error handling
 let targetImagePosition = 0 // Default to first image (0-indexed)
 let isPaused = false
-let failedJob = null
 let dotAnimationInterval = null // Track the dot animation interval
 
 /**
@@ -820,7 +816,6 @@ function showErrorModal(job, error) {
   console.log('🔍 DEBUG: showErrorModal SETTING isPaused = true')
   isPaused = true
   console.log('🔍 DEBUG: showErrorModal isPaused is now:', isPaused)
-  failedJob = job
 
   const productName = job.productTitle || 'Unknown'
   const errorMessage = error.message || 'Unknown error'
@@ -848,7 +843,6 @@ function hideErrorModal() {
   document.getElementById('errorModal').style.display = 'none'
   isPaused = false
   console.log('🔍 DEBUG: hideErrorModal isPaused is now:', isPaused)
-  failedJob = null
 }
 
 /**
@@ -1035,10 +1029,6 @@ function startLoader() {
 
   // JavaScript animation for bouncing dots
   if (loaderDots && loaderDots.length === 3) {
-    // Reset positions
-    dotPositions = [0, 0, 0]
-    dotDirections = [1, 1, 1]
-
     let frame = 0
     loaderInterval = setInterval(() => {
       // Animate each dot with staggered timing
