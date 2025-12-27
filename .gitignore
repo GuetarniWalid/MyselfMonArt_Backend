@@ -10,3 +10,4 @@ tmp
 copy-env.sh
 *.http
 .claude/
+photoshop-plugin/mockups/
