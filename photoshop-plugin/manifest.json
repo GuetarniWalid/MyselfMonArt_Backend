@@ -25,8 +25,9 @@
     "localFileSystem": "fullAccess",
     "launchProcess": {
       "schemes": ["file"],
-      "extensions": [".png", ".jpg", ".jpeg", ".gif"]
-    }
+      "extensions": [".png", ".jpg", ".jpeg", ".gif", ".html"]
+    },
+    "clipboard": "readAndWrite"
   },
   "entrypoints": [
     {

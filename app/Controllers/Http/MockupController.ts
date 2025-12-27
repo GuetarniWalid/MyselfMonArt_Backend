@@ -417,10 +417,10 @@ export default class MockupController {
       // Get all products to count products per collection
       const allProducts = await shopify.product.getAll(true)
 
-      // Build response with ID, title, and product count
+      // Build response with ID, title, product count, and products
       const collectionsWithCounts = paintingCollections.map((collection) => {
-        // Count products that have this collection as mother_collection
-        const productCount = allProducts.filter((product) => {
+        // Filter products by mother_collection metafield
+        const collectionProducts = allProducts.filter((product) => {
           if (!product.metafields?.edges) return false
           return product.metafields.edges.some(
             (edge) =>
@@ -428,12 +428,25 @@ export default class MockupController {
               edge.node.key === 'mother_collection' &&
               edge.node.reference?.title === collection.title
           )
-        }).length
+        })
+
+        // Map products to minimal format (include draft products too)
+        const products = collectionProducts.map((product) => ({
+          id: product.id,
+          title: product.title,
+          handle: product.handle,
+          onlineStoreUrl: product.onlineStoreUrl || null, // null for draft products
+        }))
+
+        console.log(
+          `📦 Collection "${collection.title}": ${collectionProducts.length} total, ${products.filter((p) => !p.onlineStoreUrl).length} draft`
+        )
 
         return {
           id: collection.id,
           title: collection.title,
-          productCount: productCount,
+          productCount: collectionProducts.length,
+          products: products, // NEW: Add products array
         }
       })
 

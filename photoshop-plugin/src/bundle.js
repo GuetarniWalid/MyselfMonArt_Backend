@@ -1118,6 +1118,14 @@ function handleDisconnect() {
 }
 
 /**
+ * Sanitize collection ID for use in HTML element IDs
+ */
+function sanitizeId(id) {
+  // Replace all non-alphanumeric characters with underscores
+  return id.replace(/[^a-zA-Z0-9]/g, '_')
+}
+
+/**
  * Populate collections checkboxes
  */
 function populateCollectionsDropdown() {
@@ -1155,6 +1163,13 @@ function populateCollectionsDropdown() {
 
   // Add individual collection checkboxes
   paintingCollections.forEach((collection) => {
+    console.log(
+      '🔍 Collection:',
+      collection.title,
+      'Products:',
+      collection.products ? collection.products.length : 'undefined'
+    )
+
     const checkboxItem = document.createElement('div')
     checkboxItem.className = 'checkbox-item'
     checkboxItem.innerHTML = `
@@ -1164,6 +1179,53 @@ function populateCollectionsDropdown() {
       </label>
     `
     collectionSelector.appendChild(checkboxItem)
+
+    // NEW: Create product links container (initially hidden)
+    if (collection.products && collection.products.length > 0) {
+      console.log(
+        '✅ Creating product container for:',
+        collection.title,
+        'ID:',
+        sanitizeId(collection.id)
+      )
+      const productContainer = document.createElement('div')
+      productContainer.className = 'product-links-container'
+      productContainer.id = `products-${sanitizeId(collection.id)}`
+      productContainer.style.display = 'none' // Hidden by default
+
+      collection.products.forEach((product) => {
+        const productLink = document.createElement('div')
+        productLink.className = 'checkbox-item indented product-link'
+
+        // Extract numeric ID from GraphQL ID (e.g., "gid://shopify/Product/123" -> "123")
+        const numericId = product.id.split('/').pop()
+
+        if (product.onlineStoreUrl) {
+          // Published product - clickable, copies URL to clipboard
+          productLink.innerHTML = `
+            <a href="#" class="product-url" data-url="${product.onlineStoreUrl}" title="Click to copy URL: ${product.title}">
+              <span class="product-link-icon">🔗</span>
+              <span class="product-link-text">${product.title}</span>
+            </a>
+          `
+        } else {
+          // Draft product - clickable, copies ID to clipboard
+          productLink.innerHTML = `
+            <a href="#" class="product-draft" data-id="${numericId}" title="Click to copy ID: ${numericId}">
+              <span class="product-link-icon">📄</span>
+              <span class="product-link-text">${product.title} <em>(Draft - ID: ${numericId})</em></span>
+            </a>
+          `
+        }
+
+        productContainer.appendChild(productLink)
+      })
+
+      collectionSelector.appendChild(productContainer)
+      console.log('✅ Product container appended')
+    } else {
+      console.log('❌ No products for:', collection.title)
+    }
   })
 
   // Setup "All Collections" checkbox behavior
@@ -1175,6 +1237,13 @@ function populateCollectionsDropdown() {
     const isChecked = allCheckboxInput.checked
     individualCheckboxes.forEach((checkbox) => {
       checkbox.checked = isChecked
+
+      // NEW: Show/hide all product containers
+      const collectionId = checkbox.value
+      const productContainer = document.getElementById(`products-${sanitizeId(collectionId)}`)
+      if (productContainer) {
+        productContainer.style.display = isChecked ? 'block' : 'none'
+      }
     })
     addLog('info', isChecked ? 'All collections selected' : 'All collections deselected')
     validateStartButton()
@@ -1191,6 +1260,26 @@ function populateCollectionsDropdown() {
       } else if (noneChecked || !allCheckboxInput.checked) {
         allCheckboxInput.checked = false
       }
+
+      // NEW: Show/hide product links based on checkbox state
+      const collectionId = checkbox.value
+      const sanitizedId = sanitizeId(collectionId)
+      const productContainer = document.getElementById(`products-${sanitizedId}`)
+      console.log(
+        '🔍 Checkbox change:',
+        checkbox.checked,
+        'ID:',
+        sanitizedId,
+        'Container found:',
+        !!productContainer
+      )
+      if (productContainer) {
+        productContainer.style.display = checkbox.checked ? 'block' : 'none'
+        console.log('✅ Product container display set to:', productContainer.style.display)
+      } else {
+        console.log('❌ Product container not found for ID:', `products-${sanitizedId}`)
+      }
+
       validateStartButton()
     })
   })
@@ -1198,7 +1287,80 @@ function populateCollectionsDropdown() {
   // Initial validation
   validateStartButton()
 
+  // NEW: Setup product link click handlers
+  setupProductLinkHandlers()
+
   addLog('info', 'Collection selector populated')
+}
+
+/**
+ * Setup click handlers for product links
+ */
+function setupProductLinkHandlers() {
+  // Handle published products (with URLs)
+  const productLinks = document.querySelectorAll('.product-url')
+  console.log('🔍 Setting up click handlers for', productLinks.length, 'published product links')
+
+  productLinks.forEach((link, index) => {
+    link.addEventListener('click', async (e) => {
+      e.preventDefault()
+      console.log('🔍 Published product link clicked:', index)
+
+      const url = link.getAttribute('data-url')
+      console.log('🔍 URL:', url)
+
+      if (!url || url === '') {
+        addLog('error', 'Product URL not available')
+        return
+      }
+
+      try {
+        // Copy URL to clipboard
+        await navigator.clipboard.writeText(url)
+        console.log('✅ URL copied to clipboard:', url)
+
+        addLog('success', `URL copied! Paste in browser: ${url.split('/').pop()}`)
+      } catch (error) {
+        console.error('❌ Error copying URL:', error)
+        addLog('error', `Failed to copy URL: ${error.message}`)
+      }
+    })
+  })
+
+  // Handle draft products (without URLs)
+  const draftLinks = document.querySelectorAll('.product-draft')
+  console.log('🔍 Setting up click handlers for', draftLinks.length, 'draft product links')
+
+  draftLinks.forEach((link, index) => {
+    link.addEventListener('click', async (e) => {
+      e.preventDefault()
+      console.log('🔍 Draft product link clicked:', index)
+
+      const productId = link.getAttribute('data-id')
+      console.log('🔍 Product ID:', productId)
+
+      if (!productId || productId === '') {
+        addLog('error', 'Product ID not available')
+        return
+      }
+
+      try {
+        // Copy product ID to clipboard
+        await navigator.clipboard.writeText(productId)
+        console.log('✅ Product ID copied to clipboard:', productId)
+
+        addLog('success', `Product ID copied to clipboard: ${productId}`)
+      } catch (error) {
+        console.error('❌ Error copying ID:', error)
+        addLog('error', `Failed to copy ID: ${error.message}`)
+      }
+    })
+  })
+
+  addLog(
+    'info',
+    `Attached click handlers to ${productLinks.length} published and ${draftLinks.length} draft products`
+  )
 }
 
 /**

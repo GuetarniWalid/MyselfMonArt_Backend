@@ -549,7 +549,7 @@
       }
 
       .checkbox-item span {
-        flex: 1;
+        margin-right: 6px;
         color: #e0e0e0 !important;
         font-size: 13px !important;
       }
@@ -571,6 +571,77 @@
 
       .checkbox-item.indented {
         padding-left: 12px;
+      }
+
+      /* Product link container */
+      .product-links-container {
+        margin-left: 0;
+        border-left: 2px solid #444;
+        margin-top: 4px;
+        margin-bottom: 8px;
+        max-height: 300px; /* Limit height for collections with many products */
+        overflow-y: auto; /* Add scrollbar if needed */
+      }
+
+      /* Product link items */
+      .checkbox-item.product-link {
+        padding-left: 24px; /* Extra indentation beyond .indented */
+        padding-top: 4px;
+        padding-bottom: 4px;
+      }
+
+      /* Product link anchor styling */
+      .product-url {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        text-decoration: none;
+        color: #64b5f6; /* Light blue for links */
+        font-size: 13px;
+        cursor: pointer;
+        transition: color 0.2s ease;
+      }
+
+      .product-url:hover {
+        color: #2196f3; /* Brighter blue on hover */
+        text-decoration: underline;
+      }
+
+      /* Product link icon */
+      .product-link-icon {
+        font-size: 12px;
+        flex-shrink: 0;
+      }
+
+      /* Product link text */
+      .product-link-text {
+        flex-grow: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      /* Draft product styling */
+      .product-draft {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        text-decoration: none;
+        color: #999; /* Gray color for draft products */
+        font-size: 13px;
+        cursor: pointer; /* Now clickable */
+        transition: color 0.2s ease;
+      }
+
+      .product-draft:hover {
+        color: #bbb; /* Lighter gray on hover */
+        text-decoration: underline;
+      }
+
+      .product-draft em {
+        font-style: italic;
+        color: #777;
+        font-size: 11px;
       }
 
       .collection-loader {
