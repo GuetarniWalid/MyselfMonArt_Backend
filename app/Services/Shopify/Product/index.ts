@@ -1007,9 +1007,13 @@ export default class Product extends Authentication {
   }
 
   /**
-   * Delete media files from Shopify
+   * Delete media files globally from Shopify store
    * Uses fileDelete mutation (replaces deprecated productDeleteMedia)
    * Requires: write_files access scope
+   *
+   * ⚠️  WARNING: This deletes files GLOBALLY from ALL products
+   * If file is shared by multiple products, use detachMediaFromProduct() instead
+   *
    * Note: File deletion is permanent and cannot be undone
    * @param _productId - Kept for backward compatibility, not used by fileDelete
    */
@@ -1038,6 +1042,48 @@ export default class Product extends Authentication {
       }`,
       variables: {
         fileIds: mediaIds,
+      },
+    }
+  }
+
+  public async detachMediaFromProduct(productId: string, mediaIds: string[]) {
+    const { query, variables } = this.getDetachMediaQuery(productId, mediaIds)
+    const response = await this.fetchGraphQL(query, variables)
+
+    if (response.fileUpdate.userErrors?.length) {
+      const errors = response.fileUpdate.userErrors
+        .map((e) => `[${e.code}] ${e.field?.join('.')}: ${e.message}`)
+        .join(', ')
+      throw new Error(`File update errors: ${errors}`)
+    }
+
+    return response.fileUpdate.files
+  }
+
+  private getDetachMediaQuery(productId: string, mediaIds: string[]) {
+    return {
+      query: `mutation fileUpdate($files: [FileUpdateInput!]!) {
+        fileUpdate(files: $files) {
+          files {
+            id
+            fileStatus
+            ... on MediaImage {
+              id
+              alt
+            }
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }`,
+      variables: {
+        files: mediaIds.map((mediaId) => ({
+          id: mediaId,
+          referencesToRemove: [productId],
+        })),
       },
     }
   }

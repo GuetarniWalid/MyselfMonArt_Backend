@@ -712,6 +712,8 @@ const step4 = document.getElementById('step4')
 const step5 = document.getElementById('step5')
 const step6 = document.getElementById('step6')
 const step7 = document.getElementById('step7')
+const step8 = document.getElementById('step8')
+const step9 = document.getElementById('step9')
 
 // Automation Form Elements
 const automationSection = document.getElementById('automationSection')
@@ -2050,10 +2052,21 @@ async function processNextJob() {
             addLog('info', 'No reordering needed')
           }
 
-          // Step 8: Final - Saved on Shopify
-          updateStep(8, 'active')
+          // Step 8: Detach old media (if needed)
+          if (response && response.oldMediaDetached) {
+            updateStep(8, 'active')
+            addLog('info', 'Removing old image from product...')
+            updateStep(8, 'completed')
+            addLog('success', 'Old image removed from product')
+          } else {
+            updateStep(8, 'completed')
+            addLog('info', 'No old image to remove')
+          }
+
+          // Step 9: Final - Saved on Shopify
+          updateStep(9, 'active')
           addLog('info', 'Finalizing on Shopify...')
-          updateStep(8, 'completed')
+          updateStep(9, 'completed')
           addLog('success', 'File processed and saved on Shopify')
 
           // Clean up temp mockup file after successful Shopify upload
@@ -2087,7 +2100,7 @@ async function processNextJob() {
           addLog('error', `Failed to upload to Shopify: ${error.message}`)
 
           // Mark current step as error
-          updateStep(7, 'error')
+          updateStep(9, 'error')
 
           console.log('🔍 DEBUG: Showing error modal with job:', {
             jobTitle: job.productTitle,
@@ -2245,21 +2258,21 @@ function resetSteps() {
     dotAnimationInterval = null
   }
 
-  const steps = [step1, step2, step3, step4, step5, step6, step7]
+  const steps = [step1, step2, step3, step4, step5, step6, step7, step8, step9]
   steps.forEach((step) => {
     step.classList.remove('active', 'completed', 'error')
     const icon = step.querySelector('.step-icon')
     icon.innerHTML = '○'
   })
   progressBar.style.width = '0%'
-  progressText.textContent = 'Étape 0 sur 8'
+  progressText.textContent = 'Étape 0 sur 9'
 }
 
 /**
  * Reset all processing steps to initial state
  */
 function resetSteps() {
-  const steps = [step1, step2, step3, step4, step5, step6, step7]
+  const steps = [step1, step2, step3, step4, step5, step6, step7, step8, step9]
 
   // Clear any existing dot animation
   if (dotAnimationInterval) {
@@ -2295,7 +2308,7 @@ function resetSteps() {
  * Update processing step
  */
 function updateStep(stepNumber, status = 'active') {
-  const steps = [step1, step2, step3, step4, step5, step6, step7]
+  const steps = [step1, step2, step3, step4, step5, step6, step7, step8, step9]
   const step = steps[stepNumber - 1]
 
   if (!step) return
@@ -2353,9 +2366,9 @@ function updateStep(stepNumber, status = 'active') {
   }
 
   // Update progress bar
-  const progress = (stepNumber / 8) * 100
+  const progress = (stepNumber / 9) * 100
   progressBar.style.width = `${progress}%`
-  progressText.textContent = `Étape ${stepNumber} sur 8`
+  progressText.textContent = `Étape ${stepNumber} sur 9`
 
   // Mark previous steps as completed
   for (let i = 0; i < stepNumber - 1; i++) {

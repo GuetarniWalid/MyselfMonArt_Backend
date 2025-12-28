@@ -203,6 +203,7 @@ export default class MockupController {
             success: true,
             uploaded: true,
             reordered: uploadResult.reordered,
+            oldMediaDetached: uploadResult.oldMediaDetached,
           }
           console.log('🔍 DEBUG: Returning success result:', successResult)
           return response.ok(successResult)
@@ -703,7 +704,7 @@ export default class MockupController {
     mockupFilePath: string
     targetImagePosition: number
     mockupTemplatePath?: string
-  }): Promise<{ reordered: boolean }> {
+  }): Promise<{ reordered: boolean; oldMediaDetached: boolean }> {
     const shopify = new Shopify()
 
     // 1. Get product to check current media and save old media ID at target position
@@ -831,16 +832,26 @@ export default class MockupController {
       console.log(`✅ New media already at correct position ${targetImagePosition + 1}`)
     }
 
-    // 7. Delete old media if it existed at target position
-    // After reordering, the old media has been shifted one position to the right
+    let oldMediaDetached = false
     if (oldMediaId) {
-      console.log(`🗑️  Deleting old media: ${oldMediaId}`)
-      await shopify.product.deleteMedia(productId, [oldMediaId])
-      console.log(`✅ Old media deleted`)
+      try {
+        console.log(`🗑️  Removing old media from product: ${oldMediaId}`)
+        const result = await shopify.product.detachMediaFromProduct(productId, [oldMediaId])
+        const fileStatus = result[0]?.fileStatus || 'UNKNOWN'
+        console.log(`✅ Old media detached from product (status: ${fileStatus})`)
+
+        if (fileStatus === 'PROCESSING') {
+          console.warn(`⚠️  File still processing - may need time to complete`)
+        }
+        oldMediaDetached = true
+      } catch (error) {
+        console.warn(`⚠️  Failed to detach old media: ${error.message}`)
+        console.warn(`   Old media remains at position ${targetImagePosition + 1}`)
+      }
     }
 
     console.log(`🎨 Mockup replacement complete at position ${targetImagePosition + 1}`)
-    return { reordered }
+    return { reordered, oldMediaDetached }
   }
 
   /**
