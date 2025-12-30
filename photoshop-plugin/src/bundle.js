@@ -196,25 +196,30 @@ class MockupProcessor {
   }
 
   /**
-   * Recursively search for smart object layer
+   * Recursively search for smart object layer with path tracking
    */
-  findSmartObjectInLayers(layers, targetName = null) {
+  findSmartObjectInLayers(layers, targetName = null, currentPath = '') {
     for (let i = 0; i < layers.length; i++) {
       const layer = layers[i]
+      const layerPath = currentPath ? `${currentPath} > ${layer.name}` : layer.name
 
       // Check if this layer is the smart object we're looking for
-      if (targetName && layer.name === targetName && layer.kind === 'smartObject') {
-        return layer
+      if (
+        targetName &&
+        layer.name.toLowerCase() === targetName.toLowerCase() &&
+        layer.kind === 'smartObject'
+      ) {
+        return { layer, path: layerPath }
       }
 
       // If no target name, return first smart object
       if (!targetName && layer.kind === 'smartObject') {
-        return layer
+        return { layer, path: layerPath }
       }
 
       // If this is a group, search recursively inside it
       if (layer.kind === 'group' && layer.layers) {
-        const found = this.findSmartObjectInLayers(layer.layers, targetName)
+        const found = this.findSmartObjectInLayers(layer.layers, targetName, layerPath)
         if (found) {
           return found
         }
@@ -225,29 +230,35 @@ class MockupProcessor {
   }
 
   /**
-   * Find smart object layer
+   * Find smart object layer named "Artwork"
    */
   async findSmartObjectLayer(doc) {
-    this.log('info', 'Searching for smart object layer')
+    this.log('info', 'Searching for smart object layer named "Artwork"...')
 
     try {
-      // First, try to find layer named "Artwork" (recursively)
-      let smartObject = this.findSmartObjectInLayers(doc.layers, 'Artwork')
+      // Search for layer named "Artwork" (case-insensitive, recursive)
+      const result = this.findSmartObjectInLayers(doc.layers, 'Artwork')
 
-      if (smartObject) {
-        this.log('success', `Found smart object: ${smartObject.name}`)
-        return smartObject
+      if (result) {
+        const { layer, path } = result
+        this.log('success', `Found smart object "Artwork" at: ${path}`)
+
+        // Log nesting level for transparency
+        const nestingLevel = path.split(' > ').length - 1
+        if (nestingLevel > 0) {
+          this.log('info', `Layer is nested ${nestingLevel} level(s) deep`)
+        } else {
+          this.log('info', 'Layer is at root level')
+        }
+
+        return layer
       }
 
-      // If not found, get the first smart object (recursively)
-      smartObject = this.findSmartObjectInLayers(doc.layers, null)
-
-      if (smartObject) {
-        this.log('success', `Found smart object: ${smartObject.name}`)
-        return smartObject
-      }
-
-      throw new Error('No smart object layer found')
+      // No fallback - "Artwork" is mandatory
+      throw new Error(
+        'Smart object layer "Artwork" not found in template. ' +
+          'Please ensure your PSD template contains a smart object layer named "Artwork" (case-insensitive).'
+      )
     } catch (error) {
       this.log('error', `Smart object search failed: ${error.message}`)
       throw error
@@ -255,64 +266,219 @@ class MockupProcessor {
   }
 
   /**
-   * Replace smart object contents
+   * Validate all mockup templates in folder for "Artwork" smart object
+   * @returns {Object} { valid: boolean, errors: Array<{fileName, error}> }
    */
-  async replaceSmartObject(layer, imageFile) {
+  async validateMockupTemplates(mockupTemplatePath) {
+    this.log('info', '🔍 Starting mockup template validation...')
+    this.log('info', `Checking all PSD files in: ${mockupTemplatePath}`)
+
+    const errors = []
+
+    try {
+      // Get plugin folder and navigate to template folder
+      const pluginFolder = await fs.getPluginFolder()
+      const mockupsFolder = await pluginFolder.getEntry('mockups')
+
+      const [categoryName, subfolderName] = mockupTemplatePath.split('/')
+      const categoryFolder = await mockupsFolder.getEntry(categoryName)
+      const templateFolder = await categoryFolder.getEntry(subfolderName)
+
+      // Get all PSD/PSB files in the template folder
+      const entries = await templateFolder.getEntries()
+      const psdFiles = entries.filter((entry) => {
+        const ext = entry.name.toLowerCase().split('.').pop()
+        return !entry.isFolder && (ext === 'psd' || ext === 'psb')
+      })
+
+      if (psdFiles.length === 0) {
+        this.log('error', 'No PSD/PSB files found in template folder')
+        return {
+          valid: false,
+          errors: [{ fileName: mockupTemplatePath, error: 'No PSD/PSB files found' }],
+        }
+      }
+
+      this.log('info', `Found ${psdFiles.length} PSD file(s) to validate`)
+
+      // Validate each PSD file
+      for (const psdFile of psdFiles) {
+        this.log('info', `Validating: ${psdFile.name}...`)
+
+        let fileHasArtwork = false
+
+        try {
+          // Open document in modal scope
+          await require('photoshop').core.executeAsModal(
+            async () => {
+              let doc = null
+              try {
+                // Open the document
+                doc = await app.open(psdFile)
+                this.log('info', `  ✓ Opened: ${psdFile.name}`)
+
+                // Try to find "Artwork" smart object
+                const result = this.findSmartObjectInLayers(doc.layers, 'Artwork')
+
+                if (result) {
+                  const { path } = result
+                  this.log('success', `  ✓ Found "Artwork" at: ${path}`)
+                  fileHasArtwork = true
+                } else {
+                  // "Artwork" not found
+                  this.log('error', `  ✗ Smart object "Artwork" NOT FOUND in ${psdFile.name}`)
+                  fileHasArtwork = false
+                }
+              } finally {
+                // Always close the document without saving
+                if (doc) {
+                  await doc.close('no')
+                  this.log('info', `  ✓ Closed: ${psdFile.name}`)
+                }
+              }
+            },
+            {
+              commandName: `Validate ${psdFile.name}`,
+              interactive: false,
+            }
+          )
+
+          // Add error after modal scope if Artwork not found
+          if (!fileHasArtwork) {
+            const errorMsg = 'Smart object "Artwork" not found'
+            errors.push({ fileName: psdFile.name, error: errorMsg })
+            this.log('error', `  ✗ Added ${psdFile.name} to error list`)
+          }
+        } catch (error) {
+          this.log('error', `  ✗ Exception validating ${psdFile.name}: ${error.message}`)
+          errors.push({ fileName: psdFile.name, error: error.message })
+        }
+      }
+
+      // Report results
+      if (errors.length > 0) {
+        this.log('error', `❌ Validation failed: ${errors.length} file(s) with errors`)
+        return { valid: false, errors }
+      } else {
+        this.log(
+          'success',
+          `✅ Validation passed: All ${psdFiles.length} file(s) contain "Artwork"`
+        )
+        return { valid: true, errors: [] }
+      }
+    } catch (error) {
+      this.log('error', `Validation error: ${error.message}`)
+      return {
+        valid: false,
+        errors: [{ fileName: 'Unknown', error: error.message }],
+      }
+    }
+  }
+
+  /**
+   * Replace smart object contents using "Replace Contents" command
+   */
+  async replaceSmartObject(layer, imageFile, mainDoc) {
     this.log('info', `Replacing smart object with: ${imageFile.name}`)
 
     try {
       const { batchPlay } = require('photoshop').action
       const { storage } = require('uxp')
-      const { app } = require('photoshop')
-
-      // Select the layer first
-      layer.selected = true
 
       // Get file token for the image file
       const token = await storage.localFileSystem.createSessionToken(imageFile)
 
-      // Edit/open the smart object
+      // Open the smart object for editing
       this.log('info', 'Opening smart object for editing...')
-      await batchPlay(
-        [
-          {
-            _obj: 'placedLayerEditContents',
-          },
-        ],
-        {}
+      const { app } = require('photoshop')
+
+      const beforeDocCount = app.documents.length
+      this.log(
+        'info',
+        `Before opening: active doc = "${app.activeDocument?.name}", total docs = ${beforeDocCount}`
       )
 
-      // Wait a moment for the smart object to open
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      // Diagnostic: Log layer properties
+      this.log('info', '🔍 Layer diagnostics:')
+      this.log('info', `  - Layer name: "${layer.name}"`)
+      this.log('info', `  - Layer kind: ${layer.kind}`)
+      this.log('info', `  - Layer locked: ${layer.locked}`)
+      this.log('info', `  - Layer visible: ${layer.visible}`)
+      this.log('info', `  - Layer typename: ${layer.typename}`)
+      this.log('info', `  - Layer id: ${layer.id}`)
+      this.log('info', `  - Layer bounds: ${JSON.stringify(layer.bounds)}`)
 
-      // Now we're inside the smart object document
+      // Select the smart object layer explicitly by ID using batchPlay
+      this.log('info', `Selecting layer by ID: ${layer.id}`)
+      try {
+        await batchPlay(
+          [
+            {
+              _obj: 'select',
+              _target: [{ _ref: 'layer', _id: layer.id }],
+              makeVisible: false,
+            },
+          ],
+          {}
+        )
+        this.log('info', 'Layer selected via batchPlay')
+      } catch (error) {
+        this.log('error', `Failed to select layer: ${error.message}`)
+      }
+
+      // Try to open the smart object with explicit layer reference
+      try {
+        await batchPlay(
+          [
+            {
+              _obj: 'placedLayerEditContents',
+              _target: [{ _ref: 'layer', _id: layer.id }],
+            },
+          ],
+          {}
+        )
+      } catch (error) {
+        this.log('error', `Failed to open smart object: ${error.message}`)
+        throw new Error(`Cannot open smart object for editing: ${error.message}`)
+      }
+
+      // Wait longer for smart object to open (some templates need more time)
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+
       const smartObjectDoc = app.activeDocument
-      this.log('info', `Inside smart object: ${smartObjectDoc.name}`)
+      const afterDocCount = app.documents.length
+      this.log(
+        'info',
+        `After opening: active doc = "${smartObjectDoc?.name}", ID = ${smartObjectDoc?.id}, total docs = ${afterDocCount}`
+      )
 
-      // Place the new image on top (no need to delete existing layers)
+      // Verify the smart object actually opened
+      if (afterDocCount === beforeDocCount) {
+        this.log('error', 'Smart object did not open! Document count did not increase.')
+        throw new Error(
+          `Smart object failed to open. The layer might be locked, corrupted, or not a valid embedded smart object.`
+        )
+      }
+
+      // List all open documents
+      const docNames = app.documents.map((d) => `"${d.name}" (ID:${d.id})`).join(', ')
+      this.log('info', `All open documents: ${docNames}`)
+
+      // Place the new image
       this.log('info', 'Placing new image as top layer in smart object...')
       await batchPlay(
         [
           {
             _obj: 'placeEvent',
-            null: {
-              _path: token,
-              _kind: 'local',
-            },
-            freeTransformCenterState: {
-              _enum: 'quadCenterState',
-              _value: 'QCSAverage',
-            },
+            null: { _path: token, _kind: 'local' },
+            freeTransformCenterState: { _enum: 'quadCenterState', _value: 'QCSAverage' },
           },
         ],
         {}
       )
 
       // Get canvas and image dimensions for cover calculation
-      const canvas = {
-        width: smartObjectDoc.width,
-        height: smartObjectDoc.height,
-      }
+      const canvas = { width: smartObjectDoc.width, height: smartObjectDoc.height }
       const imageLayer = smartObjectDoc.activeLayers[0]
       const imageBounds = imageLayer.bounds
       const image = {
@@ -328,7 +494,7 @@ class MockupProcessor {
       // Calculate "cover" scale (fill entire canvas, maintain aspect ratio)
       const scaleX = canvas.width / image.width
       const scaleY = canvas.height / image.height
-      const scale = Math.max(scaleX, scaleY) * 100 // Use larger scale to cover, convert to percentage
+      const scale = Math.max(scaleX, scaleY) * 100
 
       this.log('info', `Applying cover scale: ${scale.toFixed(2)}%`)
 
@@ -337,10 +503,7 @@ class MockupProcessor {
         [
           {
             _obj: 'transform',
-            freeTransformCenterState: {
-              _enum: 'quadCenterState',
-              _value: 'QCSAverage',
-            },
+            freeTransformCenterState: { _enum: 'quadCenterState', _value: 'QCSAverage' },
             offset: {
               _obj: 'offset',
               horizontal: { _unit: 'pixelsUnit', _value: 0 },
@@ -348,39 +511,30 @@ class MockupProcessor {
             },
             width: { _unit: 'percentUnit', _value: scale },
             height: { _unit: 'percentUnit', _value: scale },
-            interfaceIconFrameDimmed: {
-              _enum: 'interpolationType',
-              _value: 'bicubic',
-            },
+            interfaceIconFrameDimmed: { _enum: 'interpolationType', _value: 'bicubic' },
           },
         ],
         {}
       )
 
-      // Center the image on the canvas
+      // Center the image
       await batchPlay(
         [
           {
             _obj: 'align',
             _target: [{ _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' }],
-            using: {
-              _enum: 'alignDistributeSelector',
-              _value: 'ADSCentersH',
-            },
+            using: { _enum: 'alignDistributeSelector', _value: 'ADSCentersH' },
           },
           {
             _obj: 'align',
             _target: [{ _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' }],
-            using: {
-              _enum: 'alignDistributeSelector',
-              _value: 'ADSCentersV',
-            },
+            using: { _enum: 'alignDistributeSelector', _value: 'ADSCentersV' },
           },
         ],
         {}
       )
 
-      // Flatten/rasterize the placed layer
+      // Rasterize
       await batchPlay(
         [
           {
@@ -391,22 +545,53 @@ class MockupProcessor {
         {}
       )
 
-      // Save and close the smart object
-      this.log('info', 'Closing smart object...')
-      await batchPlay(
-        [
-          {
-            _obj: 'close',
-            saving: {
-              _enum: 'yesNo',
-              _value: 'yes',
-            },
-          },
-        ],
-        {}
+      // Save the smart object - DO NOT CLOSE IT
+      this.log('info', 'Saving smart object (leaving it open)...')
+      await batchPlay([{ _obj: 'save' }], {})
+
+      // Switch back to main document by making it active
+      // Find it in the documents array (should be there alongside the smart object doc)
+      this.log('info', 'Switching back to main document...')
+      const mainDocInArray = app.documents.find(
+        (d) => d.id === mainDoc.id || d.name === mainDoc.name
       )
 
-      this.log('success', 'Smart object replaced successfully')
+      if (mainDocInArray) {
+        // Make main doc active by selecting it
+        await batchPlay(
+          [
+            {
+              _obj: 'select',
+              _target: [{ _ref: 'document', _id: mainDocInArray.id }],
+            },
+          ],
+          {}
+        )
+        this.log('success', 'Switched to main document')
+
+        // Update the smart object layer to reflect changes (auto-click "Update")
+        this.log('info', 'Updating smart object layer in main document...')
+        await batchPlay(
+          [
+            {
+              _obj: 'placedLayerUpdateAllModified',
+            },
+          ],
+          {}
+        )
+        this.log('success', 'Smart object layer updated')
+
+        // Now close the smart object document to prevent accumulation
+        this.log('info', `Closing smart object document: ${smartObjectDoc.name}`)
+        await smartObjectDoc.close('no') // Don't save again, we already saved
+        this.log('success', 'Smart object document closed')
+
+        return mainDocInArray
+      }
+
+      // Fallback: just return the original reference and hope it still works
+      this.log('warning', 'Could not find main doc in array, using original reference')
+      return mainDoc
     } catch (error) {
       this.log('error', `Failed to replace smart object: ${error.message}`)
       throw error
@@ -493,8 +678,12 @@ class MockupProcessor {
           this.step(4, 'active')
           this.log('info', 'Step 4/5: Replacing smart object...')
           const smartObject = await this.findSmartObjectLayer(doc)
-          await this.replaceSmartObject(smartObject, productImage)
+          const mainDocAfter = await this.replaceSmartObject(smartObject, productImage, doc)
           this.step(4, 'completed')
+
+          // Use the returned main document reference (found by ID)
+          doc = mainDocAfter
+          this.log('info', 'Using main document reference returned from smart object replacement')
 
           // Step 5: Save result
           this.step(5, 'active')
@@ -895,6 +1084,15 @@ function init() {
       }
     })
   })
+
+  // Validation modal event listener
+  const validationCloseBtn = document.getElementById('validationCloseBtn')
+  if (validationCloseBtn) {
+    validationCloseBtn.addEventListener('click', () => {
+      document.getElementById('validationModal').style.display = 'none'
+      enableStartButton()
+    })
+  }
 
   // Error modal event listeners
   const errorContinueBtn = document.getElementById('errorContinueBtn')
@@ -1565,6 +1763,37 @@ async function handleTemplateChange() {
 }
 
 /**
+ * Show validation error modal
+ */
+function showValidationModal(errors) {
+  const modal = document.getElementById('validationModal')
+  const errorList = document.getElementById('validationErrorList')
+
+  // Clear previous errors
+  errorList.innerHTML = ''
+
+  // Populate error list
+  errors.forEach((error) => {
+    const errorItem = document.createElement('div')
+    errorItem.style.marginBottom = '8px'
+    errorItem.style.paddingBottom = '8px'
+    errorItem.style.borderBottom = '1px solid #333'
+    errorItem.innerHTML = `
+      <div style="color: #f44336; font-weight: 500; margin-bottom: 4px;">
+        ❌ ${error.fileName}
+      </div>
+      <div style="color: #999; font-size: 11px; padding-left: 20px;">
+        ${error.error}
+      </div>
+    `
+    errorList.appendChild(errorItem)
+  })
+
+  // Show modal
+  modal.style.display = 'block'
+}
+
+/**
  * Handle start automation button click
  */
 async function handleStartAutomation() {
@@ -1603,6 +1832,35 @@ async function handleStartAutomation() {
     return
   }
 
+  // Disable button during validation
+  startAutomationBtn.disabled = true
+  startAutomationBtn.classList.add('processing')
+  startAutomationBtn.textContent = 'Validation des templates...'
+
+  // PRE-FLIGHT VALIDATION: Check all mockup templates for "Artwork" smart object
+  addLog('info', '🔍 Pre-flight validation: Checking mockup templates...')
+  try {
+    const validationResult = await processor.validateMockupTemplates(mockupTemplatePath)
+
+    if (!validationResult.valid) {
+      // Validation failed - show error modal
+      addLog(
+        'error',
+        `❌ Template validation failed: ${validationResult.errors.length} file(s) with errors`
+      )
+      showValidationModal(validationResult.errors)
+      enableStartButton()
+      return
+    }
+
+    // Validation passed
+    addLog('success', '✅ All mockup templates validated successfully')
+  } catch (error) {
+    addLog('error', `Validation error: ${error.message}`)
+    enableStartButton()
+    return
+  }
+
   // Set the mockup template folder for the processor BEFORE starting automation
   processor.setMockupTemplateFolder(mockupTemplatePath)
   addLog('info', `Using template: ${mockupTemplatePath}`)
@@ -1616,12 +1874,10 @@ async function handleStartAutomation() {
     collectionNames = selectedNames.join(', ')
   }
 
-  // Disable button and checkboxes during processing
-  startAutomationBtn.disabled = true
-  startAutomationBtn.classList.add('processing')
+  // Update button state for processing
+  startAutomationBtn.textContent = 'Traitement en cours...'
   const allCheckboxes = collectionSelector.querySelectorAll('input[type="checkbox"]')
   allCheckboxes.forEach((cb) => (cb.disabled = true))
-  startAutomationBtn.textContent = 'Traitement en cours...'
 
   try {
     addLog('info', `Starting automation for: ${collectionNames}`)
