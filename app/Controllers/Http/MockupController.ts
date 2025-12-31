@@ -482,8 +482,9 @@ export default class MockupController {
 
   // Start mockup automation for specific collection(s)
   public async startAutomation({ request, response }: HttpContextContract) {
-    const { collectionIds, mockupTemplatePath, targetImagePosition } = request.only([
+    const { collectionIds, productIds, mockupTemplatePath, targetImagePosition } = request.only([
       'collectionIds',
+      'productIds',
       'mockupTemplatePath',
       'targetImagePosition',
     ])
@@ -505,7 +506,18 @@ export default class MockupController {
     }
 
     console.log('🎨 Starting Mockup Automation via API')
-    console.log(`   Collection IDs: ${JSON.stringify(collectionIds)}`)
+
+    // Determine if using range selection (productIds) or collection selection (collectionIds)
+    const useRangeSelection = productIds && Array.isArray(productIds) && productIds.length > 0
+
+    if (useRangeSelection) {
+      console.log(`   Product IDs (range selection): ${productIds.length} products`)
+      console.log(
+        `   IDs: ${JSON.stringify(productIds.slice(0, 5))}${productIds.length > 5 ? '...' : ''}`
+      )
+    } else {
+      console.log(`   Collection IDs: ${JSON.stringify(collectionIds)}`)
+    }
     console.log(`   Mockup Template: ${mockupTemplatePath}`)
 
     // Generate unique batch ID for file tracking and cleanup
@@ -516,55 +528,85 @@ export default class MockupController {
     try {
       const shopify = new Shopify()
 
-      // Get all products from Shopify (including unpublished) and filter painting products first
-      const allProducts = await shopify.product.getAll(true)
-      const paintingProducts = allProducts.filter(
-        (product) => product.templateSuffix === 'painting'
-      )
+      let productsToUpdate: Product[] = []
 
-      console.log(`📦 Total painting products found: ${paintingProducts.length}`)
+      if (useRangeSelection) {
+        // Range selection mode - get products by IDs directly
+        console.log(`📦 Fetching ${productIds.length} products by ID...`)
 
-      let productsToUpdate: typeof allProducts = []
+        // Deduplicate product IDs (in case frontend sends duplicates)
+        const uniqueProductIds = [...new Set(productIds)]
+        if (uniqueProductIds.length !== productIds.length) {
+          console.log(`⚠️  Removed ${productIds.length - uniqueProductIds.length} duplicate ID(s)`)
+        }
 
-      if (collectionIds.includes('all')) {
-        // Process all painting products
-        productsToUpdate = paintingProducts
+        // Get all products (we need this for metadata)
+        const allProducts = await shopify.product.getAll(true)
 
-        console.log(`📦 Processing ALL painting products`)
-        console.log(`📝 Total products selected: ${productsToUpdate.length}`)
+        // Filter to only the products in productIds array, maintaining order
+        productsToUpdate = uniqueProductIds
+          .map((productId) => allProducts.find((p) => p.id === productId))
+          .filter((product) => product !== undefined) as Product[]
+
+        console.log(`📝 Found ${productsToUpdate.length} products from range selection`)
       } else {
-        // Get all collections
-        const allCollections = await shopify.collection.getAll()
+        // Collection-based selection mode (existing logic)
+        // Get all products from Shopify (including unpublished) and filter painting products first
+        const allProducts = await shopify.product.getAll(true)
+        const paintingProducts = allProducts.filter(
+          (product) => product.templateSuffix === 'painting'
+        )
 
-        // Find target collections
-        const targetCollections = allCollections.filter((c) => collectionIds.includes(c.id))
+        console.log(`📦 Total painting products found: ${paintingProducts.length}`)
 
-        if (targetCollections.length === 0) {
+        // Validate collectionIds exists in collection-based mode
+        if (!collectionIds || !Array.isArray(collectionIds)) {
           return response.badRequest({
             success: false,
-            message: 'No valid collections found',
+            message: 'Collection IDs are required for collection-based selection',
           })
         }
 
-        const targetTitles = targetCollections.map((c) => c.title)
-        console.log(`📦 Target collections: ${targetTitles.join(', ')}`)
+        if (collectionIds.includes('all')) {
+          // Process all painting products
+          productsToUpdate = paintingProducts
 
-        // Filter painting products that match ANY of the selected collections
-        productsToUpdate = paintingProducts.filter((product) => {
-          if (!product.metafields?.edges) return false
+          console.log(`📦 Processing ALL painting products`)
+          console.log(`📝 Total products selected: ${productsToUpdate.length}`)
+        } else {
+          // Get all collections
+          const allCollections = await shopify.collection.getAll()
 
-          return product.metafields.edges.some((edge) => {
-            const node = edge.node as any
-            return (
-              node.namespace === 'link' &&
-              node.key === 'mother_collection' &&
-              node.reference?.title &&
-              targetTitles.includes(node.reference.title)
-            )
+          // Find target collections
+          const targetCollections = allCollections.filter((c) => collectionIds.includes(c.id))
+
+          if (targetCollections.length === 0) {
+            return response.badRequest({
+              success: false,
+              message: 'No valid collections found',
+            })
+          }
+
+          const targetTitles = targetCollections.map((c) => c.title)
+          console.log(`📦 Target collections: ${targetTitles.join(', ')}`)
+
+          // Filter painting products that match ANY of the selected collections
+          productsToUpdate = paintingProducts.filter((product) => {
+            if (!product.metafields?.edges) return false
+
+            return product.metafields.edges.some((edge) => {
+              const node = edge.node as any
+              return (
+                node.namespace === 'link' &&
+                node.key === 'mother_collection' &&
+                node.reference?.title &&
+                targetTitles.includes(node.reference.title)
+              )
+            })
           })
-        })
 
-        console.log(`📝 Products in selected collections: ${productsToUpdate.length}`)
+          console.log(`📝 Products in selected collections: ${productsToUpdate.length}`)
+        }
       }
 
       if (productsToUpdate.length === 0) {

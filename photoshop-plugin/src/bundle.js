@@ -929,6 +929,13 @@ let client = null
 let processor = null
 let paintingCollections = []
 
+// Range selection state
+let mergedProducts = [] // All products from selected collections (merged)
+let rangeStart = 1
+let rangeEnd = 1
+let filteredProducts = [] // Final products after range filter
+let isFirstRangeUpdate = true // Track if this is the first time range UI is shown
+
 // Mockup template data
 let mockupFolderPath = null
 let selectedMockupImages = []
@@ -955,9 +962,10 @@ function validateStartButton() {
     return
   }
 
-  // Check if at least one collection is selected
+  // Check if at least one collection is selected OR range selection has products
   const checkedCollections = collectionSelector.querySelectorAll('input[type="checkbox"]:checked')
   const hasCollection = checkedCollections.length > 0
+  const hasRangeProducts = filteredProducts.length > 0
 
   // Check if a template is selected (checkbox must be checked)
   const selectedTemplate = mockupTemplateSelector.querySelector('input[type="checkbox"]:checked')
@@ -967,12 +975,14 @@ function validateStartButton() {
   console.log('Validation:', {
     hasCollection,
     collectionCount: checkedCollections.length,
+    hasRangeProducts,
+    rangeProductCount: filteredProducts.length,
     hasTemplate,
     templateValue,
   })
 
-  // Enable button only if BOTH conditions are met
-  const isValid = hasCollection && hasTemplate
+  // Enable button if (collections selected OR range products selected) AND template selected
+  const isValid = (hasCollection || hasRangeProducts) && hasTemplate
 
   if (isValid) {
     startAutomationBtn.disabled = false
@@ -989,6 +999,271 @@ function validateStartButton() {
     }
     console.log('❌ Button disabled:', startAutomationBtn.title)
   }
+}
+
+/**
+ * Merge all products from selected collections into single array
+ * @returns {Array} Array of products with {id, title, collectionName} structure
+ */
+function getMergedProducts() {
+  const checkedCollections = collectionSelector.querySelectorAll('.collection-checkbox:checked')
+  const allCheckbox = collectionSelector.querySelector('input[value="all"]')
+
+  let products = []
+
+  if (allCheckbox && allCheckbox.checked) {
+    // All collections selected - merge all products
+    paintingCollections.forEach((collection) => {
+      if (collection.products && collection.products.length > 0) {
+        collection.products.forEach((product) => {
+          products.push({
+            id: product.id,
+            title: product.title,
+            collectionName: collection.title,
+            onlineStoreUrl: product.onlineStoreUrl,
+          })
+        })
+      }
+    })
+  } else {
+    // Specific collections selected
+    checkedCollections.forEach((checkbox) => {
+      const collectionId = checkbox.value
+      const collection = paintingCollections.find((c) => c.id === collectionId)
+
+      if (collection && collection.products && collection.products.length > 0) {
+        collection.products.forEach((product) => {
+          products.push({
+            id: product.id,
+            title: product.title,
+            collectionName: collection.title,
+            onlineStoreUrl: product.onlineStoreUrl,
+          })
+        })
+      }
+    })
+  }
+
+  // Deduplicate products by ID (in case a product appears in multiple collections)
+  const uniqueProducts = []
+  const seenIds = new Set()
+
+  products.forEach((product) => {
+    if (!seenIds.has(product.id)) {
+      seenIds.add(product.id)
+      uniqueProducts.push(product)
+    }
+  })
+
+  if (products.length !== uniqueProducts.length) {
+    console.log(`⚠️  Removed ${products.length - uniqueProducts.length} duplicate product(s)`)
+  }
+
+  console.log(`📦 Merged ${uniqueProducts.length} unique products from selected collections`)
+  return uniqueProducts
+}
+
+/**
+ * Update range selection section visibility and state
+ */
+function updateRangeSelectionUI() {
+  const rangeSection = document.getElementById('rangeSelectionSection')
+  const totalCountSpan = document.getElementById('totalProductsCount')
+  const rangeStartInput = document.getElementById('rangeStartInput')
+  const rangeEndInput = document.getElementById('rangeEndInput')
+
+  // Get merged products
+  mergedProducts = getMergedProducts()
+  const totalProducts = mergedProducts.length
+
+  // Show/hide range section based on whether collections are selected
+  if (totalProducts > 0) {
+    rangeSection.style.display = 'block'
+    totalCountSpan.textContent = `${totalProducts} produits au total dans les collections sélectionnées`
+
+    // Set max values for inputs
+    rangeStartInput.max = totalProducts
+    rangeEndInput.max = totalProducts
+
+    // Auto-set end value to total only on first show or if it exceeds new total
+    if (isFirstRangeUpdate) {
+      rangeEndInput.value = totalProducts
+      rangeEnd = totalProducts
+      isFirstRangeUpdate = false
+    } else if (parseInt(rangeEndInput.value) > totalProducts) {
+      // User had a higher value before, clamp it to new max
+      rangeEndInput.value = totalProducts
+      rangeEnd = totalProducts
+    }
+
+    // Validate and update preview
+    validateRange()
+  } else {
+    rangeSection.style.display = 'none'
+    // Clear filtered products to prevent stale data
+    filteredProducts = []
+    // Clear preview
+    const previewList = document.getElementById('productPreviewList')
+    previewList.innerHTML =
+      '<div style="color: #999; font-size: 12px; text-align: center; padding: 20px;">Sélectionnez des collections pour voir les produits</div>'
+    // Reset flag so next time range UI appears, it auto-sets end value
+    isFirstRangeUpdate = true
+    // Re-validate start button since filteredProducts changed
+    validateStartButton()
+  }
+}
+
+/**
+ * Validate range inputs and show/hide error messages
+ * @returns {boolean} True if valid, false otherwise
+ */
+function validateRange() {
+  const rangeStartInput = document.getElementById('rangeStartInput')
+  const rangeEndInput = document.getElementById('rangeEndInput')
+  const errorDiv = document.getElementById('rangeValidationError')
+  const errorText = document.getElementById('rangeValidationText')
+
+  rangeStart = parseInt(rangeStartInput.value) || 1
+  rangeEnd = parseInt(rangeEndInput.value) || 1
+
+  const totalProducts = mergedProducts.length
+
+  // Validation checks
+  if (rangeStart < 1) {
+    errorDiv.style.display = 'block'
+    errorText.textContent = "L'index de début doit être >= 1"
+    filteredProducts = []
+    updateProductPreview()
+    validateStartButton()
+    return false
+  }
+
+  if (rangeEnd > totalProducts) {
+    errorDiv.style.display = 'block'
+    errorText.textContent = `L'index de fin ne peut pas dépasser ${totalProducts}`
+    filteredProducts = []
+    updateProductPreview()
+    validateStartButton()
+    return false
+  }
+
+  if (rangeStart > rangeEnd) {
+    errorDiv.style.display = 'block'
+    errorText.textContent = "L'index de début doit être <= index de fin"
+    filteredProducts = []
+    updateProductPreview()
+    validateStartButton()
+    return false
+  }
+
+  // Valid range - hide error
+  errorDiv.style.display = 'none'
+
+  // Calculate filtered products (1-based to 0-based indexing)
+  filteredProducts = mergedProducts.slice(rangeStart - 1, rangeEnd)
+
+  console.log(`✅ Valid range: ${rangeStart}-${rangeEnd} (${filteredProducts.length} products)`)
+
+  // Update preview
+  updateProductPreview()
+
+  // Re-validate start button
+  validateStartButton()
+
+  return true
+}
+
+/**
+ * Update the product preview list showing filtered products
+ */
+function updateProductPreview() {
+  const previewList = document.getElementById('productPreviewList')
+  const countSpan = document.getElementById('selectedProductCount')
+
+  countSpan.textContent = filteredProducts.length
+
+  if (filteredProducts.length === 0) {
+    previewList.innerHTML =
+      '<div style="color: #999; font-size: 12px; text-align: center; padding: 20px;">Aucun produit dans cette plage</div>'
+    return
+  }
+
+  // Build preview HTML (using map for better performance)
+  const html = filteredProducts
+    .map((product, index) => {
+      const displayIndex = rangeStart + index
+      const numericId = product.id.split('/').pop()
+      // Escape HTML to prevent XSS attacks
+      const escapedTitle = product.title
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;')
+
+      return `
+      <div class="product-preview-item" data-product-id="${numericId}" title="Cliquer pour copier l'ID: ${numericId}">
+        <span style="color: #2196f3; font-weight: 500; min-width: 40px;">${displayIndex}.</span>
+        <span style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapedTitle}</span>
+        <span class="product-preview-id">#${numericId}</span>
+      </div>
+    `
+    })
+    .join('')
+
+  previewList.innerHTML = html
+
+  // Add click handlers to copy product ID to clipboard
+  const previewItems = previewList.querySelectorAll('.product-preview-item')
+  previewItems.forEach((item) => {
+    item.addEventListener('click', async () => {
+      const productId = item.getAttribute('data-product-id')
+      try {
+        await navigator.clipboard.writeText(productId)
+        // Visual feedback
+        const originalBg = item.style.backgroundColor
+        item.style.backgroundColor = '#2196f3'
+        setTimeout(() => {
+          item.style.backgroundColor = originalBg
+        }, 200)
+        addLog('success', `✅ Product ID copied: ${productId}`)
+      } catch (error) {
+        addLog('error', `Failed to copy ID: ${error.message}`)
+      }
+    })
+  })
+}
+
+/**
+ * Setup event listeners for range inputs
+ */
+function setupRangeInputListeners() {
+  const rangeStartInput = document.getElementById('rangeStartInput')
+  const rangeEndInput = document.getElementById('rangeEndInput')
+
+  rangeStartInput.addEventListener('input', () => {
+    validateRange()
+  })
+
+  rangeEndInput.addEventListener('input', () => {
+    validateRange()
+  })
+
+  // Also validate on blur to handle empty/invalid values
+  rangeStartInput.addEventListener('blur', () => {
+    if (!rangeStartInput.value) {
+      rangeStartInput.value = 1
+    }
+    validateRange()
+  })
+
+  rangeEndInput.addEventListener('blur', () => {
+    if (!rangeEndInput.value) {
+      // Set to total products, or 1 if no products (edge case safety)
+      rangeEndInput.value = mergedProducts.length || 1
+    }
+    validateRange()
+  })
 }
 
 /**
@@ -1058,6 +1333,9 @@ function init() {
 
   connectBtn.addEventListener('click', handleConnectClick)
   clearLogsBtn.addEventListener('click', clearLogs)
+
+  // Range selection event listeners
+  setupRangeInputListeners()
 
   // Automation form event listeners
   startAutomationBtn.addEventListener('click', handleStartAutomation)
@@ -1446,6 +1724,7 @@ function populateCollectionsDropdown() {
       }
     })
     addLog('info', isChecked ? 'All collections selected' : 'All collections deselected')
+    updateRangeSelectionUI() // Update range selection when all collections change
     validateStartButton()
   })
 
@@ -1480,6 +1759,7 @@ function populateCollectionsDropdown() {
         console.log('❌ Product container not found for ID:', `products-${sanitizedId}`)
       }
 
+      updateRangeSelectionUI() // Update range selection when individual collection changes
       validateStartButton()
     })
   })
@@ -1811,11 +2091,22 @@ async function handleStartAutomation() {
 
   console.log('🔍 DEBUG: Checked checkboxes count:', checkboxes.length)
   console.log('🔍 DEBUG: Collection IDs being sent:', collectionIds)
-  addLog('info', `Selected ${collectionIds.length} collection(s): ${JSON.stringify(collectionIds)}`)
 
-  if (collectionIds.length === 0) {
-    addLog('error', 'Please select at least one collection')
-    return
+  // Check if using range selection mode
+  const usingRangeSelection = filteredProducts.length > 0
+
+  if (!usingRangeSelection) {
+    // Only check for collection selection if NOT using range mode
+    addLog(
+      'info',
+      `Selected ${collectionIds.length} collection(s): ${JSON.stringify(collectionIds)}`
+    )
+    if (collectionIds.length === 0) {
+      addLog('error', 'Please select at least one collection')
+      return
+    }
+  } else {
+    addLog('info', `Using range selection: ${filteredProducts.length} products`)
   }
 
   // Validate mockup template is selected
@@ -1865,13 +2156,15 @@ async function handleStartAutomation() {
   processor.setMockupTemplateFolder(mockupTemplatePath)
   addLog('info', `Using template: ${mockupTemplatePath}`)
 
-  // Get collection names for logging
+  // Get collection names for logging (only needed for collection mode)
   let collectionNames = ''
-  if (collectionIds.includes('all')) {
-    collectionNames = 'All Collections'
-  } else {
-    const selectedNames = Array.from(checkboxes).map((cb) => cb.getAttribute('data-name'))
-    collectionNames = selectedNames.join(', ')
+  if (!usingRangeSelection && collectionIds && collectionIds.length > 0) {
+    if (collectionIds.includes('all')) {
+      collectionNames = 'All Collections'
+    } else {
+      const selectedNames = Array.from(checkboxes).map((cb) => cb.getAttribute('data-name'))
+      collectionNames = selectedNames.join(', ')
+    }
   }
 
   // Update button state for processing
@@ -1880,7 +2173,33 @@ async function handleStartAutomation() {
   allCheckboxes.forEach((cb) => (cb.disabled = true))
 
   try {
-    addLog('info', `Starting automation for: ${collectionNames}`)
+    // Determine if using range selection (use range mode whenever user has selected a range)
+    const useRangeSelection = usingRangeSelection
+    let requestBody = {}
+
+    if (useRangeSelection) {
+      // Range selection mode - send productIds
+      const productIds = filteredProducts.map((p) => p.id)
+      addLog(
+        'info',
+        `Starting automation for ${productIds.length} products (range ${rangeStart}-${rangeEnd})`
+      )
+
+      requestBody = {
+        productIds: productIds,
+        mockupTemplatePath: mockupTemplatePath,
+        targetImagePosition: targetImagePosition,
+      }
+    } else {
+      // Collection selection mode - send collectionIds (existing behavior)
+      addLog('info', `Starting automation for: ${collectionNames}`)
+
+      requestBody = {
+        collectionIds: collectionIds,
+        mockupTemplatePath: mockupTemplatePath,
+        targetImagePosition: targetImagePosition,
+      }
+    }
 
     // Give immediate visual feedback - activate step 1 right away
     updateStep(1, 'active')
@@ -1890,11 +2209,7 @@ async function handleStartAutomation() {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        collectionIds: collectionIds,
-        mockupTemplatePath: mockupTemplatePath,
-        targetImagePosition: targetImagePosition,
-      }),
+      body: JSON.stringify(requestBody),
     })
 
     if (response.ok) {
