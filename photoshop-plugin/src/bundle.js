@@ -944,6 +944,8 @@ let loaderDots = null
 // Stats
 let jobsReceived = 0
 let jobsCompleted = 0
+let jobsFailed = 0 // Counter for failed jobs
+let failedProducts = [] // Array of {productId, productTitle, errorMessage, resultPath, timestamp}
 
 // Client and processor
 let client = null
@@ -971,7 +973,6 @@ let currentJobFileInfo = null // Track current job's file info for cleanup on er
 
 // Image position and error handling
 let targetImagePosition = 0 // Default to first image (0-indexed)
-let isPaused = false
 let dotAnimationInterval = null // Track the dot animation interval
 
 // Mode selection state
@@ -1373,7 +1374,8 @@ function setupRangeInputListeners() {
 }
 
 /**
- * Show error modal and pause processing
+ * Show error modal (DEPRECATED - kept for rollback purposes)
+ * Note: No longer used in automatic error flow
  */
 function showErrorModal(job, error) {
   console.log('🔍 DEBUG: showErrorModal called with:', {
@@ -1384,10 +1386,6 @@ function showErrorModal(job, error) {
       productId: error.productId,
     },
   })
-
-  console.log('🔍 DEBUG: showErrorModal SETTING isPaused = true')
-  isPaused = true
-  console.log('🔍 DEBUG: showErrorModal isPaused is now:', isPaused)
 
   const productName = job.productTitle || 'Unknown'
   const errorMessage = error.message || 'Unknown error'
@@ -1408,13 +1406,183 @@ function showErrorModal(job, error) {
 }
 
 /**
- * Hide error modal and resume processing
+ * Hide error modal (DEPRECATED - kept for rollback purposes)
  */
 function hideErrorModal() {
-  console.log('🔍 DEBUG: hideErrorModal called - SETTING isPaused = false')
+  console.log('🔍 DEBUG: hideErrorModal called')
   document.getElementById('errorModal').style.display = 'none'
-  isPaused = false
-  console.log('🔍 DEBUG: hideErrorModal isPaused is now:', isPaused)
+}
+
+/**
+ * Track failed product for end-of-batch summary
+ */
+function trackFailedProduct(job, error) {
+  try {
+    const failureRecord = {
+      productId: job.productId,
+      productTitle: job.productTitle,
+      errorMessage: error.message || 'Unknown error',
+      resultPath: error.resultPath || 'N/A',
+      timestamp: new Date().toISOString(),
+      jobId: job.id,
+    }
+
+    failedProducts.push(failureRecord)
+    console.log('📝 Tracked failed product:', failureRecord)
+    console.log(`📊 Total failures in batch: ${failedProducts.length}`)
+  } catch (trackingError) {
+    // Fallback: don't crash if tracking fails
+    console.error('❌ Error tracking failed product:', trackingError)
+    failedProducts.push({
+      productId: job?.productId || 'unknown',
+      productTitle: job?.productTitle || 'Unknown Product',
+      errorMessage: error?.message || 'Unknown error',
+      resultPath: 'N/A',
+      timestamp: new Date().toISOString(),
+    })
+  }
+}
+
+/**
+ * Escape HTML to prevent XSS attacks
+ */
+function escapeHtml(unsafe) {
+  if (!unsafe) return ''
+  return String(unsafe)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
+/**
+ * Show batch summary modal with failed products
+ */
+function showBatchSummaryModal() {
+  try {
+    const totalJobs = jobsCompleted
+    const successJobs = totalJobs - jobsFailed
+    const failedJobs = jobsFailed
+
+    console.log('📊 Showing batch summary:', { totalJobs, successJobs, failedJobs })
+
+    // Update statistics
+    document.getElementById('summaryTotalJobs').textContent = totalJobs.toString()
+    document.getElementById('summarySuccessJobs').textContent = successJobs.toString()
+    document.getElementById('summaryFailedJobs').textContent = failedJobs.toString()
+
+    // Build failed products list
+    const container = document.getElementById('failedProductsContainer')
+
+    if (failedJobs === 0) {
+      // All successful
+      container.innerHTML = `
+        <div style="background: #1e5e1e; padding: 20px; border-radius: 4px; text-align: center; border: 2px solid #4caf50;">
+          <div style="font-size: 48px; margin-bottom: 12px;">✅</div>
+          <div style="font-size: 16px; color: #4caf50; font-weight: 600;">
+            Tous les produits ont été traités avec succès !
+          </div>
+        </div>
+      `
+    } else {
+      // Build error list
+      let html = `
+        <div style="background: #1e1e1e; padding: 16px; border-radius: 4px; max-height: 400px; overflow-y: auto;">
+          <div style="font-weight: 600; margin-bottom: 12px; color: #f44336; font-size: 14px;">
+            ⚠️ Produits en échec (${failedJobs}) :
+          </div>
+      `
+
+      failedProducts.forEach((failure, index) => {
+        html += `
+          <div style="background: #2d2d2d; padding: 12px; border-radius: 4px; margin-bottom: 8px; border-left: 3px solid #f44336;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+              <div style="font-weight: 600; color: #fff; flex: 1;">${index + 1}. ${escapeHtml(failure.productTitle)}</div>
+              <div style="font-size: 10px; color: #666;">${new Date(failure.timestamp).toLocaleTimeString()}</div>
+            </div>
+            <div style="font-size: 12px; color: #f44336; margin-bottom: 8px;">
+              <strong>Erreur:</strong> ${escapeHtml(failure.errorMessage)}
+            </div>
+            <div style="font-size: 11px; color: #4caf50; font-family: monospace; word-break: break-all;">
+              <strong>Fichier:</strong> ${escapeHtml(failure.resultPath)}
+            </div>
+          </div>
+        `
+      })
+
+      html += '</div>'
+      container.innerHTML = html
+    }
+
+    // Show modal
+    document.getElementById('batchSummaryModal').style.display = 'block'
+
+    addLog('info', `Batch summary: ${successJobs} success, ${failedJobs} failed`)
+  } catch (error) {
+    console.error('❌ CRITICAL: Error showing batch summary modal:', error)
+    addLog('error', 'Failed to show summary modal - check console')
+    alert(
+      `Batch complete: ${jobsCompleted - jobsFailed} success, ${jobsFailed} failed\n\nError showing modal: ${error.message}`
+    )
+  }
+}
+
+/**
+ * Copy failed products list to clipboard
+ */
+async function copyErrorsToClipboard() {
+  try {
+    if (failedProducts.length === 0) {
+      addLog('info', 'No errors to copy')
+      return
+    }
+
+    // Format errors for clipboard
+    let clipboardText = `Mockup Automation - Rapport d'erreurs\n`
+    clipboardText += `Date: ${new Date().toLocaleString()}\n`
+    clipboardText += `Total traités: ${jobsCompleted}\n`
+    clipboardText += `Réussis: ${jobsCompleted - jobsFailed}\n`
+    clipboardText += `Échecs: ${jobsFailed}\n`
+    clipboardText += `\n`
+    clipboardText += `==============================================\n`
+    clipboardText += `PRODUITS EN ÉCHEC (${failedProducts.length})\n`
+    clipboardText += `==============================================\n\n`
+
+    failedProducts.forEach((failure, index) => {
+      clipboardText += `${index + 1}. ${failure.productTitle}\n`
+      clipboardText += `   Product ID: ${failure.productId}\n`
+      clipboardText += `   Erreur: ${failure.errorMessage}\n`
+      clipboardText += `   Fichier: ${failure.resultPath}\n`
+      clipboardText += `   Heure: ${new Date(failure.timestamp).toLocaleString()}\n`
+      clipboardText += `\n`
+    })
+
+    // Copy to clipboard (permission already granted in manifest.json line 30)
+    await navigator.clipboard.writeText(clipboardText)
+
+    addLog('success', `${failedProducts.length} erreur(s) copiée(s) dans le presse-papier`)
+
+    // Visual feedback
+    const btn = document.getElementById('copyErrorsBtn')
+    const originalText = btn.textContent
+    btn.style.background = '#4caf50'
+    btn.textContent = '✅ Copié !'
+
+    setTimeout(() => {
+      btn.textContent = originalText
+      btn.style.background = '#ff9800'
+    }, 2000)
+  } catch (error) {
+    console.error('❌ Clipboard copy error:', error)
+    addLog('error', `Échec de la copie: ${error.message}`)
+
+    // Fallback: Show in alert
+    const errorSummary = failedProducts
+      .map((f, i) => `${i + 1}. ${f.productTitle}: ${f.errorMessage}`)
+      .join('\n')
+    alert(`Impossible de copier dans le presse-papier.\n\nErreurs:\n${errorSummary}`)
+  }
 }
 
 /**
@@ -1581,6 +1749,22 @@ function init() {
     })
     errorFilePath.addEventListener('mouseleave', () => {
       errorFilePath.style.backgroundColor = '#1e1e1e'
+    })
+  }
+
+  // Batch summary modal event listeners
+  const closeSummaryBtn = document.getElementById('closeSummaryBtn')
+  const copyErrorsBtn = document.getElementById('copyErrorsBtn')
+
+  if (closeSummaryBtn) {
+    closeSummaryBtn.addEventListener('click', () => {
+      document.getElementById('batchSummaryModal').style.display = 'none'
+    })
+  }
+
+  if (copyErrorsBtn) {
+    copyErrorsBtn.addEventListener('click', async () => {
+      await copyErrorsToClipboard()
     })
   }
 
@@ -3100,30 +3284,56 @@ async function processNextJob() {
             stack: error.stack,
           })
 
-          addLog('error', `Failed to upload to Shopify: ${error.message}`)
+          // Track failed product for summary
+          trackFailedProduct(job, error)
+
+          // Log error for visibility
+          addLog('error', `Failed: ${job.productTitle} - ${error.message}`)
 
           // Mark current step as error
           updateStep(9, 'error')
 
-          console.log('🔍 DEBUG: Showing error modal with job:', {
-            jobTitle: job.productTitle,
-            jobId: job.id,
-          })
+          // Increment failure counter
+          jobsFailed++
+          jobsCompleted++
+          updateStats()
 
-          // Show error modal and pause
-          showErrorModal(job, error)
+          // Mark job as failed
+          markJobCompleted(false)
 
-          // Mark as no longer processing so we can resume later
-          isProcessingJob = false
+          // Clean up files for failed job (non-critical, don't block backend notification)
+          try {
+            await cleanupCurrentJobFiles()
+          } catch (cleanupError) {
+            console.error('⚠️ Cleanup failed (non-critical):', cleanupError.message)
+            addLog('warning', `Cleanup warning: ${cleanupError.message}`)
+          }
 
-          // Don't process next job - wait for user to click Continue
-          return
+          // Send failure to backend
+          if (client && client.isConnected()) {
+            await client.send({
+              jobId: job.id,
+              error: error.message,
+              success: false,
+            })
+          }
+
+          // NO MODAL, NO PAUSE - continue to finally block
         }
       } else {
         // No backend connection, just mark as complete
         markJobCompleted(true)
       }
     } else {
+      // ProcessJob returned failure - track for summary
+      const processError = new Error(result.error || 'Processing failed')
+      trackFailedProduct(job, processError)
+
+      // Increment counters
+      jobsFailed++
+      jobsCompleted++
+      updateStats()
+
       // Mark job as failed
       markJobCompleted(false)
 
@@ -3140,6 +3350,14 @@ async function processNextJob() {
   } catch (error) {
     addLog('error', `Unexpected error processing job: ${error.message}`)
 
+    // Track failed product for summary
+    trackFailedProduct(job, error)
+
+    // Increment counters (both failed AND completed)
+    jobsFailed++
+    jobsCompleted++
+    updateStats()
+
     // Mark job as failed
     markJobCompleted(false)
 
@@ -3153,22 +3371,12 @@ async function processNextJob() {
     }
   } finally {
     console.log('🔍 DEBUG finally block:', {
-      isPaused,
       isProcessingJob,
       queueLength: jobQueue.length,
     })
 
     // Mark as not processing
     isProcessingJob = false
-
-    // Only process next job if not paused (waiting for user input from error modal)
-    if (isPaused) {
-      console.log('⏸️  Processing paused - waiting for user input')
-      console.log('🔍 DEBUG finally: returning because isPaused is true')
-      return
-    }
-
-    console.log('🔍 DEBUG finally: NOT paused, checking queue')
 
     // Process next job if any
     if (jobQueue.length > 0) {
@@ -3178,6 +3386,12 @@ async function processNextJob() {
       setTimeout(() => processNextJob(), 500)
     } else {
       addLog('success', 'All jobs completed!')
+
+      // Show summary modal if there were any errors
+      if (jobsFailed > 0) {
+        showBatchSummaryModal()
+      }
+
       // Cleanup all temporary files
       await cleanupBatchFiles()
       // Re-enable the start button
@@ -3218,6 +3432,12 @@ function updateConnectionStatus(connected) {
 function updateStats() {
   jobsReceivedEl.textContent = jobsReceived.toString()
   jobsCompletedEl.textContent = jobsCompleted.toString()
+
+  // Add this line:
+  const jobsFailedEl = document.getElementById('jobsFailed')
+  if (jobsFailedEl) {
+    jobsFailedEl.textContent = jobsFailed.toString()
+  }
 }
 
 /**
@@ -3226,6 +3446,8 @@ function updateStats() {
 function resetStats() {
   jobsReceived = 0
   jobsCompleted = 0
+  jobsFailed = 0 // Add this
+  failedProducts = [] // Add this
   updateStats()
   addLog('info', 'Statistics reset for new automation run')
 }

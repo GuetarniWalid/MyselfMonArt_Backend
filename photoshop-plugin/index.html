@@ -1126,12 +1126,23 @@
           <div style="flex: 1; text-align: center">
             <div
               id="jobsCompleted"
-              style="font-size: 32px; font-weight: bold; color: #2196f3; margin-bottom: 4px"
+              style="font-size: 32px; font-weight: bold; color: #4caf50; margin-bottom: 4px"
             >
               0
             </div>
             <div style="font-size: 11px; color: #999; text-transform: uppercase">
-              Tâches terminées
+              Réussies
+            </div>
+          </div>
+          <div style="flex: 1; text-align: center">
+            <div
+              id="jobsFailed"
+              style="font-size: 32px; font-weight: bold; color: #f44336; margin-bottom: 4px"
+            >
+              0
+            </div>
+            <div style="font-size: 11px; color: #999; text-transform: uppercase">
+              Échecs
             </div>
           </div>
         </div>
@@ -1425,6 +1436,51 @@
           </div>
         </div>
       </div>
+      </div>
+
+      <!-- Batch Summary Modal -->
+      <div id="batchSummaryModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.85); z-index: 1001; padding: 20px; overflow-y: auto;">
+        <div style="max-width: 700px; margin: 40px auto; background: #2d2d2d; border: 2px solid #ff9800; border-radius: 8px; padding: 24px;">
+
+          <!-- Header -->
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+            <span style="font-size: 32px;">📊</span>
+            <h3 style="color: #ff9800; margin: 0;">Résumé de traitement</h3>
+          </div>
+
+          <!-- Statistics Summary -->
+          <div style="background: #1e1e1e; padding: 16px; border-radius: 4px; margin-bottom: 20px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; text-align: center;">
+              <div>
+                <div style="font-size: 11px; color: #999; text-transform: uppercase;">Total</div>
+                <div id="summaryTotalJobs" style="font-size: 24px; color: #fff; font-weight: 600;">0</div>
+              </div>
+              <div>
+                <div style="font-size: 11px; color: #999; text-transform: uppercase;">Réussis</div>
+                <div id="summarySuccessJobs" style="font-size: 24px; color: #4caf50; font-weight: 600;">0</div>
+              </div>
+              <div>
+                <div style="font-size: 11px; color: #999; text-transform: uppercase;">Échecs</div>
+                <div id="summaryFailedJobs" style="font-size: 24px; color: #f44336; font-weight: 600;">0</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Failed Products List (dynamic content) -->
+          <div id="failedProductsContainer" style="margin-bottom: 20px;">
+            <!-- Populated by JavaScript -->
+          </div>
+
+          <!-- Action Buttons -->
+          <div style="display: flex; gap: 12px;">
+            <button id="copyErrorsBtn" class="button" style="flex: 1; background: #ff9800;">
+              📋 Copier les erreurs
+            </button>
+            <button id="closeSummaryBtn" class="button success" style="flex: 1;">
+              Fermer
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="logs-section">
