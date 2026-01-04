@@ -817,6 +817,21 @@
           <div class="loader-text">Chargement des collections...</div>
         </div>
 
+        <!-- Mode Toggle -->
+        <div id="modeToggleSection" class="form-group" style="margin-bottom: 20px">
+          <label class="form-label">Mode de sélection :</label>
+          <div class="radio-group">
+            <label class="radio-label checked" id="collectionsRadioLabel">
+              <input type="radio" name="selectionMode" value="collections" checked />
+              <span>Collections</span>
+            </label>
+            <label class="radio-label" id="productsRadioLabel">
+              <input type="radio" name="selectionMode" value="products" />
+              <span>Produits</span>
+            </label>
+          </div>
+        </div>
+
         <!-- Collection selector -->
         <div id="collectionSelectorWrapper" style="display: none">
           <div class="form-group" style="margin-bottom: 20px">
@@ -921,9 +936,10 @@
               </div>
             </div>
           </div>
+        </div>
 
-          <!-- Mockup Template Selector -->
-          <div class="form-group" style="margin-bottom: 20px">
+        <!-- Mockup Template Selector -->
+        <div id="mockupTemplateSection" class="form-group" style="display: none; margin-bottom: 20px">
             <label class="form-label">Sélectionner le modèle de mockup :</label>
 
             <div class="collection-checkboxes" id="mockupTemplateSelector" style="max-height: none">
@@ -1001,7 +1017,7 @@
           </div>
 
           <!-- Image Position Selector -->
-          <div class="form-group" style="margin-bottom: 20px">
+          <div id="imagePositionSection" class="form-group" style="display: none; margin-bottom: 20px">
             <label class="form-label">Position de remplacement de l'image :</label>
             <div style="font-size: 11px; color: #999; margin-bottom: 8px">
               Sélectionner quelle image du produit remplacer par le mockup
@@ -1045,11 +1061,55 @@
             </div>
           </div>
 
-          <button class="button success" id="startAutomationBtn" disabled>
-            Démarrer le traitement
-          </button>
+        <!-- Products Mode Section -->
+        <div class="form-group" id="productsModeSection" style="display: none; margin-bottom: 20px">
+        <label class="form-label">Sélectionner des produits :</label>
+
+        <!-- Search Bar -->
+        <div style="margin-bottom: 12px">
+          <input
+            type="text"
+            id="productSearchInput"
+            class="form-input"
+            placeholder="Rechercher par titre ou ID..."
+          />
         </div>
-      </div>
+
+        <!-- Select All Checkbox -->
+        <div style="margin-bottom: 12px; padding: 8px; background-color: #252525; border-radius: 4px">
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer">
+            <input type="checkbox" id="selectAllProductsCheckbox" style="width: 18px; height: 18px" />
+            <span style="font-size: 13px; color: #e0e0e0">Tous les produits</span>
+            <span id="allProductsCount" style="font-size: 12px; color: #888">(0)</span>
+          </label>
+        </div>
+
+        <!-- Product Count Summary -->
+        <div
+          style="
+            background-color: #1e1e1e;
+            padding: 8px 12px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            margin-bottom: 12px;
+          "
+        >
+          <span style="font-size: 12px; color: #2196f3; font-weight: 500">
+            <span id="selectedProductsCount">0</span> produit(s) sélectionné(s)
+          </span>
+        </div>
+
+        <!-- Products List -->
+        <div id="productsListContainer" class="collection-checkboxes">
+          <div style="color: #999; font-size: 12px; text-align: center; padding: 20px">
+            Chargement des produits...
+          </div>
+        </div>
+        </div>
+
+        <button class="button success" id="startAutomationBtn" disabled style="display: none">
+          Démarrer le traitement
+        </button>
 
       <div class="stats-section" id="statsSection" style="display: none">
         <h4 style="color: white; margin-bottom: 12px; font-size: 14px">Statistiques</h4>
@@ -1364,6 +1424,7 @@
             <button id="errorCancelBtn" class="button danger" style="flex: 1">Tout annuler</button>
           </div>
         </div>
+      </div>
       </div>
 
       <div class="logs-section">

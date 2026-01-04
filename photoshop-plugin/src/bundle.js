@@ -203,12 +203,29 @@ class MockupProcessor {
       const layer = layers[i]
       const layerPath = currentPath ? `${currentPath} > ${layer.name}` : layer.name
 
+      // 🔍 DEBUG LOG: Show every layer we're checking
+      this.log(
+        'info',
+        `🔍 Checking layer: "${layer.name}" | kind: "${layer.kind}" | path: "${layerPath}"`
+      )
+
+      if (targetName) {
+        const nameMatch = layer.name.toLowerCase().trim() === targetName.toLowerCase().trim()
+        const kindMatch = layer.kind === 'smartObject'
+        this.log(
+          'info',
+          `  → Name match ("${layer.name.trim()}" === "${targetName}"): ${nameMatch}`
+        )
+        this.log('info', `  → Kind match (${layer.kind} === smartObject): ${kindMatch}`)
+      }
+
       // Check if this layer is the smart object we're looking for
       if (
         targetName &&
-        layer.name.toLowerCase() === targetName.toLowerCase() &&
+        layer.name.toLowerCase().trim() === targetName.toLowerCase().trim() &&
         layer.kind === 'smartObject'
       ) {
+        this.log('success', `✅ FOUND MATCH: "${layer.name}" at "${layerPath}"`)
         return { layer, path: layerPath }
       }
 
@@ -219,6 +236,10 @@ class MockupProcessor {
 
       // If this is a group, search recursively inside it
       if (layer.kind === 'group' && layer.layers) {
+        this.log(
+          'info',
+          `  → Entering group "${layer.name}" (has ${layer.layers.length} sublayers)`
+        )
         const found = this.findSmartObjectInLayers(layer.layers, targetName, layerPath)
         if (found) {
           return found
@@ -935,6 +956,7 @@ let rangeStart = 1
 let rangeEnd = 1
 let filteredProducts = [] // Final products after range filter
 let isFirstRangeUpdate = true // Track if this is the first time range UI is shown
+let previousTotalProducts = 0 // Track previous total to detect if user had full range
 
 // Mockup template data
 let mockupFolderPath = null
@@ -952,6 +974,62 @@ let targetImagePosition = 0 // Default to first image (0-indexed)
 let isPaused = false
 let dotAnimationInterval = null // Track the dot animation interval
 
+// Mode selection state
+let currentMode = 'collections' // 'collections' or 'products'
+let allProducts = [] // Flat list of ALL products from all collections
+let selectedProductIds = new Set() // Track selected products in Products mode
+let productSearchQuery = '' // Current search query
+
+/**
+ * Centralized UI visibility management
+ * Controls what sections are visible based on connection state and current mode
+ */
+function updateUIVisibility() {
+  const isConnected = client && client.isConnected()
+  const mode = currentMode || 'collections'
+
+  console.log('🎨 Updating UI visibility:', { isConnected, mode })
+
+  // Get elements
+  const modeToggleSection = document.getElementById('modeToggleSection')
+  const collectionSelectorWrapper = document.getElementById('collectionSelectorWrapper')
+  const productsModeSection = document.getElementById('productsModeSection')
+  const mockupTemplateSection = document.getElementById('mockupTemplateSection')
+  const imagePositionSection = document.getElementById('imagePositionSection')
+  const startAutomationBtn = document.getElementById('startAutomationBtn')
+
+  // Mode toggle: visible when connected
+  if (modeToggleSection) {
+    modeToggleSection.style.display = isConnected ? 'block' : 'none'
+  }
+
+  // Collections mode UI: visible when connected AND collections mode
+  if (collectionSelectorWrapper) {
+    collectionSelectorWrapper.style.display =
+      isConnected && mode === 'collections' ? 'block' : 'none'
+  }
+
+  // Products mode UI: visible when connected AND products mode
+  if (productsModeSection) {
+    productsModeSection.style.display = isConnected && mode === 'products' ? 'block' : 'none'
+  }
+
+  // Shared elements: visible when connected
+  if (mockupTemplateSection) {
+    mockupTemplateSection.style.display = isConnected ? 'block' : 'none'
+  }
+
+  if (imagePositionSection) {
+    imagePositionSection.style.display = isConnected ? 'block' : 'none'
+  }
+
+  if (startAutomationBtn) {
+    startAutomationBtn.style.display = isConnected ? 'block' : 'none'
+  }
+
+  console.log('✅ UI visibility updated')
+}
+
 /**
  * Validate if Start Processing button should be enabled
  */
@@ -962,27 +1040,35 @@ function validateStartButton() {
     return
   }
 
-  // Check if at least one collection is selected OR range selection has products
-  const checkedCollections = collectionSelector.querySelectorAll('input[type="checkbox"]:checked')
-  const hasCollection = checkedCollections.length > 0
-  const hasRangeProducts = filteredProducts.length > 0
+  // Check based on current mode (default to 'collections' if undefined)
+  let hasValidSelection = false
 
-  // Check if a template is selected (checkbox must be checked)
+  if (!currentMode || currentMode === 'collections') {
+    // Collections mode: check collections OR range products
+    const checkedCollections = collectionSelector.querySelectorAll('input[type="checkbox"]:checked')
+    const hasCollection = checkedCollections.length > 0
+    const hasRangeProducts = filteredProducts.length > 0
+    hasValidSelection = hasCollection || hasRangeProducts
+  } else if (currentMode === 'products') {
+    // Products mode: check if any products selected
+    hasValidSelection = selectedProductIds.size > 0
+  }
+
+  // Check if a template is selected
   const selectedTemplate = mockupTemplateSelector.querySelector('input[type="checkbox"]:checked')
   const templateValue = selectedTemplate ? selectedTemplate.value : ''
   const hasTemplate = templateValue !== '' && templateValue !== null && templateValue !== undefined
 
   console.log('Validation:', {
-    hasCollection,
-    collectionCount: checkedCollections.length,
-    hasRangeProducts,
-    rangeProductCount: filteredProducts.length,
+    mode: currentMode,
+    hasValidSelection,
+    selectedCount: currentMode === 'products' ? selectedProductIds.size : filteredProducts.length,
     hasTemplate,
     templateValue,
   })
 
-  // Enable button if (collections selected OR range products selected) AND template selected
-  const isValid = (hasCollection || hasRangeProducts) && hasTemplate
+  // Enable button if valid selection AND template selected
+  const isValid = hasValidSelection && hasTemplate
 
   if (isValid) {
     startAutomationBtn.disabled = false
@@ -990,10 +1076,16 @@ function validateStartButton() {
     console.log('✅ Button enabled')
   } else {
     startAutomationBtn.disabled = true
-    if (!hasCollection && !hasTemplate) {
-      startAutomationBtn.title = 'Please select collections and a mockup template'
-    } else if (!hasCollection) {
-      startAutomationBtn.title = 'Please select at least one collection'
+    if (!hasValidSelection && !hasTemplate) {
+      startAutomationBtn.title =
+        currentMode === 'collections'
+          ? 'Please select collections and a mockup template'
+          : 'Please select products and a mockup template'
+    } else if (!hasValidSelection) {
+      startAutomationBtn.title =
+        currentMode === 'collections'
+          ? 'Please select at least one collection'
+          : 'Please select at least one product'
     } else {
       startAutomationBtn.title = 'Please select a mockup template'
     }
@@ -1085,16 +1177,29 @@ function updateRangeSelectionUI() {
     rangeStartInput.max = totalProducts
     rangeEndInput.max = totalProducts
 
-    // Auto-set end value to total only on first show or if it exceeds new total
+    const currentEnd = parseInt(rangeEndInput.value) || 1
+
+    // Auto-update end value in these cases:
+    // 1. First time showing range UI
+    // 2. Current end exceeds new total (clamp down)
+    // 3. User had full range selected before (end === previousTotal) and total increased
     if (isFirstRangeUpdate) {
+      // First show - set to full range
       rangeEndInput.value = totalProducts
       rangeEnd = totalProducts
       isFirstRangeUpdate = false
-    } else if (parseInt(rangeEndInput.value) > totalProducts) {
-      // User had a higher value before, clamp it to new max
+    } else if (currentEnd > totalProducts) {
+      // Current end exceeds new total - clamp down
+      rangeEndInput.value = totalProducts
+      rangeEnd = totalProducts
+    } else if (currentEnd === previousTotalProducts && totalProducts > previousTotalProducts) {
+      // User had full range selected and total increased - expand to new total
       rangeEndInput.value = totalProducts
       rangeEnd = totalProducts
     }
+
+    // Update previous total for next comparison
+    previousTotalProducts = totalProducts
 
     // Validate and update preview
     validateRange()
@@ -1106,8 +1211,9 @@ function updateRangeSelectionUI() {
     const previewList = document.getElementById('productPreviewList')
     previewList.innerHTML =
       '<div style="color: #999; font-size: 12px; text-align: center; padding: 20px;">Sélectionnez des collections pour voir les produits</div>'
-    // Reset flag so next time range UI appears, it auto-sets end value
+    // Reset flags so next time range UI appears, it auto-sets end value
     isFirstRangeUpdate = true
+    previousTotalProducts = 0
     // Re-validate start button since filteredProducts changed
     validateStartButton()
   }
@@ -1341,6 +1447,23 @@ function init() {
   startAutomationBtn.addEventListener('click', handleStartAutomation)
   // Template change listeners are added when radio buttons are created
 
+  // Mode toggle event listeners
+  document.querySelectorAll('input[name="selectionMode"]').forEach((radio) => {
+    radio.addEventListener('change', handleModeToggle)
+  })
+
+  // Product search event listener (debounced)
+  const productSearchInput = document.getElementById('productSearchInput')
+  if (productSearchInput) {
+    productSearchInput.addEventListener('input', handleProductSearch)
+  }
+
+  // Select all products checkbox
+  const selectAllCheckbox = document.getElementById('selectAllProductsCheckbox')
+  if (selectAllCheckbox) {
+    selectAllCheckbox.addEventListener('change', handleSelectAllProducts)
+  }
+
   // Image position selector event listeners (checkbox with radio behavior)
   const imagePositionCheckboxes = document.querySelectorAll('.image-position-checkbox')
   imagePositionCheckboxes.forEach((checkbox) => {
@@ -1543,7 +1666,9 @@ function stopLoader() {
   }
 
   collectionLoader.style.display = 'none'
-  collectionSelectorWrapper.style.display = 'block'
+
+  // Update UI visibility based on connection state and mode
+  updateUIVisibility()
 }
 
 /**
@@ -1771,6 +1896,9 @@ function populateCollectionsDropdown() {
   setupProductLinkHandlers()
 
   addLog('info', 'Collection selector populated')
+
+  // Initialize products list when collections are loaded
+  initializeAllProducts()
 }
 
 /**
@@ -1841,6 +1969,254 @@ function setupProductLinkHandlers() {
     'info',
     `Attached click handlers to ${productLinks.length} published and ${draftLinks.length} draft products`
   )
+}
+
+/**
+ * Extract all products from collections into flat array and sort alphabetically
+ */
+function initializeAllProducts() {
+  allProducts = []
+  const seenIds = new Set()
+
+  paintingCollections.forEach((collection) => {
+    if (collection.products && collection.products.length > 0) {
+      collection.products.forEach((product) => {
+        // Deduplicate (product might be in multiple collections)
+        if (!seenIds.has(product.id)) {
+          seenIds.add(product.id)
+          allProducts.push({
+            id: product.id,
+            title: product.title,
+            handle: product.handle,
+            onlineStoreUrl: product.onlineStoreUrl,
+          })
+        }
+      })
+    }
+  })
+
+  // Sort alphabetically by title
+  allProducts.sort((a, b) => a.title.localeCompare(b.title))
+
+  console.log(`📦 Initialized ${allProducts.length} unique products`)
+}
+
+/**
+ * Filter products based on search query
+ * Searches both title (case-insensitive) and numeric ID
+ * @param {string} query - Search query
+ * @returns {Array} Filtered products
+ */
+function filterProductsBySearch(query) {
+  if (!query || query.trim() === '') {
+    return allProducts
+  }
+
+  const lowerQuery = query.toLowerCase().trim()
+
+  return allProducts.filter((product) => {
+    if (!product) return false
+
+    // Search in title (safely)
+    const title = product.title || ''
+    const titleMatch = title.toLowerCase().includes(lowerQuery)
+
+    // Search in numeric ID (extract from "gid://shopify/Product/12345")
+    const numericId = product.id ? product.id.split('/').pop() : ''
+    const idMatch = numericId.toLowerCase().includes(lowerQuery)
+
+    return titleMatch || idMatch
+  })
+}
+
+/**
+ * Render products list with checkboxes
+ * Applies search filter and maintains selection state
+ */
+function renderProductsList() {
+  console.log('📋 renderProductsList() called, search query:', productSearchQuery)
+
+  const container = document.getElementById('productsListContainer')
+  if (!container) {
+    console.error('❌ Products list container not found!')
+    return
+  }
+
+  console.log('✅ Container found, proceeding to filter products...')
+
+  const filteredProducts = filterProductsBySearch(productSearchQuery)
+  console.log('🔍 Filtered products count:', filteredProducts.length, 'out of', allProducts.length)
+
+  if (filteredProducts.length === 0) {
+    container.innerHTML = `
+      <div style="color: #999; font-size: 12px; text-align: center; padding: 20px">
+        ${productSearchQuery ? 'Aucun produit trouvé' : 'Aucun produit disponible'}
+      </div>
+    `
+    updateProductsCount()
+    return
+  }
+
+  // Clear container
+  container.innerHTML = ''
+
+  // Create DOM elements (like Collections mode does)
+  filteredProducts.forEach((product) => {
+    // Safely extract numeric ID from GraphQL format
+    const numericId = product.id ? product.id.split('/').pop() : 'unknown'
+    const isChecked = selectedProductIds.has(product.id)
+    const escapedTitle = (product.title || 'Untitled Product')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;')
+
+    // Create checkbox item element
+    const checkboxItem = document.createElement('div')
+    checkboxItem.className = 'checkbox-item'
+    checkboxItem.innerHTML = `
+      <label>
+        <input
+          type="checkbox"
+          class="product-checkbox"
+          value="${product.id}"
+          ${isChecked ? 'checked' : ''}
+        />
+        <span>${escapedTitle}</span>
+        <span style="color: #888; margin-left: auto">#${numericId}</span>
+      </label>
+    `
+    container.appendChild(checkboxItem)
+
+    // Attach event listener
+    const checkbox = checkboxItem.querySelector('.product-checkbox')
+    if (checkbox) {
+      checkbox.addEventListener('change', handleProductCheckboxChange)
+    }
+  })
+
+  updateProductsCount()
+}
+
+/**
+ * Update products count displays
+ */
+function updateProductsCount() {
+  const allProductsCountSpan = document.getElementById('allProductsCount')
+  const selectedProductsCountSpan = document.getElementById('selectedProductsCount')
+  const selectAllCheckbox = document.getElementById('selectAllProductsCheckbox')
+
+  if (allProductsCountSpan) {
+    allProductsCountSpan.textContent = `(${allProducts.length})`
+  }
+
+  if (selectedProductsCountSpan) {
+    selectedProductsCountSpan.textContent = selectedProductIds.size
+  }
+
+  // Update "Select All" checkbox state
+  if (selectAllCheckbox) {
+    selectAllCheckbox.checked =
+      selectedProductIds.size === allProducts.length && allProducts.length > 0
+  }
+}
+
+/**
+ * Handle individual product checkbox change
+ */
+function handleProductCheckboxChange(event) {
+  const checkbox = event.target
+  const productId = checkbox.value
+
+  if (checkbox.checked) {
+    selectedProductIds.add(productId)
+  } else {
+    selectedProductIds.delete(productId)
+    // If unchecking a product, also uncheck "Select All"
+    const selectAllCheckbox = document.getElementById('selectAllProductsCheckbox')
+    if (selectAllCheckbox) {
+      selectAllCheckbox.checked = false
+    }
+  }
+
+  updateProductsCount()
+  validateStartButton()
+}
+
+/**
+ * Handle "Select All Products" checkbox
+ */
+function handleSelectAllProducts(event) {
+  const isChecked = event.target.checked
+
+  if (isChecked) {
+    // Select all products (not just filtered ones)
+    allProducts.forEach((product) => {
+      selectedProductIds.add(product.id)
+    })
+  } else {
+    // Deselect all
+    selectedProductIds.clear()
+  }
+
+  // Re-render to update checkboxes
+  renderProductsList()
+  validateStartButton()
+}
+
+/**
+ * Handle product search input (debounced for performance)
+ */
+let searchDebounceTimer = null
+function handleProductSearch(event) {
+  const query = event.target.value
+
+  // Debounce search for 300ms
+  clearTimeout(searchDebounceTimer)
+  searchDebounceTimer = setTimeout(() => {
+    productSearchQuery = query
+    renderProductsList()
+  }, 300)
+}
+
+/**
+ * Handle mode toggle between Collections and Products
+ */
+function handleModeToggle(event) {
+  const selectedMode = event.target.value
+  currentMode = selectedMode
+
+  // Clear search debounce timer when switching modes
+  clearTimeout(searchDebounceTimer)
+
+  console.log(`🔄 Switching to ${selectedMode} mode`)
+
+  // Update radio label styling
+  const collectionsLabel = document.getElementById('collectionsRadioLabel')
+  const productsLabel = document.getElementById('productsRadioLabel')
+
+  if (collectionsLabel && productsLabel) {
+    if (selectedMode === 'collections') {
+      collectionsLabel.classList.add('checked')
+      productsLabel.classList.remove('checked')
+    } else {
+      productsLabel.classList.add('checked')
+      collectionsLabel.classList.remove('checked')
+    }
+  }
+
+  // Initialize products list if switching to products mode
+  if (selectedMode === 'products') {
+    if (allProducts.length === 0) {
+      initializeAllProducts()
+    }
+    renderProductsList()
+  }
+
+  // Update UI visibility and validate button
+  updateUIVisibility()
+  validateStartButton()
 }
 
 /**
@@ -2085,28 +2461,38 @@ async function handleStartAutomation() {
   // Reset statistics for new automation run
   resetStats()
 
-  // Get all checked checkboxes
-  const checkboxes = collectionSelector.querySelectorAll('input[type="checkbox"]:checked')
-  const collectionIds = Array.from(checkboxes).map((cb) => cb.value)
+  // Determine mode and validate
+  let useProductsMode = false
+  let productIds = []
+  let collectionIds = []
+  let usingRangeSelection = false
 
-  console.log('🔍 DEBUG: Checked checkboxes count:', checkboxes.length)
-  console.log('🔍 DEBUG: Collection IDs being sent:', collectionIds)
+  if (currentMode === 'products') {
+    // Products mode
+    useProductsMode = true
+    productIds = Array.from(selectedProductIds)
 
-  // Check if using range selection mode
-  const usingRangeSelection = filteredProducts.length > 0
-
-  if (!usingRangeSelection) {
-    // Only check for collection selection if NOT using range mode
-    addLog(
-      'info',
-      `Selected ${collectionIds.length} collection(s): ${JSON.stringify(collectionIds)}`
-    )
-    if (collectionIds.length === 0) {
-      addLog('error', 'Please select at least one collection')
+    if (productIds.length === 0) {
+      addLog('error', 'Please select at least one product')
       return
     }
+
+    addLog('info', `Products mode: ${productIds.length} products selected`)
   } else {
-    addLog('info', `Using range selection: ${filteredProducts.length} products`)
+    // Collections mode (existing logic)
+    const checkboxes = collectionSelector.querySelectorAll('input[type="checkbox"]:checked')
+    collectionIds = Array.from(checkboxes).map((cb) => cb.value)
+    usingRangeSelection = filteredProducts.length > 0
+
+    if (!usingRangeSelection) {
+      if (collectionIds.length === 0) {
+        addLog('error', 'Please select at least one collection')
+        return
+      }
+      addLog('info', `Collections mode: ${collectionIds.length} collection(s)`)
+    } else {
+      addLog('info', `Range mode: ${filteredProducts.length} products`)
+    }
   }
 
   // Validate mockup template is selected
@@ -2158,10 +2544,11 @@ async function handleStartAutomation() {
 
   // Get collection names for logging (only needed for collection mode)
   let collectionNames = ''
-  if (!usingRangeSelection && collectionIds && collectionIds.length > 0) {
+  if (!useProductsMode && !usingRangeSelection && collectionIds && collectionIds.length > 0) {
     if (collectionIds.includes('all')) {
       collectionNames = 'All Collections'
     } else {
+      const checkboxes = collectionSelector.querySelectorAll('input[type="checkbox"]:checked')
       const selectedNames = Array.from(checkboxes).map((cb) => cb.getAttribute('data-name'))
       collectionNames = selectedNames.join(', ')
     }
@@ -2169,29 +2556,55 @@ async function handleStartAutomation() {
 
   // Update button state for processing
   startAutomationBtn.textContent = 'Traitement en cours...'
-  const allCheckboxes = collectionSelector.querySelectorAll('input[type="checkbox"]')
-  allCheckboxes.forEach((cb) => (cb.disabled = true))
+
+  // Disable UI elements based on current mode
+  if (currentMode === 'products') {
+    // Disable Products mode UI
+    const productCheckboxes = document.querySelectorAll('.product-checkbox')
+    productCheckboxes.forEach((cb) => (cb.disabled = true))
+
+    const productSearchInput = document.getElementById('productSearchInput')
+    if (productSearchInput) productSearchInput.disabled = true
+
+    const selectAllCheckbox = document.getElementById('selectAllProductsCheckbox')
+    if (selectAllCheckbox) selectAllCheckbox.disabled = true
+  } else {
+    // Disable Collections mode UI
+    const allCheckboxes = collectionSelector.querySelectorAll('input[type="checkbox"]')
+    allCheckboxes.forEach((cb) => (cb.disabled = true))
+  }
+
+  // Disable mode toggle
+  const modeRadios = document.querySelectorAll('input[name="selectionMode"]')
+  modeRadios.forEach((radio) => (radio.disabled = true))
 
   try {
-    // Determine if using range selection (use range mode whenever user has selected a range)
-    const useRangeSelection = usingRangeSelection
     let requestBody = {}
 
-    if (useRangeSelection) {
-      // Range selection mode - send productIds
-      const productIds = filteredProducts.map((p) => p.id)
-      addLog(
-        'info',
-        `Starting automation for ${productIds.length} products (range ${rangeStart}-${rangeEnd})`
-      )
+    if (useProductsMode) {
+      // Products mode - send productIds
+      addLog('info', `Starting automation for ${productIds.length} selected products`)
 
       requestBody = {
         productIds: productIds,
         mockupTemplatePath: mockupTemplatePath,
         targetImagePosition: targetImagePosition,
       }
+    } else if (usingRangeSelection) {
+      // Range selection mode - send productIds from range
+      const rangeProductIds = filteredProducts.map((p) => p.id)
+      addLog(
+        'info',
+        `Starting automation for ${rangeProductIds.length} products (range ${rangeStart}-${rangeEnd})`
+      )
+
+      requestBody = {
+        productIds: rangeProductIds,
+        mockupTemplatePath: mockupTemplatePath,
+        targetImagePosition: targetImagePosition,
+      }
     } else {
-      // Collection selection mode - send collectionIds (existing behavior)
+      // Collection selection mode - send collectionIds
       addLog('info', `Starting automation for: ${collectionNames}`)
 
       requestBody = {
@@ -2254,8 +2667,27 @@ function enableStartButton() {
   startAutomationBtn.disabled = false
   startAutomationBtn.classList.remove('processing')
   startAutomationBtn.textContent = 'Démarrer le traitement'
-  const allCheckboxes = collectionSelector.querySelectorAll('input[type="checkbox"]')
-  allCheckboxes.forEach((cb) => (cb.disabled = false))
+
+  // Re-enable UI elements based on current mode
+  if (currentMode === 'products') {
+    // Re-enable Products mode UI
+    const productCheckboxes = document.querySelectorAll('.product-checkbox')
+    productCheckboxes.forEach((cb) => (cb.disabled = false))
+
+    const productSearchInput = document.getElementById('productSearchInput')
+    if (productSearchInput) productSearchInput.disabled = false
+
+    const selectAllCheckbox = document.getElementById('selectAllProductsCheckbox')
+    if (selectAllCheckbox) selectAllCheckbox.disabled = false
+  } else {
+    // Re-enable Collections mode UI
+    const allCheckboxes = collectionSelector.querySelectorAll('input[type="checkbox"]')
+    allCheckboxes.forEach((cb) => (cb.disabled = false))
+  }
+
+  // Re-enable mode toggle
+  const modeRadios = document.querySelectorAll('input[name="selectionMode"]')
+  modeRadios.forEach((radio) => (radio.disabled = false))
 }
 
 /**
