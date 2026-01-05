@@ -1,6 +1,7 @@
 import { BaseCommand } from '@adonisjs/core/build/standalone'
 import { logTaskBoundary } from 'App/Utils/Logs'
 import Shopify from 'App/Services/Shopify'
+import ChatGPT from 'App/Services/ChatGPT'
 
 export default class TestTask extends BaseCommand {
   public static commandName = 'test:task'
@@ -19,11 +20,11 @@ export default class TestTask extends BaseCommand {
     // ====================================================================
     // Add your test product IDs here (Shopify GIDs format: gid://shopify/Product/123456789)
     const TEST_PRODUCT_IDS: string[] = [
-      //'gid://shopify/Product/10262925214043',
+      'gid://shopify/Product/7955078086911',
       //'gid://shopify/Product/10260536263003',
       //'gid://shopify/Product/10257951195483',
       //'gid://shopify/Product/9918679744859', // square model
-      'gid://shopify/Product/10195703628123', // boheme square
+      //'gid://shopify/Product/10195703628123', // boheme square
     ]
 
     // Set to 'create' or 'update' to test specific webhook type
@@ -109,6 +110,12 @@ export default class TestTask extends BaseCommand {
     console.info(`🎨 Processing painting product...`)
     await shopify.product.paintingCopier.copyModelDataFromImageRatio(product)
     console.info(`✅ Painting data successfully copied`)
+
+    // Test color detection (same as webhook handler)
+    console.info(`\n🎨 Testing color detection...`)
+    const chatGPT = new ChatGPT()
+    await chatGPT.colorPattern.detectAndSetColors(product)
+    console.info(`✅ Color detection completed`)
   }
 
   /**

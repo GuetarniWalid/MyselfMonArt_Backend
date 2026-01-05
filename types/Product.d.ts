@@ -292,9 +292,11 @@ export interface ProductById {
   media: {
     nodes: {
       alt: string
+      mediaContentType: string
       image?: {
         width: number
         height: number
+        url: string
       }
     }[]
   }

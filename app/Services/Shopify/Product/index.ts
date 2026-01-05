@@ -318,10 +318,12 @@ export default class Product extends Authentication {
             nodes {
               id
               alt
+              mediaContentType
               ... on MediaImage {
                 image {
                   width
                   height
+                  url
                 }
               }
             }

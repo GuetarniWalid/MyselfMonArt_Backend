@@ -2,6 +2,7 @@ import { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
 import crypto from 'crypto'
 import Env from '@ioc:Adonis/Core/Env'
 import Shopify from 'App/Services/Shopify'
+import ChatGPT from 'App/Services/ChatGPT'
 import WebhookLog from 'App/Models/WebhookLog'
 import Database from '@ioc:Adonis/Lucid/Database'
 import { logTaskBoundary } from 'App/Utils/Logs'
@@ -143,6 +144,11 @@ export default class WebhooksController {
     console.info(`🚀 Filling model data on product`)
     await shopify.product.paintingCopier.copyModelDataFromImageRatio(product)
     console.info(`🚀 Data successfully copied on product ${id}`)
+
+    // Color detection (runs after model data copy)
+    console.info(`🎨 Detecting colors for product ${id}`)
+    const chatGPT = new ChatGPT()
+    await chatGPT.colorPattern.detectAndSetColors(product)
   }
 
   private async handleTapestryCreate(id: string) {

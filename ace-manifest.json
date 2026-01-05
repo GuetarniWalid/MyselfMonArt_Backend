@@ -1,5 +1,17 @@
 {
   "commands": {
+    "color:attribution": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ColorAttribution",
+      "commandName": "color:attribution",
+      "description": "Run color detection on all painting products",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
     "delete:merchant_center_products": {
       "settings": {
         "loadApp": true,
@@ -235,7 +247,7 @@
       },
       "commandPath": "./commands/TestTask",
       "commandName": "test:task",
-      "description": "Test task",
+      "description": "Test differential update system",
       "args": [],
       "aliases": [],
       "flags": []
