@@ -220,6 +220,9 @@ export interface ProductUpdate {
 
 export interface ProductByTag {
   id: string
+  category?: {
+    id: string
+  }
   paintingOptionsMetafields: {
     nodes: Array<{
       id: string
@@ -248,6 +251,15 @@ export interface ProductByTag {
       }>
     }
   }
+  paintingLayoutMetafield?: {
+    id: string
+    namespace: string
+    key: string
+    type: string
+    reference?: {
+      id: string
+    }
+  }
   options: {
     id: string
     name: string
@@ -274,6 +286,9 @@ export interface ProductById {
   hasOnlyDefaultVariant: boolean
   tags: string[]
   templateSuffix: string | null
+  category?: {
+    id: string
+  }
   media: {
     nodes: {
       alt: string
@@ -328,6 +343,15 @@ export interface ProductById {
           id: string
         }
       }[]
+    }
+  }
+  paintingLayoutMetafield?: {
+    id: string
+    namespace: string
+    key: string
+    type: string
+    reference?: {
+      id: string
     }
   }
   options: {

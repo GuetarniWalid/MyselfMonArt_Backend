@@ -233,6 +233,9 @@ export default class Product extends Authentication {
                       }
                       tags
                       templateSuffix
+                      category {
+                        id
+                      }
                       translations(locale: "en") {
                         key
                         locale
@@ -308,6 +311,9 @@ export default class Product extends Authentication {
           hasOnlyDefaultVariant
           tags
           templateSuffix
+          category {
+            id
+          }
           media(first: 10) {
             nodes {
               id
@@ -373,6 +379,17 @@ export default class Product extends Authentication {
                     id
                   }
                 }
+              }
+            }
+          }
+          paintingLayoutMetafield: metafield(namespace: "painting", key: "layout") {
+            id
+            namespace
+            key
+            type
+            reference {
+              ... on Metaobject {
+                id
               }
             }
           }
@@ -539,6 +556,9 @@ export default class Product extends Authentication {
           edges {
             node {
               id
+              category {
+                id
+              }
               paintingOptionsMetafields: metafields(first: 20, namespace: "painting_options") {
                 nodes {
                   id
@@ -568,6 +588,17 @@ export default class Product extends Authentication {
                         id
                       }
                     }
+                  }
+                }
+              }
+              paintingLayoutMetafield: metafield(namespace: "painting", key: "layout") {
+                id
+                namespace
+                key
+                type
+                reference {
+                  ... on Metaobject {
+                    id
                   }
                 }
               }

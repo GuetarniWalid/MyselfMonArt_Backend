@@ -2,7 +2,7 @@ import { Product, ProductById, ProductByTag } from 'Types/Product'
 import Shopify from '../..'
 import ChatGPT from 'App/Services/ChatGPT'
 import { LanguageCode, RegionCode } from 'Types/Translation'
-import { DiffResult, OptionsDiff, VariantsDiff, BundleMetafieldDiff } from './types'
+import { DiffResult, OptionsDiff, VariantsDiff, BundleMetafieldDiff, CategoryDiff } from './types'
 
 export default abstract class ModelCopier {
   public abstract isModelProduct(product: ProductById | Product): boolean
@@ -155,15 +155,18 @@ export default abstract class ModelCopier {
       : this.compareVariants(product, model)
 
     const bundleMetafieldDiff = this.compareBundleMetafield(product, model)
+    const categoryDiff = this.compareCategory(product, model)
 
     return {
       optionsDiff,
       variantsDiff,
       bundleMetafieldDiff,
+      categoryDiff,
       hasAnyChanges:
         optionsDiff.needsUpdate ||
         variantsDiff.needsUpdate ||
-        (bundleMetafieldDiff?.needsUpdate ?? false),
+        (bundleMetafieldDiff?.needsUpdate ?? false) ||
+        (categoryDiff?.needsUpdate ?? false),
     }
   }
 
@@ -852,6 +855,9 @@ export default abstract class ModelCopier {
           console.info(`   - Bundle metafield: ${refCount} product reference(s) to update`)
         }
       }
+      if (initialDiff.categoryDiff?.needsUpdate) {
+        console.info(`   - Category: Will be copied from model`)
+      }
 
       const diff = initialDiff
 
@@ -906,6 +912,16 @@ export default abstract class ModelCopier {
         }
       }
 
+      // Update category if needed (hook for subclasses)
+      // IMPORTANT: Category must be set BEFORE metafields because some metafields
+      // (like painting.layout) are category-specific and only available after category is set
+      try {
+        await this.updateCategoryIfNeeded(product, diff)
+      } catch (error) {
+        console.warn(`⚠️  Category update failed: ${error.message}`)
+        // Don't throw - category failure shouldn't block other updates
+      }
+
       // Update metafields if needed (hook for subclasses like PaintingCopier)
       await this.updateMetafieldsIfNeeded(product, diff)
 
@@ -948,6 +964,27 @@ export default abstract class ModelCopier {
   ): Promise<void> {
     // Default implementation does nothing
     // Subclasses can override to add metafield update logic
+  }
+
+  /**
+   * Hook method for comparing product category
+   * Default implementation returns undefined (no category comparison)
+   * Subclasses can override to add category comparison logic
+   */
+  protected compareCategory(_product: ProductById, _model: ProductByTag): CategoryDiff | undefined {
+    // Default: no category comparison
+    // Subclasses override to add category comparison logic
+    return undefined
+  }
+
+  /**
+   * Hook method for setting product category
+   * Default implementation does nothing
+   * Subclasses can override to add category logic
+   */
+  protected async updateCategoryIfNeeded(_product: ProductById, _diff: DiffResult): Promise<void> {
+    // Default: no-op
+    // Subclasses override to add category logic
   }
 
   /**

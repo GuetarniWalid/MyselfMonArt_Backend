@@ -1,7 +1,7 @@
 import { Product, ProductById, ProductByTag } from 'Types/Product'
 import Shopify from '../..'
 import ModelCopier from './index'
-import { DiffResult, MetafieldsDiff } from './types'
+import { DiffResult, MetafieldsDiff, CategoryDiff } from './types'
 
 export default class PaintingCopier extends ModelCopier {
   /**
@@ -96,6 +96,24 @@ export default class PaintingCopier extends ModelCopier {
       }
     })
 
+    // Compare painting.layout metafield (single metaobject reference)
+    // This is a category-specific metafield available after setting the paintings category
+    const productLayoutId = product.paintingLayoutMetafield?.reference?.id
+    const modelLayoutId = model.paintingLayoutMetafield?.reference?.id
+
+    if (modelLayoutId && productLayoutId !== modelLayoutId) {
+      // Model has layout and it's different from product's layout (or product has no layout)
+      diff.metafieldsToUpdate.push({
+        namespace: 'painting',
+        key: 'layout',
+        value: modelLayoutId, // Single reference: use GID directly (not JSON.stringify)
+      })
+      diff.needsUpdate = true
+    }
+
+    // Note: If model doesn't have layout, we skip (don't modify product's layout)
+    // This matches the behavior of other optional metafields
+
     return diff
   }
 
@@ -144,7 +162,22 @@ export default class PaintingCopier extends ModelCopier {
     }
 
     console.info(`🏷️  Updating metafields`)
-    console.info(`   - Metafields: ${diff.metafieldsDiff.metafieldsToUpdate.length} to update`)
+
+    // Enhanced logging to distinguish between different metafield types
+    const paintingOptionsCount = diff.metafieldsDiff.metafieldsToUpdate.filter(
+      (m) => m.namespace === 'painting_options'
+    ).length
+    const layoutCount = diff.metafieldsDiff.metafieldsToUpdate.filter(
+      (m) => m.namespace === 'painting' && m.key === 'layout'
+    ).length
+
+    if (paintingOptionsCount > 0) {
+      console.info(`   - Metafields: ${paintingOptionsCount} painting_options to update`)
+    }
+    if (layoutCount > 0) {
+      console.info(`   - Metafields: painting.layout to update`)
+    }
+
     if (diff.metafieldsDiff.metafieldsToDelete.length > 0) {
       console.warn(
         `     ⚠️  Note: ${diff.metafieldsDiff.metafieldsToDelete.length} metafield(s) should be deleted but automatic deletion is not yet implemented. Manual cleanup may be required.`
@@ -156,6 +189,59 @@ export default class PaintingCopier extends ModelCopier {
     } catch (error) {
       console.warn(`⚠️  Metafield update failed for ${product.id}: ${error.message}`)
       // Don't throw - metafield failures shouldn't stop translation
+    }
+  }
+
+  /**
+   * Compare category between product and model
+   * Returns needsUpdate: true if product's category differs from model's category
+   * Only applies to regular paintings (templateSuffix === 'painting')
+   */
+  protected compareCategory(product: ProductById, model: ProductByTag): CategoryDiff | undefined {
+    // Only set category for regular paintings (not personalized, not models)
+    if (product.templateSuffix !== 'painting') {
+      return undefined
+    }
+
+    // Get category from model (source of truth)
+    const modelCategoryGid = model.category?.id
+
+    // If model doesn't have a category, skip (nothing to copy)
+    if (!modelCategoryGid) {
+      return undefined
+    }
+
+    const currentCategoryGid = product.category?.id
+
+    // Check if category needs to be copied from model
+    const needsUpdate = currentCategoryGid !== modelCategoryGid
+
+    return {
+      needsUpdate,
+      categoryGid: modelCategoryGid, // Copy from model
+    }
+  }
+
+  /**
+   * Set product category for paintings
+   * Copies category from model to product
+   * Called by base class orchestrator when categoryDiff.needsUpdate is true
+   */
+  protected async updateCategoryIfNeeded(product: ProductById, diff: DiffResult): Promise<void> {
+    if (!diff.categoryDiff?.needsUpdate) {
+      return
+    }
+
+    const shopify = new Shopify()
+
+    try {
+      console.info(`🏷️  Copying category from model`)
+      await shopify.category.setProductCategory(product.id, diff.categoryDiff.categoryGid)
+      console.info(`✅ Category copied successfully`)
+    } catch (error) {
+      console.error(`❌ Failed to copy category: ${error.message}`)
+      // Don't throw - category failure shouldn't block other updates
+      // Product remains functional, category can be set manually if needed
     }
   }
 
@@ -303,6 +389,7 @@ export default class PaintingCopier extends ModelCopier {
   }
 
   public areMetafieldsSimilar(product: ProductById, model: ProductByTag): boolean {
+    // Check painting_options metafields
     if (!product.paintingOptionsMetafields?.nodes || !model.paintingOptionsMetafields?.nodes)
       return false
     if (
@@ -311,23 +398,34 @@ export default class PaintingCopier extends ModelCopier {
     )
       return false
 
-    return product.paintingOptionsMetafields.nodes.every((productMetafield) => {
-      const matchingModelMetafield = model.paintingOptionsMetafields.nodes.find(
-        (modelMetafield) => {
-          if (productMetafield.namespace !== modelMetafield.namespace) return false
-          if (productMetafield.key !== modelMetafield.key) return false
+    const paintingOptionsMatch = product.paintingOptionsMetafields.nodes.every(
+      (productMetafield) => {
+        const matchingModelMetafield = model.paintingOptionsMetafields.nodes.find(
+          (modelMetafield) => {
+            if (productMetafield.namespace !== modelMetafield.namespace) return false
+            if (productMetafield.key !== modelMetafield.key) return false
 
-          const productReferences = productMetafield.references.edges.map((edge) => edge.node.id)
-          const modelReferences = modelMetafield.references.edges.map((edge) => edge.node.id)
+            const productReferences = productMetafield.references.edges.map((edge) => edge.node.id)
+            const modelReferences = modelMetafield.references.edges.map((edge) => edge.node.id)
 
-          if (productReferences.length !== modelReferences.length) return false
+            if (productReferences.length !== modelReferences.length) return false
 
-          return productReferences.every((id) => modelReferences.includes(id))
-        }
-      )
+            return productReferences.every((id) => modelReferences.includes(id))
+          }
+        )
 
-      return !!matchingModelMetafield
-    })
+        return !!matchingModelMetafield
+      }
+    )
+
+    if (!paintingOptionsMatch) return false
+
+    // Also check painting.layout metafield
+    const productLayoutId = product.paintingLayoutMetafield?.reference?.id
+    const modelLayoutId = model.paintingLayoutMetafield?.reference?.id
+
+    // Layouts match if both are undefined/null OR if both have the same GID
+    return productLayoutId === modelLayoutId
   }
 
   public getRelatedProducts(products: Product[], product: ProductById) {

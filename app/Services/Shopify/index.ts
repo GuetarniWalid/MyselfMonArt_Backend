@@ -1,4 +1,5 @@
 import type { Resource } from 'Types/Resource'
+import Category from './Category'
 import Collection from './Collection'
 import Discount from './Discount'
 import File from './File'
@@ -13,6 +14,7 @@ import Variant from './Variant'
 import Webhook from './Webhook'
 
 export default class Shopify {
+  public category: Category
   public collection: Collection
   public discount: Discount
   public file: File
@@ -26,6 +28,7 @@ export default class Shopify {
   public webhook: Webhook
 
   constructor() {
+    this.category = new Category()
     this.collection = new Collection()
     this.discount = new Discount()
     this.file = new File()

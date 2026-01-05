@@ -3,6 +3,7 @@ export interface DiffResult {
   variantsDiff: VariantsDiff
   metafieldsDiff?: MetafieldsDiff // Painting-specific metafields (painting_options namespace)
   bundleMetafieldDiff?: BundleMetafieldDiff // Bundle.products metafield (shared across all products)
+  categoryDiff?: CategoryDiff // Product category (subclass-specific)
   hasAnyChanges: boolean
 }
 
@@ -53,4 +54,9 @@ export interface MetafieldsDiff {
 export interface BundleMetafieldDiff {
   needsUpdate: boolean
   productReferences: string[] // Product IDs from model (source of truth)
+}
+
+export interface CategoryDiff {
+  needsUpdate: boolean
+  categoryGid: string // Category GID to set (e.g., "gid://shopify/TaxonomyCategory/hg-3-4-2")
 }
