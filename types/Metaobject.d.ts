@@ -25,7 +25,8 @@ export interface MetaobjectToTranslate {
 }
 
 export interface MetaobjectToTranslateFormatted {
-  title: string
-  description: string
-  alt: string
+  title?: string
+  description?: string
+  alt?: string
+  label?: string
 }

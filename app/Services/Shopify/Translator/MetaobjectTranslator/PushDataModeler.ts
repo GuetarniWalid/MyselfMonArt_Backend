@@ -21,12 +21,14 @@ export default class PushDataModeler extends DefaultPushDataModeler {
   }): Promise<TranslationsRegister[]> {
     const translationInputs = [] as TranslationInput[]
 
-    // Handle painting option, radio container and popup
+    // Handle painting option, radio container, popup, custom media, colors and themes
     if (
       resourceToTranslate.type === 'painting_option' ||
       resourceToTranslate.type === 'radio_container' ||
       resourceToTranslate.type === 'popup' ||
-      resourceToTranslate.type === 'custom_media'
+      resourceToTranslate.type === 'custom_media' ||
+      resourceToTranslate.type === 'shopify--color-pattern' ||
+      resourceToTranslate.type === 'shopify--theme'
     ) {
       this.utils.createTranslationEntry(
         {

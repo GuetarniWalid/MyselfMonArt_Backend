@@ -240,6 +240,62 @@
       "aliases": [],
       "flags": []
     },
+    "test:metaobject_translations": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/TestMetaobjectTranslations",
+      "commandName": "test:metaobject_translations",
+      "description": "Test metaobject translations for colors and themes",
+      "args": [
+        {
+          "type": "string",
+          "propertyName": "locale",
+          "name": "locale",
+          "required": false,
+          "description": "Target language code (en, es, de)"
+        }
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "region",
+          "propertyName": "region",
+          "type": "string",
+          "description": "Region code (e.g., UK for en-UK)",
+          "required": false
+        },
+        {
+          "name": "colors-only",
+          "propertyName": "colorsOnly",
+          "type": "boolean",
+          "description": "Only show colors",
+          "alias": "c"
+        },
+        {
+          "name": "themes-only",
+          "propertyName": "themesOnly",
+          "type": "boolean",
+          "description": "Only show themes",
+          "alias": "t"
+        },
+        {
+          "name": "dry-run",
+          "propertyName": "dryRun",
+          "type": "boolean",
+          "description": "Dry run - show what would be translated without actually translating",
+          "alias": "d"
+        },
+        {
+          "name": "limit",
+          "propertyName": "limit",
+          "type": "number",
+          "description": "Limit number of metaobjects to translate",
+          "alias": "l"
+        }
+      ]
+    },
     "test:task": {
       "settings": {
         "loadApp": true,

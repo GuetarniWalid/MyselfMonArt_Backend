@@ -56,6 +56,24 @@ export default class PullDataModeler extends DefaultPullDataModeler {
     }[]
     metaobjectToTranslate.push(...customMediaMetaobjects.map((metaobject) => metaobject.node))
 
+    // Color patterns
+    const { query: colorPatternQuery, variables: colorPatternVariables } =
+      this.getColorPatternMetaobjectsToTranslateQuery()
+    const colorPatternData = await this.fetchGraphQL(colorPatternQuery, colorPatternVariables)
+    const colorPatternMetaobjects = colorPatternData.metaobjects.edges as {
+      node: MetaobjectToTranslate
+    }[]
+    metaobjectToTranslate.push(...colorPatternMetaobjects.map((metaobject) => metaobject.node))
+
+    // Themes
+    const { query: themeQuery, variables: themeVariables } =
+      this.getThemeMetaobjectsToTranslateQuery()
+    const themeData = await this.fetchGraphQL(themeQuery, themeVariables)
+    const themeMetaobjects = themeData.metaobjects.edges as {
+      node: MetaobjectToTranslate
+    }[]
+    metaobjectToTranslate.push(...themeMetaobjects.map((metaobject) => metaobject.node))
+
     return metaobjectToTranslate
   }
 
@@ -157,6 +175,50 @@ export default class PullDataModeler extends DefaultPullDataModeler {
                       displayName
                       type
                       field(key: "alt") {
+                        key
+                        type
+                        jsonValue
+                      }
+                    }
+                  }
+                }
+              }`,
+      variables: {},
+    }
+  }
+
+  private getColorPatternMetaobjectsToTranslateQuery() {
+    return {
+      query: `query AllMetaobjects {
+                metaobjects(first: 250, type: "shopify--color-pattern") {
+                  edges {
+                    node {
+                      id
+                      displayName
+                      type
+                      field(key: "label") {
+                        key
+                        type
+                        jsonValue
+                      }
+                    }
+                  }
+                }
+              }`,
+      variables: {},
+    }
+  }
+
+  private getThemeMetaobjectsToTranslateQuery() {
+    return {
+      query: `query AllMetaobjects {
+                metaobjects(first: 250, type: "shopify--theme") {
+                  edges {
+                    node {
+                      id
+                      displayName
+                      type
+                      field(key: "label") {
                         key
                         type
                         jsonValue
