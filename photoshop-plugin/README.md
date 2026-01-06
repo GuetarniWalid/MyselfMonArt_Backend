@@ -12,7 +12,7 @@ Photoshop plugin for automated mockup generation. This plugin connects to the ba
 
 ## Prerequisites
 
-- Adobe Photoshop 2023 or later (version 24.0.0+)
+- Adobe Photoshop 2026 or later (version 27.1.0+)
 - UXP Developer Tool installed
 - Node.js and npm installed
 
