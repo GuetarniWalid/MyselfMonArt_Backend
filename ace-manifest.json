@@ -252,6 +252,18 @@
       "aliases": [],
       "flags": []
     },
+    "theme:attribution": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ThemeAttribution",
+      "commandName": "theme:attribution",
+      "description": "Run theme detection on all painting products",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
     "dump:rcfile": {
       "settings": {},
       "commandPath": "@adonisjs/core/build/commands/DumpRc",

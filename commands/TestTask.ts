@@ -20,7 +20,7 @@ export default class TestTask extends BaseCommand {
     // ====================================================================
     // Add your test product IDs here (Shopify GIDs format: gid://shopify/Product/123456789)
     const TEST_PRODUCT_IDS: string[] = [
-      'gid://shopify/Product/7955078086911',
+      'gid://shopify/Product/9667258319195',
       //'gid://shopify/Product/10260536263003',
       //'gid://shopify/Product/10257951195483',
       //'gid://shopify/Product/9918679744859', // square model
@@ -116,6 +116,11 @@ export default class TestTask extends BaseCommand {
     const chatGPT = new ChatGPT()
     await chatGPT.colorPattern.detectAndSetColors(product)
     console.info(`✅ Color detection completed`)
+
+    // Test theme detection (same as webhook handler)
+    console.info(`\n🏷️  Testing theme detection...`)
+    await chatGPT.theme.detectAndSetThemes(product)
+    console.info(`✅ Theme detection completed`)
   }
 
   /**

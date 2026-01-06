@@ -149,6 +149,10 @@ export default class WebhooksController {
     console.info(`🎨 Detecting colors for product ${id}`)
     const chatGPT = new ChatGPT()
     await chatGPT.colorPattern.detectAndSetColors(product)
+
+    // Theme detection (runs after color detection)
+    console.info(`🏷️  Detecting themes for product ${id}`)
+    await chatGPT.theme.detectAndSetThemes(product)
   }
 
   private async handleTapestryCreate(id: string) {

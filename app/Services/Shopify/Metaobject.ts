@@ -96,6 +96,49 @@ export default class Metaobject extends Authentication {
     }
   }
 
+  public async createThemeMetaobject(label: string) {
+    const { query, variables } = this.getCreateThemeMetaobjectQuery(label)
+    const response = await this.fetchGraphQL(query, variables)
+    return response.metaobjectCreate
+  }
+
+  private getCreateThemeMetaobjectQuery(label: string) {
+    return {
+      query: `mutation CreateThemeMetaobject($metaobject: MetaobjectCreateInput!) {
+        metaobjectCreate(metaobject: $metaobject) {
+          metaobject {
+            id
+            handle
+            fields {
+              key
+              value
+            }
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }`,
+      variables: {
+        metaobject: {
+          type: 'shopify--theme',
+          fields: [
+            {
+              key: 'label',
+              value: label,
+            },
+            {
+              key: 'taxonomy_reference',
+              value: 'gid://shopify/TaxonomyValue/7722',
+            },
+          ],
+        },
+      },
+    }
+  }
+
   public async updateAltTextsMetaObject(id: string, newValues: string[]) {
     const { query, variables } = this.getUpdateAltTextsMetaObjectQuery(id, newValues)
     const response = await this.fetchGraphQL(query, variables)
