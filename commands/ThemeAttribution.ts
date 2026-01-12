@@ -23,7 +23,7 @@ export default class ThemeAttribution extends BaseCommand {
 
     // Maximum number of products to process (safety limit)
     // Set to null to process ALL products (use with caution!)
-    const MAX_PRODUCTS: number | null = 20
+    const MAX_PRODUCTS: number | null = null
 
     // Skip products that already have themes set
     const SKIP_EXISTING_THEMES = true
@@ -116,7 +116,9 @@ export default class ThemeAttribution extends BaseCommand {
         processed: 0,
         skipped: 0,
         failed: 0,
+        noThemesFound: 0,
         errors: [] as Array<{ productId: string; productTitle: string; error: string }>,
+        productsWithoutThemes: [] as Array<{ productId: string; productTitle: string }>,
       }
 
       for (let i = 0; i < productsToProcess.length; i++) {
@@ -151,8 +153,23 @@ export default class ThemeAttribution extends BaseCommand {
           // Run theme detection
           await chatGPT.theme.detectAndSetThemes(fullProduct)
 
-          console.info(`✅ Success`)
-          results.processed++
+          // Verify if themes were actually set
+          const updatedProduct = await shopify.product.getProductById(product.id)
+          const hasThemesNow = updatedProduct.metafields?.edges.find(
+            (edge) => edge.node.namespace === 'shopify' && edge.node.key === 'theme'
+          )
+
+          if (hasThemesNow) {
+            console.info(`✅ Success - Themes assigned`)
+            results.processed++
+          } else {
+            console.warn(`⚠️  No themes found for this product`)
+            results.noThemesFound++
+            results.productsWithoutThemes.push({
+              productId: product.id,
+              productTitle: product.title,
+            })
+          }
         } catch (error: any) {
           console.error(`❌ Failed: ${error.message}`)
           results.failed++
@@ -169,15 +186,16 @@ export default class ThemeAttribution extends BaseCommand {
       console.info(`\n${'═'.repeat(60)}`)
       console.info(`📊 FINAL SUMMARY`)
       console.info(`${'═'.repeat(60)}`)
-      console.info(`Total products:        ${results.total}`)
-      console.info(`✅ Successfully processed: ${results.processed}`)
-      console.info(`⏭️  Skipped (has themes):  ${results.skipped}`)
-      console.info(`❌ Failed:                ${results.failed}`)
+      console.info(`Total products:            ${results.total}`)
+      console.info(`✅ Successfully processed:     ${results.processed}`)
+      console.info(`⏭️  Skipped (has themes):      ${results.skipped}`)
+      console.info(`⚠️  No themes found:           ${results.noThemesFound}`)
+      console.info(`❌ Failed (errors):            ${results.failed}`)
       console.info(`${'═'.repeat(60)}`)
 
       if (results.errors.length > 0) {
         console.error(`\n${'━'.repeat(60)}`)
-        console.error(`❌ FAILED PRODUCTS:`)
+        console.error(`❌ FAILED PRODUCTS (Errors):`)
         console.error(`${'━'.repeat(60)}`)
         results.errors.forEach((err, index) => {
           console.error(`\n${index + 1}. ${err.productTitle}`)
@@ -187,8 +205,25 @@ export default class ThemeAttribution extends BaseCommand {
         console.error(`${'━'.repeat(60)}`)
       }
 
+      if (results.productsWithoutThemes.length > 0) {
+        console.warn(`\n${'━'.repeat(60)}`)
+        console.warn(`⚠️  PRODUCTS WITHOUT THEMES (No themes detected):`)
+        console.warn(`${'━'.repeat(60)}`)
+        results.productsWithoutThemes.forEach((prod, index) => {
+          console.warn(`${index + 1}. ${prod.productTitle}`)
+          console.warn(`   Product ID: ${prod.productId}`)
+        })
+        console.warn(`${'━'.repeat(60)}`)
+      }
+
       if (results.processed > 0) {
         console.info(`\n🎉 Theme attribution completed successfully!`)
+      }
+
+      if (results.noThemesFound > 0 || results.failed > 0) {
+        console.warn(
+          `\n⚠️  ${results.noThemesFound + results.failed} product(s) require manual review (see lists above)`
+        )
       }
     } catch (error: any) {
       console.error(`\n❌ Fatal error during batch processing:`, error.message)
