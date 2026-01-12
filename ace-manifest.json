@@ -24,6 +24,18 @@
       "aliases": [],
       "flags": []
     },
+    "image:rename": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ImageRename",
+      "commandName": "image:rename",
+      "description": "Batch rename product first images containing \"mockup\" with AI-generated SEO filenames",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
     "photoshop:mockup_automation": {
       "settings": {
         "loadApp": true,
@@ -263,8 +275,7 @@
           "name": "region",
           "propertyName": "region",
           "type": "string",
-          "description": "Region code (e.g., UK for en-UK)",
-          "required": false
+          "description": "Region code (e.g., UK for en-UK)"
         },
         {
           "name": "colors-only",

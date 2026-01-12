@@ -1,0 +1,271 @@
+import { BaseCommand } from '@adonisjs/core/build/standalone'
+import { logTaskBoundary } from 'App/Utils/Logs'
+import Shopify from 'App/Services/Shopify'
+import Mockup from 'App/Services/ChatGPT/Mockup'
+
+export default class ImageRename extends BaseCommand {
+  public static commandName = 'image:rename'
+  public static description =
+    'Batch rename product first images containing "mockup" with AI-generated SEO filenames'
+
+  public static settings = {
+    loadApp: true,
+    stayAlive: false,
+  }
+
+  public async run() {
+    logTaskBoundary(true, 'Image Rename')
+
+    // ====================================================================
+    // CONFIGURATION
+    // ====================================================================
+    // Set to true to see what would be processed without actually renaming
+    const DRY_RUN = false
+
+    // Maximum number of products to process (safety limit)
+    // Set to null to process ALL products (use with caution!)
+    const MAX_PRODUCTS: number | null = null
+
+    // Skip products where first image doesn't contain "mockup"
+    const SKIP_NON_MOCKUP = true
+    // ====================================================================
+
+    console.info(`🏷️  Image Rename - Batch Processing`)
+    console.info(`${'='.repeat(60)}`)
+    console.info(`Mode: ${DRY_RUN ? '🔍 DRY RUN (no changes)' : '✅ LIVE (will update filenames)'}`)
+    console.info(`Skip non-mockup images: ${SKIP_NON_MOCKUP ? 'Yes' : 'No'}`)
+    if (MAX_PRODUCTS) {
+      console.warn(`⚠️  Safety limit: Max ${MAX_PRODUCTS} products`)
+    }
+    console.info(`${'='.repeat(60)}\n`)
+
+    try {
+      // Step 1: Fetch all products
+      console.info(`📦 Fetching all products from Shopify...`)
+      const shopify = new Shopify()
+      const allProducts = await shopify.product.getAll()
+      console.info(`✅ Fetched ${allProducts.length} total products\n`)
+
+      // Step 2: Filter for eligible products
+      console.info(`🔍 Filtering for eligible products...`)
+      const eligibleProducts = allProducts.filter((product) => {
+        // Must be painting or personalized
+        if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'personalized') {
+          return false
+        }
+
+        // Must not be a model
+        const isModel = product.tags.some((tag) =>
+          [
+            'portrait model',
+            'paysage model',
+            'square model',
+            'personalized portrait model',
+          ].includes(tag)
+        )
+        if (isModel) {
+          return false
+        }
+
+        // Must have at least 1 media item
+        if (!product.media?.nodes || product.media.nodes.length < 1) {
+          return false
+        }
+
+        // First media must be an image
+        const firstMedia = product.media.nodes[0]
+        if (firstMedia.mediaContentType !== 'IMAGE') {
+          return false
+        }
+
+        // Check if filename contains "mockup" (case-insensitive)
+        const imageUrl = firstMedia.image?.url
+        if (!imageUrl) {
+          return false
+        }
+
+        // Extract filename from URL (remove query params)
+        const urlPath = imageUrl.split('?')[0]
+        const filename = urlPath.split('/').pop() || ''
+        if (SKIP_NON_MOCKUP && !filename.toLowerCase().includes('mockup')) {
+          return false
+        }
+
+        return true
+      })
+
+      console.info(`✅ Found ${eligibleProducts.length} eligible products`)
+
+      // Step 3: Apply safety limit if configured
+      const productsToProcess =
+        MAX_PRODUCTS && MAX_PRODUCTS > 0
+          ? eligibleProducts.slice(0, MAX_PRODUCTS)
+          : eligibleProducts
+
+      if (MAX_PRODUCTS && MAX_PRODUCTS > 0 && eligibleProducts.length > MAX_PRODUCTS) {
+        console.warn(
+          `⚠️  SAFETY LIMIT: Only processing first ${MAX_PRODUCTS} of ${eligibleProducts.length} products`
+        )
+      }
+
+      console.info(`\n📊 Will process ${productsToProcess.length} products`)
+
+      // Step 4: Process each product
+      console.info(`\n${'═'.repeat(60)}`)
+      console.info(`${DRY_RUN ? '🔍 DRY RUN - Simulating' : '🚀 Starting'} image rename...`)
+      console.info(`${'═'.repeat(60)}\n`)
+
+      const results = {
+        total: productsToProcess.length,
+        processed: 0,
+        skipped: 0,
+        failed: 0,
+        errors: [] as Array<{ productId: string; productTitle: string; error: string }>,
+      }
+
+      const mockupService = new Mockup()
+
+      for (let i = 0; i < productsToProcess.length; i++) {
+        const product = productsToProcess[i]
+        const progress = `[${i + 1}/${productsToProcess.length}]`
+
+        console.info(`\n${'─'.repeat(60)}`)
+        console.info(`${progress} Processing: ${product.title}`)
+        console.info(`${progress} Product ID: ${product.id}`)
+        console.info(`${'─'.repeat(60)}`)
+
+        try {
+          // Get full product details
+          const fullProduct = await shopify.product.getProductById(product.id)
+          const firstMedia = fullProduct.media.nodes[0]
+
+          if (!firstMedia.image) {
+            throw new Error('First media has no image data')
+          }
+
+          const oldImageUrl = firstMedia.image.url
+          const oldMediaId = firstMedia.id
+
+          // Extract filename from URL and remove query parameters
+          const urlPath = oldImageUrl.split('?')[0] // Remove query params
+          const oldFilename = urlPath.split('/').pop() || 'unknown'
+
+          // Extract current extension from filename
+          const extensionMatch = oldFilename.match(/\.(jpg|jpeg|png|gif|webp)$/i)
+          if (!extensionMatch) {
+            throw new Error(`Could not determine file extension from: ${oldFilename}`)
+          }
+          const extension = extensionMatch[1].toLowerCase()
+
+          console.info(`${progress} 📄 Current: ${oldFilename}`)
+
+          // Generate AI-based filename
+          console.info(`${progress} 🤖 Generating AI-based filename...`)
+          const productContext = {
+            title: fullProduct.title,
+            description: fullProduct.description,
+            templateSuffix: fullProduct.templateSuffix,
+            tags: fullProduct.tags,
+            // No mockupTemplatePath - this ensures Vierge mode (artwork-only)
+          }
+
+          const altResult = await mockupService.generateMockupAlt(productContext)
+
+          // Validate filename
+          if (!this.validateFilename(altResult.filename)) {
+            throw new Error(`Invalid AI filename: ${altResult.filename}`)
+          }
+
+          // Create full filename with extension
+          const newFilename = `${altResult.filename}.${extension}`
+          console.info(`${progress} 🏷️  New:     ${newFilename}`)
+
+          // Check if filename is already good (same as AI-generated)
+          if (oldFilename.toLowerCase() === newFilename.toLowerCase()) {
+            console.info(
+              `${progress} ⏭️  ${DRY_RUN ? 'Would skip' : 'Skipped'} - Filename already optimal`
+            )
+            console.info(``)
+            results.skipped++
+            continue
+          }
+
+          // Update filename directly via Shopify fileUpdate mutation
+          if (DRY_RUN) {
+            console.info(`${progress} 🔍 Would update filename via Shopify API`)
+            console.info(`${progress} ✅ DRY RUN - No changes made`)
+          } else {
+            console.info(`${progress} 📝 Updating filename via Shopify API...`)
+            await shopify.file.update(oldMediaId, {
+              filename: newFilename,
+            })
+            console.info(`${progress} ✅ Success - Filename updated`)
+          }
+          console.info(``)
+          results.processed++
+        } catch (error: any) {
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          console.error(`${progress} ❌ Failed: ${errorMessage}`)
+          console.info(``)
+
+          results.failed++
+          results.errors.push({
+            productId: product.id,
+            productTitle: product.title,
+            error: errorMessage,
+          })
+        }
+      }
+
+      // Step 5: Display final summary
+      console.info(`\n${'═'.repeat(60)}`)
+      console.info(`📊 FINAL SUMMARY ${DRY_RUN ? '(DRY RUN)' : ''}`)
+      console.info(`${'═'.repeat(60)}`)
+      console.info(`Total products:                    ${results.total}`)
+      console.info(
+        `${DRY_RUN ? '🔍 Would rename:' : '✅ Successfully renamed:'}  ${results.processed}`
+      )
+      console.info(`⏭️  Skipped (already optimal):     ${results.skipped}`)
+      console.info(`❌ Failed:                         ${results.failed}`)
+      console.info(`${'═'.repeat(60)}`)
+
+      if (results.errors.length > 0) {
+        console.error(`\n${'━'.repeat(60)}`)
+        console.error(`❌ FAILED PRODUCTS:`)
+        console.error(`${'━'.repeat(60)}`)
+        results.errors.forEach((err, index) => {
+          console.error(`\n${index + 1}. ${err.productTitle}`)
+          console.error(`   Product ID: ${err.productId}`)
+          console.error(`   Error: ${err.error}`)
+        })
+        console.error(`${'━'.repeat(60)}`)
+      }
+
+      if (DRY_RUN) {
+        console.info(`\n✅ Dry run complete. Set DRY_RUN = false to apply changes.`)
+      } else if (results.processed > 0) {
+        console.info(`\n🎉 Image rename completed successfully!`)
+      }
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error(`\n❌ Fatal error during batch processing:`, errorMessage)
+      console.error(error.stack)
+    }
+
+    logTaskBoundary(false, 'Image Rename')
+  }
+
+  /**
+   * Validate and sanitize AI-generated filename
+   */
+  private validateFilename(filename: string): boolean {
+    // Check length (without extension)
+    if (!filename || filename.length === 0 || filename.length > 50) {
+      return false
+    }
+
+    // Check format: lowercase, hyphens, letters, numbers only
+    const validPattern = /^[a-z0-9-]+$/
+    return validPattern.test(filename)
+  }
+}

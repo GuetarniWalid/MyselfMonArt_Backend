@@ -119,4 +119,78 @@ export default class File extends Authentication {
       },
     }
   }
+
+  /**
+   * Update file properties (filename, alt text)
+   * Note: filename extension must match the original
+   */
+  public async update(
+    fileId: string,
+    updates: {
+      filename?: string
+      alt?: string
+    }
+  ): Promise<{ id: string; fileStatus: string }> {
+    const { query, variables } = this.getUpdateQuery(fileId, updates)
+    const response = await this.fetchGraphQL(query, variables)
+
+    if (response.fileUpdate.userErrors?.length) {
+      throw new Error(response.fileUpdate.userErrors[0].message)
+    }
+
+    const updatedFile = response.fileUpdate.files[0]
+    return {
+      id: updatedFile.id,
+      fileStatus: updatedFile.fileStatus,
+    }
+  }
+
+  private getUpdateQuery(
+    fileId: string,
+    updates: {
+      filename?: string
+      alt?: string
+    }
+  ) {
+    const fileInput: any = {
+      id: fileId,
+    }
+
+    if (updates.filename !== undefined) {
+      fileInput.filename = updates.filename
+    }
+
+    if (updates.alt !== undefined) {
+      fileInput.alt = updates.alt
+    }
+
+    return {
+      query: `mutation fileUpdate($files: [FileUpdateInput!]!) {
+        fileUpdate(files: $files) {
+          files {
+            ... on GenericFile {
+              id
+              fileStatus
+            }
+            ... on MediaImage {
+              id
+              fileStatus
+            }
+            ... on Video {
+              id
+              fileStatus
+            }
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }`,
+      variables: {
+        files: [fileInput],
+      },
+    }
+  }
 }
