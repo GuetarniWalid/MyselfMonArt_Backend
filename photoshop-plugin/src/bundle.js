@@ -3038,7 +3038,6 @@ function handleNewJob(message) {
   console.log('🔍 DEBUG addJobToQueue:', {
     jobId: job.id,
     isProcessingJob,
-    isPaused,
     queueLength: jobQueue.length,
   })
 
@@ -3056,18 +3055,10 @@ function handleNewJob(message) {
  */
 async function processNextJob() {
   console.log('🔍 DEBUG processNextJob called:', {
-    isPaused,
     isProcessingJob,
     queueLength: jobQueue.length,
     timestamp: Date.now(),
   })
-
-  // Check if paused
-  if (isPaused) {
-    console.log('🔍 DEBUG processNextJob: PAUSED - returning')
-    addLog('info', 'Processing paused, waiting for user action')
-    return
-  }
 
   // If already processing or queue is empty, return
   if (isProcessingJob || jobQueue.length === 0) {
