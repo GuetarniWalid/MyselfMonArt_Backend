@@ -10,11 +10,13 @@ type ProductContext = {
 
 export default class MockupAltGenerator {
   public prepareRequest(product: ProductContext) {
-    const isVierge = this.isViergeTemplate(product.mockupTemplatePath)
+    // Check if we have valid lifestyle template info
+    const templateInfo = this.extractTemplateInfo(product.mockupTemplatePath)
+    const isVierge = !templateInfo // If no valid template info, treat as Vierge
 
     return {
       responseFormat: this.getResponseFormat(isVierge),
-      payload: this.getPayload(product, isVierge),
+      payload: this.getPayload(product, isVierge, templateInfo),
       systemPrompt: isVierge ? this.getViergePrompt() : this.getLifestylePrompt(),
     }
   }
@@ -60,7 +62,11 @@ export default class MockupAltGenerator {
     }
   }
 
-  private getPayload(product: ProductContext, isVierge: boolean) {
+  private getPayload(
+    product: ProductContext,
+    isVierge: boolean,
+    templateInfo: { room: string; style: string } | null
+  ) {
     const basePayload = {
       productTitle: product.title,
       productDescription: product.description,
@@ -72,12 +78,11 @@ export default class MockupAltGenerator {
       // Vierge: No room context needed
       return basePayload
     } else {
-      // Lifestyle: Include template context
-      const templateInfo = this.extractTemplateInfo(product.mockupTemplatePath)
+      // Lifestyle: Include template context (templateInfo is guaranteed to be valid here)
       return {
         ...basePayload,
-        mockupRoom: templateInfo?.room || 'unknown',
-        mockupStyle: templateInfo?.style || 'unknown',
+        mockupRoom: templateInfo!.room,
+        mockupStyle: templateInfo!.style,
       }
     }
   }
