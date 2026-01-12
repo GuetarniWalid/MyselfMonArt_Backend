@@ -136,32 +136,59 @@ DONNÉES REÇUES :
 - productDescription : description du produit
 - tags : mots-clés associés
 - mockupRoom : type de pièce (salon, chambre, cuisine, etc.)
-- mockupStyle : style déco (industriel, scandinave, minimaliste, etc.)
+- mockupStyle : contexte du mockup (style déco OU description de scène)
+
+INTELLIGENCE CONTEXTUELLE - GESTION DU STYLE :
+🧠 mockupStyle peut être :
+   • Un style décoratif direct : "industriel", "scandinave", "minimaliste" → utilise-le tel quel
+   • Une description de scène : "buffet-chene-lampe", "canape-gris-table" → INFÈRE le style déco correspondant
+
+📐 Si mockupStyle contient des objets/meubles, ANALYSE et DÉDUIS le style décoratif :
+   • "buffet-chene-lampe" → style probablement moderne, contemporain, ou chaleureux
+   • "canape-gris-table-basse" → style probablement minimaliste, scandinave, ou épuré
+   • "etagere-metal-noir" → style probablement industriel ou loft
+   • "commode-blanche-miroir" → style probablement classique, élégant, ou romantique
+   • "meuble-bois-clair" → style probablement scandinave, naturel, ou nordique
+
+⚠️ RÈGLE ABSOLUE : JAMAIS recopier littéralement les objets dans l'alt (ex: "buffet-chene-lampe")
+✅ TOUJOURS transformer en vrai style déco (ex: "moderne", "contemporain", "chaleureux")
 
 TÂCHE 1 - BALISE ALT (champ "alt") :
 - Longueur : 5 à 10 mots (50-125 caractères)
-- Structure : [Champ lexical de tableau/toile] + [Sujet de l'œuvre] + [dans/pour + mockupRoom] + [mockupStyle]
-- Langue : Français naturel
+- Structure : [Champ lexical de tableau/toile] + [Sujet] + [pour/dans + mockupRoom] + [style déduit]
+- Langue : Français naturel et fluide
 - Exemples :
-  * "Tableau tigre noir et blanc jungle pour salon industriel"
-  * "Toile femme abstraite bleu et or dans chambre minimaliste"
-  * "Affiche paysage montagne style kilmt bureau scandinave"
+  * mockupStyle = "industriel" → "Tableau tigre noir et blanc pour salon industriel"
+  * mockupStyle = "buffet-chene-lampe" → "Tableau abstrait géométrique pour salon moderne" (style déduit)
+  * mockupStyle = "canape-gris-minimaliste" → "Toile femme abstraite pour chambre minimaliste"
+  * mockupStyle = "etagere-metal-noir" → "Affiche urbaine pour bureau industriel" (style déduit)
 
 TÂCHE 2 - NOM DE FICHIER (champ "filename") :
 - Format : slug SEO (lowercase, hyphens, max 50 chars sans .jpg)
-- Structure : -[produit]-[sujet]-[pièce]-[style]
+- Structure : [produit]-[sujet]-[pièce]-[style-déduit]
 - Exemples :
   * "tableau-tigre-jungle-salon-industriel"
-  * "toile-femme-abstraite-chambre-minimaliste"
-  * "decoration-murale-paysage-montagne-bureau-scandinave"
+  * "toile-abstraite-geometrique-salon-moderne" (déduit de buffet-chene)
+  * "decoration-murale-paysage-bureau-contemporain"
+
+STYLES DÉCO RECOMMANDÉS (à utiliser selon le contexte) :
+• industriel, loft, atelier
+• scandinave, nordique, épuré
+• minimaliste, moderne, contemporain
+• bohème, ethnique, naturel
+• classique, élégant, raffiné
+• chaleureux, cosy, convivial
 
 RÈGLES STRICTES :
+✅ TOUJOURS déduire un vrai style déco (jamais recopier des noms d'objets)
+✅ Utilise TOUJOURS mockupRoom (salon, chambre, etc.)
 ✅ Extrais le sujet du titre/description
-✅ Utilise obligatoirement mockupRoom et mockupStyle fournis
 ✅ Si couleurs mentionnées dans titre, les inclure
+✅ Sois créatif, sile resultat est meilleur prend des initiatives et ameliore (utilise la puissance de ton expertise)
+⛔ JAMAIS utiliser littéralement des noms d'objets (buffet, lampe, canapé) comme style
 ⛔ PAS de mots comme "image de", "photo de"
 ⛔ PAS d'accents ni caractères spéciaux dans filename
 ⛔ PAS de mots de liaison inutiles (le, la, un, une)
-⛔ NE PAS inventer de détails absents des métadonnées`
+⛔ NE PAS inventer de détails sur le sujet de l'œuvre (se baser uniquement sur titre/description)`
   }
 }
