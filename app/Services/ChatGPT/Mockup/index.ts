@@ -13,12 +13,11 @@ type ProductContext = {
 
 export default class Mockup extends Authentication {
   /**
-   * Generate SEO-optimized alt text for mockup images
+   * Generate SEO-optimized alt text and filename for mockup images
    * @param product Product context (title, description, tags, type)
-   * @param imageUrl Public URL of the mockup image
-   * @returns Alt text with mockup metadata
+   * @returns Alt text and filename with mockup metadata
    */
-  public async generateMockupAlt(product: ProductContext, imageUrl: string) {
+  public async generateMockupAlt(product: ProductContext) {
     return this.retryOperation(async () => {
       const altGenerator = new MockupAltGenerator()
       const { responseFormat, payload, systemPrompt } = altGenerator.prepareRequest(product)
@@ -30,10 +29,7 @@ export default class Mockup extends Authentication {
             { role: 'system', content: systemPrompt },
             {
               role: 'user',
-              content: [
-                { type: 'text', text: JSON.stringify(payload) },
-                { type: 'image_url', image_url: { url: imageUrl } },
-              ],
+              content: JSON.stringify(payload),
             },
           ],
           response_format: zodResponseFormat(responseFormat, 'mockup_alt'),

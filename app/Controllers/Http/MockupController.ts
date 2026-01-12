@@ -13,6 +13,8 @@ export default class MockupController {
   private queue = MockupQueue.getInstance()
   // Track files created for each automation batch for cleanup (static to persist across requests)
   private static batchFiles: Map<string, string[]> = new Map()
+  // Track files by productId for cleanup (since new filenames won't contain productId)
+  private static productFiles: Map<string, { batchId: string; filePath: string }[]> = new Map()
 
   // Simple status endpoint
   public async status({ response }: HttpContextContract) {
@@ -85,17 +87,14 @@ export default class MockupController {
 
       console.log(`🗑️  Cleaning up files for product ${productId} in batch ${batchId}`)
 
-      const batchFiles = MockupController.batchFiles.get(batchId) || []
       let deletedCount = 0
       let failedCount = 0
 
-      // Find and delete files that match this product ID
-      // Files are named like: mockup-1234567890-timestamp.jpg
-      const productIdNumeric = productId.replace('gid://shopify/Product/', '')
-      const filesToDelete = batchFiles.filter((filePath) => {
-        const fileName = path.basename(filePath)
-        return fileName.includes(productIdNumeric)
-      })
+      // Lookup files by productId in tracking map (works with AI-generated filenames)
+      const productFilesList = MockupController.productFiles.get(productId) || []
+      const filesToDelete = productFilesList
+        .filter((f) => f.batchId === batchId)
+        .map((f) => f.filePath)
 
       console.log(`   Found ${filesToDelete.length} file(s) to delete`)
 
@@ -108,17 +107,23 @@ export default class MockupController {
           }
         } catch (error) {
           failedCount++
-          console.error(`   ❌ Failed to delete ${path.basename(filePath)}: ${error.message}`)
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          console.error(`   ❌ Failed to delete ${path.basename(filePath)}: ${errorMessage}`)
         }
       }
 
       // Remove deleted files from batch tracking
+      const batchFiles = MockupController.batchFiles.get(batchId) || []
       const remainingFiles = batchFiles.filter((f) => !filesToDelete.includes(f))
       MockupController.batchFiles.set(batchId, remainingFiles)
 
       console.log(
         `✅ Product cleanup complete: ${deletedCount} deleted, ${failedCount} failed, ${remainingFiles.length} remaining in batch`
       )
+
+      // Clean up product tracking map
+      MockupController.productFiles.delete(productId)
+      console.log(`   🗑️  Removed product from tracking map`)
 
       return response.ok({
         success: true,
@@ -129,9 +134,11 @@ export default class MockupController {
       })
     } catch (error) {
       console.error('❌ Product cleanup error:', error)
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to cleanup product files'
       return response.internalServerError({
         success: false,
-        message: error.message || 'Failed to cleanup product files',
+        message: errorMessage,
       })
     }
   }
@@ -174,29 +181,36 @@ export default class MockupController {
 
       // Upload to Shopify if successful
       if (data.success && data.resultPath && data.productId) {
-        // Retrieve original job metadata (including mockupTemplatePath)
+        // Retrieve original job metadata (including mockupTemplatePath and batchId)
         const jobMetadata = this.queue.getJobMetadata(data.jobId)
         const mockupTemplatePath = jobMetadata?.mockupTemplatePath
+        const batchId = jobMetadata?.batchId
 
         console.log('🔍 DEBUG: Starting Shopify upload with:', {
           resultPath: data.resultPath,
           productId: data.productId,
           targetImagePosition: data.targetImagePosition,
           mockupTemplatePath: mockupTemplatePath,
+          batchId: batchId,
         })
 
+        let uploadResult
         try {
-          const uploadResult = await this.uploadMockupToShopify({
+          uploadResult = await this.uploadMockupToShopify({
             productId: data.productId,
             mockupFilePath: data.resultPath,
             targetImagePosition: data.targetImagePosition || 0,
             mockupTemplatePath: mockupTemplatePath,
+            batchId: batchId,
           })
           console.log(`✅ DEBUG: Mockup uploaded to Shopify for product ${data.productId}`)
           console.log(`🎨 Mockup uploaded to Shopify for product ${data.productId}`)
 
           // Clean up job metadata after successful upload
           this.queue.cleanupJob(data.jobId)
+
+          // Update data.resultPath to the final renamed path for cleanup
+          data.resultPath = uploadResult.finalFilePath
 
           // Return success with uploaded and reordered flags
           const successResult = {
@@ -208,10 +222,13 @@ export default class MockupController {
           console.log('🔍 DEBUG: Returning success result:', successResult)
           return response.ok(successResult)
         } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          const errorStack = error instanceof Error ? error.stack : undefined
+
           console.error(`❌ DEBUG: Failed to upload mockup to Shopify:`, error)
           console.error('❌ DEBUG: Error details:', {
-            message: error.message,
-            stack: error.stack,
+            message: errorMessage,
+            stack: errorStack,
             productId: data.productId,
             resultPath: data.resultPath,
           })
@@ -220,18 +237,18 @@ export default class MockupController {
           this.queue.cleanupJob(data.jobId)
           console.log(`🧹 Job metadata cleaned up after upload error: ${data.jobId}`)
 
-          // Generate public URL for the mockup file (so user can view it in browser)
-          const fileName = path.basename(data.resultPath)
+          // Generate public URL for the mockup file (use final filename if available)
           const baseUrl = Env.get('BACKEND_URL')
+          const fileName = uploadResult?.finalFileName || path.basename(data.resultPath)
           const publicUrl = `${baseUrl}/assets/${fileName}`
 
           // Return error to frontend (don't throw, return controlled error)
           const errorResult = {
             success: false,
             error: true,
-            errorMessage: error.message,
+            errorMessage: errorMessage,
             productId: data.productId,
-            resultPath: publicUrl, // Use public URL instead of local file path
+            resultPath: publicUrl, // Use public URL with correct filename
           }
 
           console.log('🔍 DEBUG: Returning error result:', errorResult)
@@ -247,7 +264,8 @@ export default class MockupController {
             console.log(`🗑️  Cleaned up source image: ${data.imageUrl}`)
           }
         } catch (error) {
-          console.error(`⚠️  Failed to delete source image: ${error.message}`)
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          console.error(`⚠️  Failed to delete source image: ${errorMessage}`)
         }
       }
 
@@ -259,7 +277,8 @@ export default class MockupController {
             console.log(`🗑️  Cleaned up mockup result: ${data.resultPath}`)
           }
         } catch (error) {
-          console.error(`⚠️  Failed to delete mockup result: ${error.message}`)
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          console.error(`⚠️  Failed to delete mockup result: ${errorMessage}`)
         }
       }
     }
@@ -324,6 +343,16 @@ export default class MockupController {
       if (batchId && MockupController.batchFiles.has(batchId)) {
         MockupController.batchFiles.get(batchId)?.push(filePath)
         console.log(`📝 Tracked file to batch ${batchId} for cleanup`)
+
+        // Also track by productId (for cleanup with AI-generated filenames)
+        const productId = request.input('productId')
+        if (productId) {
+          if (!MockupController.productFiles.has(productId)) {
+            MockupController.productFiles.set(productId, [])
+          }
+          MockupController.productFiles.get(productId)?.push({ batchId, filePath })
+          console.log(`   📝 Also tracked by productId: ${productId}`)
+        }
       }
 
       const result = {
@@ -335,11 +364,14 @@ export default class MockupController {
       console.log('🔍 DEBUG: Returning upload result:', result)
       return response.ok(result)
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      const errorStack = error instanceof Error ? error.stack : undefined
+
       console.error('❌ DEBUG: uploadMockup error:', error)
-      console.error('❌ DEBUG: error stack:', error.stack)
+      console.error('❌ DEBUG: error stack:', errorStack)
       return response.internalServerError({
         error: 'Failed to upload file',
-        details: error.message,
+        details: errorMessage,
       })
     }
   }
@@ -741,12 +773,19 @@ export default class MockupController {
     mockupFilePath,
     targetImagePosition,
     mockupTemplatePath,
+    batchId,
   }: {
     productId: string
     mockupFilePath: string
     targetImagePosition: number
     mockupTemplatePath?: string
-  }): Promise<{ reordered: boolean; oldMediaDetached: boolean }> {
+    batchId?: string
+  }): Promise<{
+    reordered: boolean
+    oldMediaDetached: boolean
+    finalFilePath: string
+    finalFileName: string
+  }> {
     const shopify = new Shopify()
 
     // 1. Get product to check current media and save old media ID at target position
@@ -772,17 +811,16 @@ export default class MockupController {
       throw new Error(`Mockup file not found at: ${mockupFilePath}`)
     }
 
-    const baseUrl = Env.get('BACKEND_URL')
-    const publicUrl = `${baseUrl}/assets/${fileName}`
+    // Variables for final filename and path (may be renamed)
+    let finalFileName = fileName
+    let finalFilePath = mockupFilePath
 
-    console.log(`🌐 Public URL: ${publicUrl}`)
-
-    // 2.5. Generate AI alt text for mockup image
+    // 2.5. Generate AI alt text and filename based on product metadata (no image sent to AI)
     let altText: string | undefined
     try {
       const isVierge = mockupTemplatePath?.toLowerCase().includes('vierge') ?? false
       console.log(
-        `🤖 Generating AI alt text for ${isVierge ? 'VIERGE (artwork-focused)' : 'LIFESTYLE'} mockup...`
+        `🤖 Generating AI alt text and filename for ${isVierge ? 'VIERGE (artwork-focused)' : 'LIFESTYLE'} mockup (metadata-based)...`
       )
       if (mockupTemplatePath) {
         console.log(`   📁 Template: ${mockupTemplatePath}`)
@@ -798,44 +836,90 @@ export default class MockupController {
         mockupTemplatePath: mockupTemplatePath,
       }
 
-      const altResult = await mockupService.generateMockupAlt(productContext, publicUrl)
+      const altResult = await mockupService.generateMockupAlt(productContext)
 
       // Validate length (50-125 characters)
       if (altResult.alt.length >= 50 && altResult.alt.length <= 125) {
         altText = altResult.alt
         console.log(`✅ Generated alt text (${altText.length} chars): ${altText}`)
-        console.log(`   🎨 Subject detected: ${altResult.subjectDetected}`)
-
-        if (isVierge) {
-          // Vierge mockup - artwork-focused
-          if ('artisticStyle' in altResult && 'dominantColors' in altResult) {
-            console.log(`   🎨 Artistic style: ${altResult.artisticStyle}`)
-            console.log(`   🎨 Colors: ${altResult.dominantColors}`)
-          }
-        } else {
-          // Lifestyle mockup - room context
-          if ('isLifestyle' in altResult && 'roomType' in altResult) {
-            if (altResult.isLifestyle && altResult.roomType) {
-              console.log(`   📍 Lifestyle image in ${altResult.roomType}`)
-            } else {
-              console.log(`   📦 Product-only detected (no room visible)`)
-            }
-          }
-        }
+        console.log(`   📝 Generated filename: ${altResult.filename}`)
       } else {
         console.warn(
           `⚠️  Alt text length (${altResult.alt.length}) outside 50-125 range, using fallback`
         )
         altText = this.generateFallbackAlt(product)
       }
+
+      // Handle AI-generated filename and file rename
+      if (altResult.filename && this.validateFilename(altResult.filename)) {
+        console.log(`🏷️  AI-generated filename: ${altResult.filename}`)
+
+        // Find unique filename (handles duplicates)
+        const assetsDir = Application.publicPath('assets')
+        const uniqueFilename = this.findUniqueFilename(altResult.filename, '.jpg', assetsDir)
+
+        if (uniqueFilename !== `${altResult.filename}.jpg`) {
+          console.log(`   ⚠️  Duplicate detected, using: ${uniqueFilename}`)
+        }
+
+        // Rename the file
+        const newFilePath = path.join(assetsDir, uniqueFilename)
+
+        try {
+          fs.renameSync(mockupFilePath, newFilePath)
+          console.log(`✅ File renamed: ${fileName} → ${uniqueFilename}`)
+
+          // Update tracking variables
+          finalFileName = uniqueFilename
+          finalFilePath = newFilePath
+
+          // Update batch tracking (replace old path with new path)
+          if (batchId) {
+            const batchFiles = MockupController.batchFiles.get(batchId) || []
+            const oldPathIndex = batchFiles.indexOf(mockupFilePath)
+            if (oldPathIndex !== -1) {
+              batchFiles[oldPathIndex] = newFilePath
+              MockupController.batchFiles.set(batchId, batchFiles)
+              console.log(`   📝 Updated batch tracking to new path`)
+            }
+          }
+
+          // Update product tracking
+          const productFilesList = MockupController.productFiles.get(productId) || []
+          const productFileIndex = productFilesList.findIndex((f) => f.filePath === mockupFilePath)
+          if (productFileIndex !== -1) {
+            productFilesList[productFileIndex].filePath = newFilePath
+            MockupController.productFiles.set(productId, productFilesList)
+            console.log(`   📝 Updated product tracking to new path`)
+          }
+        } catch (renameError) {
+          const errorMessage =
+            renameError instanceof Error ? renameError.message : String(renameError)
+          console.error(`❌ Failed to rename file: ${errorMessage}`)
+          console.log(`   Using original filename`)
+          // Keep original filename on error
+        }
+      } else {
+        if (altResult.filename) {
+          console.warn(
+            `⚠️  Invalid AI filename "${altResult.filename}", using original: ${fileName}`
+          )
+        }
+      }
     } catch (error) {
-      console.error('❌ Failed to generate AI alt text:', error.message)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error('❌ Failed to generate AI alt text:', errorMessage)
       console.log('   Using fallback alt text')
       altText = this.generateFallbackAlt(product)
     }
 
-    // 3. Add new media to product using public URL with alt text (productUpdate handles upload internally)
-    const allMedia = await shopify.product.createMedia(productId, publicUrl, altText)
+    // Create final public URL with final filename
+    const baseUrl = Env.get('BACKEND_URL')
+    const finalPublicUrl = `${baseUrl}/assets/${finalFileName}`
+    console.log(`🌐 Final public URL: ${finalPublicUrl}`)
+
+    // 3. Add new media to product using final public URL with alt text (productUpdate handles upload internally)
+    const allMedia = await shopify.product.createMedia(productId, finalPublicUrl, altText)
 
     // Validate that we got media back
     if (!allMedia || allMedia.length === 0) {
@@ -887,13 +971,14 @@ export default class MockupController {
         }
         oldMediaDetached = true
       } catch (error) {
-        console.warn(`⚠️  Failed to detach old media: ${error.message}`)
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        console.warn(`⚠️  Failed to detach old media: ${errorMessage}`)
         console.warn(`   Old media remains at position ${targetImagePosition + 1}`)
       }
     }
 
     console.log(`🎨 Mockup replacement complete at position ${targetImagePosition + 1}`)
-    return { reordered, oldMediaDetached }
+    return { reordered, oldMediaDetached, finalFilePath, finalFileName }
   }
 
   /**
@@ -905,5 +990,55 @@ export default class MockupController {
     const suffix = product.templateSuffix === 'tapestry' ? 'tapisserie' : 'tableau'
     const alt = `${product.title} - ${suffix} décoratif mural en situation`
     return alt
+  }
+
+  /**
+   * Validate and sanitize AI-generated filename
+   * @param filename The filename to validate (without extension)
+   * @returns true if filename is valid, false otherwise
+   */
+  private validateFilename(filename: string): boolean {
+    // Check length (without extension)
+    if (!filename || filename.length === 0 || filename.length > 50) {
+      return false
+    }
+
+    // Check format: lowercase, hyphens, letters, numbers only
+    const validPattern = /^[a-z0-9-]+$/
+    return validPattern.test(filename)
+  }
+
+  /**
+   * Find unique filename by appending counter if needed
+   * @param baseFilename Base filename without extension
+   * @param extension File extension (e.g., '.jpg')
+   * @param directory Directory to check for existing files
+   * @returns Unique filename with extension
+   */
+  private findUniqueFilename(baseFilename: string, extension: string, directory: string): string {
+    let filename = `${baseFilename}${extension}`
+    let filePath = path.join(directory, filename)
+
+    // If file doesn't exist, use as-is
+    if (!fs.existsSync(filePath)) {
+      return filename
+    }
+
+    // File exists, try with counter suffix
+    let counter = 2
+    while (counter < 1000) {
+      // Safety limit
+      filename = `${baseFilename}-${counter}${extension}`
+      filePath = path.join(directory, filename)
+
+      if (!fs.existsSync(filePath)) {
+        return filename
+      }
+      counter++
+    }
+
+    // Fallback: add timestamp
+    const timestamp = Date.now()
+    return `${baseFilename}-${timestamp}${extension}`
   }
 }

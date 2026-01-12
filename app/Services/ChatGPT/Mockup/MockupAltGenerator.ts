@@ -49,17 +49,13 @@ export default class MockupAltGenerator {
       // Vierge: Focus on artwork description only
       return z.object({
         alt: z.string(),
-        subjectDetected: z.string(),
-        artisticStyle: z.string(), // e.g., "aquarelle", "abstrait", "géométrique"
-        dominantColors: z.string(), // e.g., "tons chauds", "noir et blanc"
+        filename: z.string(),
       })
     } else {
       // Lifestyle: Include room context
       return z.object({
         alt: z.string(),
-        isLifestyle: z.boolean(),
-        roomType: z.string().nullable(),
-        subjectDetected: z.string(),
+        filename: z.string(),
       })
     }
   }
@@ -90,72 +86,77 @@ export default class MockupAltGenerator {
    * Prompt for VIERGE mockups (product-only, focus on artwork)
    */
   private getViergePrompt() {
-    return `Tu es un expert SEO et critique d'art pour MyselfMonart (décoration murale haut de gamme).
-Ta mission est de générer une balise ALT pour une image produit sur fond neutre (blanc/détouré).
+    return `Tu es un expert SEO pour MyselfMonart (décoration murale haut de gamme).
+Ta mission : générer une balise ALT et un nom de fichier SEO pour un produit (tableau/toile sur fond neutre).
 
 CONTEXTE :
 L'image montre UNIQUEMENT l'œuvre (la toile, le tableau), sans aucun décor, ni meuble, ni mise en scène.
 
-RÈGLES DE RÉDACTION :
-1. ANALYSE DU SUJET (Priorité absolue) : Décris précisément ce que représente l'image (ex: animal spécifique, forme géométrique, paysage, portrait).
-2. STRUCTURE CIBLE : [Sujet/Motif détaillé] + [Type de produit] + [Style/Technique/Couleur].
-3. FORMAT : 5 à 10 mots (Max 125 caractères).
-4. LANGUE : Français naturel et fluide.
+TÂCHE 1 - BALISE ALT (champ "alt") :
+- Longueur : 5 à 10 mots (50-125 caractères)
+- Structure : [Sujet/Motif] + [Type de produit] + [Style/Couleur si présent]
+- Langue : Français naturel
+- Exemples :
+  * "Tableau tête de lion noir et blanc regard intense"
+  * "Toile abstraite formes géométriques bleu et or"
+  * "Reproduction fleurs de cerisier style japonais"
+  * 
 
-INTERDICTIONS STRICTES (Anti-Hallucination) :
-⛔ NE JAMAIS mentionner de pièce (salon, chambre, cuisine).
-⛔ NE JAMAIS mentionner de mobilier (canapé, mur, lit).
-⛔ NE PAS commencer par "image de" ou "vue de".
+TÂCHE 2 - NOM DE FICHIER (champ "filename") :
+- Format : slug SEO (lowercase, hyphens, max 50 chars sans .jpg)
+- Structure : [produit]-[sujet]
+- Exemples :
+  * "tableau-lion-noir-blanc-regard-intense"
+  * "toile-formes-geometriques-rouge-et-jaune"
+  * "toile-fleurs-cerisier-reproduction-japonaise"
 
-CHAMP LEXICAL ATTENDU :
-– Sujets : Nom de l'animal, type de plante, description de l'abstraction, lieu géographique.
-– Produits : Tableau, toile, œuvre, impression, art mural.
-– Styles : Aquarelle, noir et blanc, peinture à l'huile, pop art, minimaliste, pastel.
-
-EXEMPLES DE RÉSULTATS OPTIMISÉS :
-– "Tableau tête de lion noir et blanc regard intense"
-– "Toile abstraite formes géométriques bleu et or"
-– "Reproduction peinture fleurs de cerisier style japonais"
-– "Art mural carte du monde vintage tons sépia"`
+RÈGLES STRICTES :
+✅ Extrais le sujet du titre/description uniquement
+✅ Si couleurs mentionnées, les inclure
+⛔ PAS de mots comme "image de", "photo de"
+⛔ PAS de pièce (salon, chambre) ni mobilier
+⛔ PAS d'accents ni caractères spéciaux dans filename
+⛔ NE PAS inventer de détails absents des métadonnées`
   }
 
   /**
    * Prompt for LIFESTYLE mockups (room context provided in payload)
    */
   private getLifestylePrompt() {
-    return `Tu es un expert SEO et décoration d'intérieur pour MyselfMonart, une marque française de tableaux décoratifs muraux haut de gamme.
+    return `Tu es un expert SEO pour MyselfMonart (décoration murale haut de gamme).
+Ta mission : générer une balise ALT et un nom de fichier SEO pour un mockup lifestyle (tableau dans une pièce).
 
-CONTEXTE :
-L'image montre un tableau dans un mockup lifestyle (pièce décorée avec meubles).
-Les données fournies incluent : productTitle, productDescription, tags, mockupRoom (pièce), mockupStyle (style déco).
+DONNÉES REÇUES :
+- productTitle : titre du produit
+- productDescription : description du produit
+- tags : mots-clés associés
+- mockupRoom : type de pièce (salon, chambre, cuisine, etc.)
+- mockupStyle : style déco (industriel, scandinave, minimaliste, etc.)
 
-MISSION :
-Génère une balise alt optimisée SEO qui décrit l'œuvre + son contexte lifestyle.
+TÂCHE 1 - BALISE ALT (champ "alt") :
+- Longueur : 5 à 10 mots (50-125 caractères)
+- Structure : [Champ lexical de tableau/toile] + [Sujet de l'œuvre] + [dans/pour + mockupRoom] + [mockupStyle]
+- Langue : Français naturel
+- Exemples :
+  * "Tableau tigre noir et blanc jungle pour salon industriel"
+  * "Toile femme abstraite bleu et or dans chambre minimaliste"
+  * "Affiche paysage montagne style kilmt bureau scandinave"
 
-RÈGLES D'OR :
-1. PRIORITÉ AU SUJET : Décris ce que représente l'œuvre (ex: tigre, femme abstraite, forêt, forme géométrique).
-2. UTILISE mockupRoom et mockupStyle : Intègre la pièce (salon, chambre, cuisine) et le style déco (industriel, scandinave, minimaliste).
-3. Langue : FRANÇAIS uniquement.
-4. Longueur : 5 à 10 mots (50-125 caractères max).
-5. Structure cible : [Sujet de l'œuvre] + [Type de produit] + [dans/pour + mockupRoom] + [mockupStyle].
+TÂCHE 2 - NOM DE FICHIER (champ "filename") :
+- Format : slug SEO (lowercase, hyphens, max 50 chars sans .jpg)
+- Structure : -[produit]-[sujet]-[pièce]-[style]
+- Exemples :
+  * "tableau-tigre-jungle-salon-industriel"
+  * "toile-femme-abstraite-chambre-minimaliste"
+  * "decoration-murale-paysage-montagne-bureau-scandinave"
 
-INSTRUCTIONS D'ANALYSE :
-– Analyse le visuel pour extraire le sujet principal de l'œuvre.
-– Utilise le champ lexical spécifique au sujet (ex: tigre → "tigre", "fauve", "jungle").
-– Si mockupRoom est "unknown", analyse l'image pour déterminer le type de pièce visible.
-– Intègre obligatoirement mockupRoom (fourni dans les données ou détecté visuellement).
-– Mentionne le style déco (mockupStyle) si pertinent.
-
-EXEMPLES D'ALTS VALIDES :
-– "Tableau tigre dans la jungle pour salon industriel"
-– "Toile femme visage abstrait dans une chambre minimaliste"
-– "Affiche paysage montagne noir et blanc bureau scandinave"
-– "Décoration murale fleurs vintage salle à manger bohème"
-
-CONTRAINTES TECHNIQUES :
-– Évite les mots de liaison inutiles (le, la, un, une).
-– Jamais commencer par "image de", "photo de".
-– NE PAS dépasser 125 caractères.
-– NE PAS utiliser de ponctuation finale.`
+RÈGLES STRICTES :
+✅ Extrais le sujet du titre/description
+✅ Utilise obligatoirement mockupRoom et mockupStyle fournis
+✅ Si couleurs mentionnées dans titre, les inclure
+⛔ PAS de mots comme "image de", "photo de"
+⛔ PAS d'accents ni caractères spéciaux dans filename
+⛔ PAS de mots de liaison inutiles (le, la, un, une)
+⛔ NE PAS inventer de détails absents des métadonnées`
   }
 }
