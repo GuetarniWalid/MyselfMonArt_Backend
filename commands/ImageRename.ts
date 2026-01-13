@@ -6,7 +6,7 @@ import Mockup from 'App/Services/ChatGPT/Mockup'
 export default class ImageRename extends BaseCommand {
   public static commandName = 'image:rename'
   public static description =
-    'Batch rename product first images containing "mockup" with AI-generated SEO filenames'
+    'Batch rename product images containing "mockup" with AI-generated SEO filenames'
 
   public static settings = {
     loadApp: true,
@@ -26,18 +26,76 @@ export default class ImageRename extends BaseCommand {
     // Set to null to process ALL products (use with caution!)
     const MAX_PRODUCTS: number | null = null
 
-    // Skip products where first image doesn't contain "mockup"
+    // Which image to process (1 = first image, 2 = second image, etc.)
+    const IMAGE_INDEX = 4
+
+    // Skip products where target image doesn't contain "mockup"
     const SKIP_NON_MOCKUP = true
+
+    // MODE: Choose how to generate alt/filename
+    // - 'VIERGE': Artwork only, no additional context
+    // - 'CUSTOM_CONTEXT': Use a custom prompt to control how filenames are generated
+    const MODE: 'VIERGE' | 'CUSTOM_CONTEXT' = 'CUSTOM_CONTEXT' as 'VIERGE' | 'CUSTOM_CONTEXT'
+
+    // Custom AI prompt for CUSTOM_CONTEXT mode
+    // Customize this prompt to control how the AI generates alt text and filenames from product data
+    const CUSTOM_PROMPT: string = `Tu es un expert SEO pour MyselfMonart (décoration murale haut de gamme).
+Ta mission : générer une balise ALT et un nom de fichier SEO pour un produit.
+
+DONNÉES REÇUES :
+- productTitle : titre du produit
+- productDescription : description du produit
+- tags : mots-clés associés
+
+CONTEXTE :
+L'image montre le coin d'un tableau toile, où l'on perçoit bien la texture et la bonne qualité de la toile.
+Tu dois générer une description SEO qui met en valeur ce contexte visuel.
+
+TÂCHE 1 - BALISE ALT (champ "alt") :
+- Longueur : 5 à 10 mots (50-125 caractères)
+- Structure : [Type de produit] + [Sujet] + [mention texture/qualité si pertinent]
+- Langue : Français naturel et fluide
+- Exemples :
+  * "Tableau lion noir et blanc détail texture toile"
+  * "Toile abstraite géométrique grain canvas apparent"
+  * "Reproduction fleurs cerisier qualité toile visible"
+
+TÂCHE 2 - NOM DE FICHIER (champ "filename") :
+- Format : slug SEO (lowercase, hyphens, max 50 chars sans .jpg)
+- Structure : [produit]-[sujet]-[detail-texture]
+- Exemples :
+  * "tableau-lion-noir-blanc-detail-toile"
+  * "toile-abstraite-geometrique-grain-canvas"
+  * "reproduction-fleurs-cerisier-texture-visible"
+
+RÈGLES STRICTES :
+✅ Extrais le sujet du titre/description
+✅ Intègre le contexte de texture/qualité dans la description
+✅ Si couleurs mentionnées, les inclure
+✅ Privilégie la lisibilité et la pertinence SEO
+⛔ PAS de mots comme "image de", "photo de"
+⛔ PAS d'accents ni caractères spéciaux dans filename
+⛔ PAS de mots de liaison inutiles (le, la, un, une)
+⛔ NE PAS inventer de détails sur le sujet de l'œuvre (se baser uniquement sur titre/description)`
     // ====================================================================
 
     console.info(`🏷️  Image Rename - Batch Processing`)
     console.info(`${'='.repeat(60)}`)
     console.info(`Mode: ${DRY_RUN ? '🔍 DRY RUN (no changes)' : '✅ LIVE (will update filenames)'}`)
+    console.info(`Image to process: #${IMAGE_INDEX}`)
+    console.info(`Generation Mode: ${MODE}${MODE === 'CUSTOM_CONTEXT' ? ' (Custom Prompt)' : ''}`)
     console.info(`Skip non-mockup images: ${SKIP_NON_MOCKUP ? 'Yes' : 'No'}`)
     if (MAX_PRODUCTS) {
       console.warn(`⚠️  Safety limit: Max ${MAX_PRODUCTS} products`)
     }
     console.info(`${'='.repeat(60)}\n`)
+
+    // Validate IMAGE_INDEX
+    if (IMAGE_INDEX < 1) {
+      console.error(`❌ ERROR: IMAGE_INDEX must be >= 1 (got ${IMAGE_INDEX})`)
+      return
+    }
+    const targetImageIndex = IMAGE_INDEX - 1 // Convert to 0-based index
 
     try {
       // Step 1: Fetch all products
@@ -67,19 +125,19 @@ export default class ImageRename extends BaseCommand {
           return false
         }
 
-        // Must have at least 1 media item
-        if (!product.media?.nodes || product.media.nodes.length < 1) {
+        // Must have enough media items for the target index
+        if (!product.media?.nodes || product.media.nodes.length <= targetImageIndex) {
           return false
         }
 
-        // First media must be an image
-        const firstMedia = product.media.nodes[0]
-        if (firstMedia.mediaContentType !== 'IMAGE') {
+        // Target media must be an image
+        const targetMedia = product.media.nodes[targetImageIndex]
+        if (targetMedia.mediaContentType !== 'IMAGE') {
           return false
         }
 
         // Check if filename contains "mockup" (case-insensitive)
-        const imageUrl = firstMedia.image?.url
+        const imageUrl = targetMedia.image?.url
         if (!imageUrl) {
           return false
         }
@@ -137,14 +195,22 @@ export default class ImageRename extends BaseCommand {
         try {
           // Get full product details
           const fullProduct = await shopify.product.getProductById(product.id)
-          const firstMedia = fullProduct.media.nodes[0]
 
-          if (!firstMedia.image) {
-            throw new Error('First media has no image data')
+          // Validate the product has enough images
+          if (!fullProduct.media?.nodes || fullProduct.media.nodes.length <= targetImageIndex) {
+            throw new Error(
+              `Product does not have image at index ${IMAGE_INDEX} (has ${fullProduct.media?.nodes?.length || 0} images)`
+            )
           }
 
-          const oldImageUrl = firstMedia.image.url
-          const oldMediaId = firstMedia.id
+          const targetMedia = fullProduct.media.nodes[targetImageIndex]
+
+          if (!targetMedia.image) {
+            throw new Error(`Image at index ${IMAGE_INDEX} has no image data`)
+          }
+
+          const oldImageUrl = targetMedia.image.url
+          const oldMediaId = targetMedia.id
 
           // Extract filename from URL and remove query parameters
           const urlPath = oldImageUrl.split('?')[0] // Remove query params
@@ -166,7 +232,8 @@ export default class ImageRename extends BaseCommand {
             description: fullProduct.description,
             templateSuffix: fullProduct.templateSuffix,
             tags: fullProduct.tags,
-            // No mockupTemplatePath - this ensures Vierge mode (artwork-only)
+            // Include customPrompt if MODE is CUSTOM_CONTEXT
+            ...(MODE === 'CUSTOM_CONTEXT' ? { customPrompt: CUSTOM_PROMPT } : {}),
           }
 
           const altResult = await mockupService.generateMockupAlt(productContext)

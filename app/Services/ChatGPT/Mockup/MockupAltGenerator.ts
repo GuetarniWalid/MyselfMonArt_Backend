@@ -6,18 +6,29 @@ type ProductContext = {
   templateSuffix: string | null
   tags: string[]
   mockupTemplatePath?: string // e.g., "Cuisine/Grande cuisine" or "Vierge/Toile"
+  customPrompt?: string // Custom AI prompt for CUSTOM_CONTEXT mode
 }
 
 export default class MockupAltGenerator {
   public prepareRequest(product: ProductContext) {
-    // Check if we have valid lifestyle template info
+    // Determine mode: CUSTOM_CONTEXT > LIFESTYLE > VIERGE
+    const hasCustomPrompt = !!product.customPrompt
     const templateInfo = this.extractTemplateInfo(product.mockupTemplatePath)
-    const isVierge = !templateInfo // If no valid template info, treat as Vierge
+    const isLifestyle = !hasCustomPrompt && !!templateInfo
+
+    let mode: 'VIERGE' | 'LIFESTYLE' | 'CUSTOM_CONTEXT'
+    if (hasCustomPrompt) {
+      mode = 'CUSTOM_CONTEXT'
+    } else if (isLifestyle) {
+      mode = 'LIFESTYLE'
+    } else {
+      mode = 'VIERGE'
+    }
 
     return {
-      responseFormat: this.getResponseFormat(isVierge),
-      payload: this.getPayload(product, isVierge, templateInfo),
-      systemPrompt: isVierge ? this.getViergePrompt() : this.getLifestylePrompt(),
+      responseFormat: this.getResponseFormat(mode),
+      payload: this.getPayload(product, mode, templateInfo),
+      systemPrompt: this.getSystemPrompt(mode, product.customPrompt),
     }
   }
 
@@ -46,25 +57,17 @@ export default class MockupAltGenerator {
     return null
   }
 
-  private getResponseFormat(isVierge: boolean) {
-    if (isVierge) {
-      // Vierge: Focus on artwork description only
-      return z.object({
-        alt: z.string(),
-        filename: z.string(),
-      })
-    } else {
-      // Lifestyle: Include room context
-      return z.object({
-        alt: z.string(),
-        filename: z.string(),
-      })
-    }
+  private getResponseFormat(_mode: 'VIERGE' | 'LIFESTYLE' | 'CUSTOM_CONTEXT') {
+    // All modes use the same response format
+    return z.object({
+      alt: z.string(),
+      filename: z.string(),
+    })
   }
 
   private getPayload(
     product: ProductContext,
-    isVierge: boolean,
+    mode: 'VIERGE' | 'LIFESTYLE' | 'CUSTOM_CONTEXT',
     templateInfo: { room: string; style: string } | null
   ) {
     const basePayload = {
@@ -74,8 +77,8 @@ export default class MockupAltGenerator {
       tags: product.tags,
     }
 
-    if (isVierge) {
-      // Vierge: No room context needed
+    if (mode === 'VIERGE' || mode === 'CUSTOM_CONTEXT') {
+      // Vierge & Custom: Use only product data (custom prompt controls the generation)
       return basePayload
     } else {
       // Lifestyle: Include template context (templateInfo is guaranteed to be valid here)
@@ -84,6 +87,27 @@ export default class MockupAltGenerator {
         mockupRoom: templateInfo!.room,
         mockupStyle: templateInfo!.style,
       }
+    }
+  }
+
+  /**
+   * Get the appropriate system prompt based on mode
+   */
+  private getSystemPrompt(
+    mode: 'VIERGE' | 'LIFESTYLE' | 'CUSTOM_CONTEXT',
+    customPrompt?: string
+  ): string {
+    switch (mode) {
+      case 'VIERGE':
+        return this.getViergePrompt()
+      case 'CUSTOM_CONTEXT':
+        // Custom prompt is required for CUSTOM_CONTEXT mode
+        if (!customPrompt) {
+          throw new Error('customPrompt is required when using CUSTOM_CONTEXT mode')
+        }
+        return customPrompt
+      case 'LIFESTYLE':
+        return this.getLifestylePrompt()
     }
   }
 
