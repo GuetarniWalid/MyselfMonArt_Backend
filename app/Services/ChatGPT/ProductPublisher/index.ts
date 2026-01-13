@@ -1,4 +1,4 @@
-import type { Background } from 'Types/Midjourney'
+import type { Background } from 'Types/ShopifyProductPublisher'
 import AltGenerator from './AltGenerator'
 import Authentication from '../Authentication'
 import BackgroundSelector from './BackgroundSelector'
@@ -11,7 +11,7 @@ import TitleAndSeoGenerator from './TitleAndSeoGenerator'
 import TagPicker from './TagPicker'
 import { zodResponseFormat } from 'openai/helpers/zod'
 
-export default class Midjourney extends Authentication {
+export default class ProductPublisher extends Authentication {
   private imageAnalysis: {
     haveToBeDetailed: boolean
   } | null = null

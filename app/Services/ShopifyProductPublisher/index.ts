@@ -1,11 +1,11 @@
 import type { Collection } from 'Types/Collection'
-import type { ExtensionRequest, Ratio } from 'Types/Midjourney'
+import type { ExtensionRequest, Ratio } from 'Types/ShopifyProductPublisher'
 import ImageComposer from './ImageComposer'
 import Shopify from 'App/Services/Shopify'
-import OpenAI from 'App/Services/ChatGPT/Midjourney'
+import ProductPublisher from 'App/Services/ChatGPT/ProductPublisher'
 import Env from '@ioc:Adonis/Core/Env'
 
-export default class Midjourney {
+export default class ShopifyProductPublisher {
   private imageComposer: ImageComposer
 
   constructor(base64Image: string) {
@@ -68,8 +68,8 @@ export default class Midjourney {
     const collections = await shopify.collection.getAll()
     const collectionTitles = collections.map((collection) => collection.title)
 
-    const openAI = new OpenAI()
-    const parentCollectionTitle = await openAI.suggestRelevantParentCollection(
+    const productPublisher = new ProductPublisher()
+    const parentCollectionTitle = await productPublisher.suggestRelevantParentCollection(
       collectionTitles,
       imageUrl
     )

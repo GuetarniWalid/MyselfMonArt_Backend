@@ -1,6 +1,6 @@
-import type { Background } from 'Types/Midjourney'
+import type { Background } from 'Types/ShopifyProductPublisher'
 import { backgrounds } from './backgroundsData'
-import OpenAI from 'App/Services/ChatGPT/Midjourney'
+import ProductPublisher from 'App/Services/ChatGPT/ProductPublisher'
 
 export default class BackgroundSelector {
   private backgrounds = backgrounds
@@ -9,8 +9,8 @@ export default class BackgroundSelector {
     mainImageUrl: string,
     descriptionHtml: string
   ): Promise<Background[]> {
-    const openAI = new OpenAI()
-    const selectedBackgroundPaths = await openAI.suggestRelevantBackgrounds(
+    const productPublisher = new ProductPublisher()
+    const selectedBackgroundPaths = await productPublisher.suggestRelevantBackgrounds(
       this.backgrounds,
       mainImageUrl,
       descriptionHtml

@@ -55,9 +55,10 @@ const corsConfig: CorsConfig = {
     const allowedOrigins = [
       Env.get('FRONTEND_URL'),
       Env.get('SHOPIFY_SHOP_URL'),
-      'https://www.midjourney.com',
-      'https://midjourney.com',
-    ]
+      Env.get('CHROME_EXTENSION_ID')
+        ? `chrome-extension://${Env.get('CHROME_EXTENSION_ID')}`
+        : null,
+    ].filter(Boolean)
 
     // Check if the request origin is in our allowed list
     if (requestOrigin && allowedOrigins.includes(requestOrigin)) {

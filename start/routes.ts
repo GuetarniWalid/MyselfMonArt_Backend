@@ -80,5 +80,8 @@ Route.group(() => {
 
   Route.post('/webhooks', 'WebhooksController.handle')
 
-  Route.post('/midjourney/publish', 'MidjourneysController.publishOnShopify')
+  Route.post(
+    '/shopify-product-publisher/publish',
+    'ShopifyProductPublishersController.publishOnShopify'
+  )
 }).prefix('/api')

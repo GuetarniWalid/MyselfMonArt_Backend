@@ -500,7 +500,7 @@ export default class MockupController {
 
   /**
    * Determine image orientation from dimensions
-   * Reuses same logic as Midjourney service (app/Services/Midjourney/index.ts)
+   * Reuses same logic as ShopifyProductPublisher service (app/Services/ShopifyProductPublisher/index.ts)
    */
   private getImageOrientation(width: number, height: number): 'square' | 'portrait' | 'landscape' {
     if (width === height) {

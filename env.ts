@@ -51,4 +51,5 @@ export default Env.rules({
   PINTEREST_CLIENT_ID: Env.schema.string(),
   PINTEREST_CLIENT_SECRET: Env.schema.string(),
   BACKEND_URL: Env.schema.string(),
+  CHROME_EXTENSION_ORIGIN: Env.schema.string(),
 })

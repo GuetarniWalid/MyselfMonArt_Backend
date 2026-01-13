@@ -1,6 +1,6 @@
 import { schema, CustomMessages } from '@ioc:Adonis/Core/Validator'
 
-export default class ExtensionMidjourneyRequestValidator {
+export default class ExtensionShopifyProductPublisherRequestValidator {
   public schema = schema.create({
     aspectRatio: schema.string.optional(),
     base64Image: schema.string(),

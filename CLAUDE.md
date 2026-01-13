@@ -15,13 +15,13 @@ Follow conventional commits format: `type(scope): description`
 - `refactor`: code restructuring without changing behavior
 
 **Scopes:**
-Use specific service/module names: `Midjourney`, `translator`, `shopify`, `webhooks`, `pinterest`, `database`, `docker`, `cors`, `backlinks`, `command`, `product`, `translation`, etc.
+Use specific service/module names: `shopify-product-publisher`, `translator`, `shopify`, `webhooks`, `pinterest`, `database`, `docker`, `cors`, `backlinks`, `command`, `product`, `translation`, etc.
 
 **Description:**
 - Use lowercase
 - Be concise and action-oriented
 - Describe what changed, not how it was implemented
 - Examples:
-  - `fix(Midjourney): clean low-quality backgrounds and improve SEO content generation`
+  - `fix(shopify-product-publisher): clean low-quality backgrounds and improve SEO content generation`
   - `feat(webhooks): implement tapestry model copying similar to paintings`
   - `refactor(database): remove variants table and related painting system`

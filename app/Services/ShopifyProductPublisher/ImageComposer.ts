@@ -1,4 +1,4 @@
-import type { Background, Ratio } from 'Types/Midjourney'
+import type { Background, Ratio } from 'Types/ShopifyProductPublisher'
 import BackgroundSelector from './BackgroundSelector'
 import fs from 'fs/promises'
 import path from 'path'

@@ -1,6 +1,6 @@
 import { test } from '@japa/runner'
-import ImageComposer from 'App/Services/Midjourney/ImageComposer'
-import type { Ratio } from 'Types/Midjourney'
+import ImageComposer from 'App/Services/ShopifyProductPublisher/ImageComposer'
+import type { Ratio } from 'Types/ShopifyProductPublisher'
 import fs from 'fs/promises'
 import path from 'path'
 import sharp from 'sharp'

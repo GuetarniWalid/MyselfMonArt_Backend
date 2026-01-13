@@ -1,4 +1,4 @@
-import type { Background } from 'Types/Midjourney'
+import type { Background } from 'Types/ShopifyProductPublisher'
 import { z } from 'zod'
 
 export default class BackgroundSelector {

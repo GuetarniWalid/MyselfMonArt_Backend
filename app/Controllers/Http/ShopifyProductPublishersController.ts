@@ -1,36 +1,38 @@
 import type { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
-import ExtensionMidjourneyRequestValidator from 'App/Validators/ExtensionMidjourneyRequestValidator'
-import Midjourney from 'App/Services/Midjourney'
-import OpenAI from 'App/Services/ChatGPT/Midjourney'
+import ExtensionShopifyProductPublisherRequestValidator from 'App/Validators/ExtensionShopifyProductPublisherRequestValidator'
+import ShopifyProductPublisher from 'App/Services/ShopifyProductPublisher'
+import ProductPublisher from 'App/Services/ChatGPT/ProductPublisher'
 import { CreateProduct } from 'Types/Product'
 import Shopify from 'App/Services/Shopify'
 
-export default class MidjourneysController {
+export default class ShopifyProductPublishersController {
   public async publishOnShopify({ request, response }: HttpContextContract) {
-    let midjourney: Midjourney | null = null
+    let productPublisher: ShopifyProductPublisher | null = null
 
     try {
-      const checkedRequest = await request.validate(ExtensionMidjourneyRequestValidator)
+      const checkedRequest = await request.validate(
+        ExtensionShopifyProductPublisherRequestValidator
+      )
       const product = {} as CreateProduct
-      midjourney = new Midjourney(checkedRequest.base64Image)
-      const openAI = new OpenAI()
+      productPublisher = new ShopifyProductPublisher(checkedRequest.base64Image)
+      const openAI = new ProductPublisher()
       const shopify = new Shopify()
 
-      const ratio = midjourney.getAspectRatio(checkedRequest)
-      const optimizedImage = await midjourney.getOptimizedImage(ratio)
+      const ratio = productPublisher.getAspectRatio(checkedRequest)
+      const optimizedImage = await productPublisher.getOptimizedImage(ratio)
 
       // Process non-Shopify operations concurrently
       const [descriptionHtml, parentCollection, mainImage, likesCount] = await Promise.all([
         openAI.generateHtmlDescription(optimizedImage),
-        midjourney.getParentCollection(optimizedImage),
-        midjourney.getMainImage(ratio),
-        midjourney.getLikesCount(),
+        productPublisher.getParentCollection(optimizedImage),
+        productPublisher.getMainImage(ratio),
+        productPublisher.getLikesCount(),
       ])
 
       // Fetch tags and product types in a single optimized call
       const { tags, productTypes } = await shopify.product.getTagsAndProductTypes()
 
-      const imagesWithBackground = await midjourney.getImagesWithBackground(
+      const imagesWithBackground = await productPublisher.getImagesWithBackground(
         optimizedImage,
         ratio,
         descriptionHtml
@@ -59,12 +61,15 @@ export default class MidjourneysController {
       }
       product.media = await Promise.all(
         imagesWithBackground.map(async (image, index) => ({
-          src: await midjourney!.replaceSrcName(image, altImagesWithBackground[index].filename),
+          src: await productPublisher!.replaceSrcName(
+            image,
+            altImagesWithBackground[index].filename
+          ),
           alt: altImagesWithBackground[index].alt,
         }))
       )
       product.media.splice(1, 0, {
-        src: await midjourney!.replaceSrcName(mainImage, filenameMainImage),
+        src: await productPublisher!.replaceSrcName(mainImage, filenameMainImage),
         alt: altMainImage,
       })
       product.tags = suggestedTags
@@ -96,7 +101,7 @@ export default class MidjourneysController {
         },
       }
     } catch (error) {
-      console.error('Midjourney error details:', {
+      console.error('Product publisher error details:', {
         code: error.code,
         message: error.message,
         stack: error.stack,
@@ -111,15 +116,15 @@ export default class MidjourneysController {
         })
       }
 
-      console.error('Midjourney error:', error)
+      console.error('Product publisher error:', error)
       return response.status(500).json({
         success: false,
         message: 'Internal server error',
         error: error.message || 'An unexpected error occurred',
       })
     } finally {
-      if (midjourney) {
-        await midjourney.cleanupSavedImages()
+      if (productPublisher) {
+        await productPublisher.cleanupSavedImages()
       }
     }
   }
