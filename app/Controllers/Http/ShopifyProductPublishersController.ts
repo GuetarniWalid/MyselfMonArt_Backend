@@ -14,44 +14,65 @@ export default class ShopifyProductPublishersController {
         ExtensionShopifyProductPublisherRequestValidator
       )
       const product = {} as CreateProduct
-      productPublisher = new ShopifyProductPublisher(checkedRequest.base64Image)
+      productPublisher = new ShopifyProductPublisher(checkedRequest)
       const openAI = new ProductPublisher()
       const shopify = new Shopify()
 
-      const ratio = productPublisher.getAspectRatio(checkedRequest)
-      const optimizedImage = await productPublisher.getOptimizedImage(ratio)
+      // Process all images (mockups + main artwork)
+      const processedImageUrls = await productPublisher.processAllImages()
 
-      // Process non-Shopify operations concurrently
-      const [descriptionHtml, parentCollection, mainImage, likesCount] = await Promise.all([
-        openAI.generateHtmlDescription(optimizedImage),
-        productPublisher.getParentCollection(optimizedImage),
-        productPublisher.getMainImage(ratio),
+      // Get main artwork URL (first image with type: "original")
+      const originalImageIndex = productPublisher.getOriginalImageIndex()
+      const mainArtworkUrl = processedImageUrls[originalImageIndex]
+
+      // Get collection context and product type for AI
+      const collectionTitle = productPublisher.getCollectionTitle()
+      const productType = productPublisher.getProductType()
+
+      // Process AI operations on main artwork concurrently
+      const [descriptionHtml, likesCount] = await Promise.all([
+        openAI.generateHtmlDescription(mainArtworkUrl, collectionTitle, productType),
         productPublisher.getLikesCount(),
       ])
 
-      // Fetch tags and product types in a single optimized call
-      const { tags, productTypes } = await shopify.product.getTagsAndProductTypes()
-
-      const imagesWithBackground = await productPublisher.getImagesWithBackground(
-        optimizedImage,
-        ratio,
-        descriptionHtml
-      )
+      // Fetch tags in a single optimized call
+      const { tags } = await shopify.product.getTagsAndProductTypes()
 
       // Process AI operations concurrently
       const [
         suggestedTags,
-        suggestedProductType,
-        altImagesWithBackground,
-        { alt: altMainImage, filename: filenameMainImage },
+        { alt: mainArtworkAlt, filename: mainArtworkFilename },
         { title, metaTitle, metaDescription },
       ] = await Promise.all([
-        openAI.suggestTags(tags, optimizedImage),
-        openAI.suggestProductType(productTypes, optimizedImage),
-        Promise.all(imagesWithBackground.map(async (image) => await openAI.generateAlt(image))),
-        openAI.generateAlt(optimizedImage),
-        await openAI.generateTitleAndSeo(descriptionHtml),
+        openAI.suggestTags(tags, mainArtworkUrl, collectionTitle, productType),
+        openAI.generateAlt(mainArtworkUrl, collectionTitle, productType),
+        openAI.generateTitleAndSeo(descriptionHtml),
       ])
+
+      // Extract pure artwork description for mockup alts
+      const artworkDescription = this.extractArtworkDescription(mainArtworkAlt, title)
+
+      // Build media array with intelligent alt text generation
+      product.media = await Promise.all(
+        processedImageUrls.map(async (url, index) => {
+          // Original artwork: use AI-generated alt
+          if (index === originalImageIndex) {
+            return {
+              src: await productPublisher!.replaceSrcName(url, mainArtworkFilename),
+              alt: mainArtworkAlt,
+            }
+          }
+
+          // Mockups: combine mockupContext with artwork description programmatically
+          const mockupContext = productPublisher!.getMockupContext(index)
+          const { alt, filename } = openAI.generateMockupAlt(mockupContext, artworkDescription)
+
+          return {
+            src: await productPublisher!.replaceSrcName(url, filename),
+            alt: alt,
+          }
+        })
+      )
 
       product.title = title
       product.descriptionHtml = descriptionHtml
@@ -59,28 +80,15 @@ export default class ShopifyProductPublishersController {
         title: metaTitle,
         description: metaDescription,
       }
-      product.media = await Promise.all(
-        imagesWithBackground.map(async (image, index) => ({
-          src: await productPublisher!.replaceSrcName(
-            image,
-            altImagesWithBackground[index].filename
-          ),
-          alt: altImagesWithBackground[index].alt,
-        }))
-      )
-      product.media.splice(1, 0, {
-        src: await productPublisher!.replaceSrcName(mainImage, filenameMainImage),
-        alt: altMainImage,
-      })
       product.tags = suggestedTags
-      product.productType = suggestedProductType
-      product.templateSuffix = 'painting'
+      product.productType = productType
+      product.templateSuffix = productType
 
       product.metafields = [
         {
           namespace: 'link',
           key: 'mother_collection',
-          value: parentCollection.id,
+          value: productPublisher.getParentCollectionID(),
           type: 'collection_reference',
         },
       ]
@@ -127,5 +135,12 @@ export default class ShopifyProductPublishersController {
         await productPublisher.cleanupSavedImages()
       }
     }
+  }
+
+  /**
+   * Extract pure artwork description from main alt text
+   */
+  private extractArtworkDescription(mainAlt: string, fallbackTitle: string): string {
+    return mainAlt || fallbackTitle
   }
 }

@@ -1,11 +1,8 @@
-import type { Background } from 'Types/ShopifyProductPublisher'
 import AltGenerator from './AltGenerator'
 import Authentication from '../Authentication'
-import BackgroundSelector from './BackgroundSelector'
 import DescriptionGenerator from './DescriptionGenerator'
 import ImageAnalyzer from './ImageAnalyser'
 import Env from '@ioc:Adonis/Core/Env'
-import ParentCollectionPicker from './ParentCollectionPicker'
 import ProductTypePicker from './ProductTypePicker'
 import TitleAndSeoGenerator from './TitleAndSeoGenerator'
 import TagPicker from './TagPicker'
@@ -16,11 +13,24 @@ export default class ProductPublisher extends Authentication {
     haveToBeDetailed: boolean
   } | null = null
 
-  public async generateAlt(imageUrl: string) {
+  public async generateAlt(imageUrl: string, collectionTitle: string, productType: string) {
     return this.retryOperation(async () => {
       const altGenerator = new AltGenerator()
       try {
         const { responseFormat, payload, systemPrompt } = altGenerator.prepareRequest(imageUrl)
+
+        const userContent: any[] = [
+          {
+            type: 'text',
+            text: `Product type: "${productType}". Collection: "${collectionTitle}". This artwork belongs to this collection, adapt your alt text to match the collection's theme and style and the product type.`,
+          },
+          {
+            type: 'image_url',
+            image_url: {
+              url: payload.imageUrl,
+            },
+          },
+        ]
 
         const completion = await this.openai.beta.chat.completions.parse({
           model: Env.get('OPENAI_MODEL'),
@@ -31,14 +41,7 @@ export default class ProductPublisher extends Authentication {
             },
             {
               role: 'user',
-              content: [
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: payload.imageUrl,
-                  },
-                },
-              ],
+              content: userContent,
             },
           ],
           response_format: zodResponseFormat(responseFormat, 'alt'),
@@ -61,6 +64,18 @@ export default class ProductPublisher extends Authentication {
         throw new Error('Failed to generate alt')
       }
     })
+  }
+
+  /**
+   * Generate mockup alt programmatically (no AI call needed)
+   * Combines mockup context with artwork description
+   */
+  public generateMockupAlt(
+    mockupContext: string,
+    artworkDescription: string
+  ): { alt: string; filename: string } {
+    const altGenerator = new AltGenerator()
+    return altGenerator.generateMockupAlt(mockupContext, artworkDescription)
   }
 
   private async retryOperation<T>(
@@ -101,7 +116,11 @@ export default class ProductPublisher extends Authentication {
     throw lastError!
   }
 
-  public async generateHtmlDescription(imageUrl: string) {
+  public async generateHtmlDescription(
+    imageUrl: string,
+    collectionTitle: string,
+    productType: string
+  ) {
     await this.ensureImageAnalysis(imageUrl)
 
     return this.retryOperation(async () => {
@@ -110,6 +129,19 @@ export default class ProductPublisher extends Authentication {
       try {
         const { responseFormat, payload, systemPrompt } =
           descriptionGenerator.prepareRequest(imageUrl)
+
+        const userContent: any[] = [
+          {
+            type: 'text',
+            text: `Product type: "${productType}". Collection: "${collectionTitle}". This artwork belongs to this collection, adapt your description to match the collection's theme and style and the product type.`,
+          },
+          {
+            type: 'image_url',
+            image_url: {
+              url: payload.imageUrl,
+            },
+          },
+        ]
 
         const completion = await this.openai.beta.chat.completions.parse({
           model: Env.get('OPENAI_MODEL'),
@@ -120,14 +152,7 @@ export default class ProductPublisher extends Authentication {
             },
             {
               role: 'user',
-              content: [
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: payload.imageUrl,
-                  },
-                },
-              ],
+              content: userContent,
             },
           ],
           response_format: zodResponseFormat(responseFormat, 'description'),
@@ -253,131 +278,35 @@ export default class ProductPublisher extends Authentication {
     }
   }
 
-  public async suggestRelevantBackgrounds(
-    backgrounds: Background[],
-    mainImageUrl: string,
-    descriptionHtml: string
+  public async suggestTags(
+    tags: string[],
+    imageUrl: string,
+    collectionTitle: string,
+    productType: string
   ) {
-    return this.retryOperation(async () => {
-      const backgroundSelector = new BackgroundSelector()
-
-      try {
-        const { responseFormat, payload, systemPrompt } = backgroundSelector.prepareRequest(
-          backgrounds,
-          mainImageUrl,
-          descriptionHtml
-        )
-
-        const completion = await this.openai.beta.chat.completions.parse({
-          model: Env.get('OPENAI_MODEL'),
-          messages: [
-            {
-              role: 'system',
-              content: systemPrompt,
-            },
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: `Backgrounds disponibles : ${JSON.stringify(payload.backgrounds)}`,
-                },
-                {
-                  type: 'text',
-                  text: `Description du tableau en HTML : ${payload.descriptionHtml}`,
-                },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: payload.mainImageUrl,
-                  },
-                },
-              ],
-            },
-          ],
-          response_format: zodResponseFormat(responseFormat, 'background'),
-        })
-        const response = completion.choices[0]
-
-        if (response.finish_reason === 'length') {
-          throw new Error('ChatGPT did not return a complete list of relevant backgrounds')
-        } else if (response.message.refusal) {
-          throw new Error(
-            `ChatGPT refused to suggest relevant backgrounds for the following reason: ${response.message.refusal}`
-          )
-        } else if (!response.message.parsed) {
-          throw new Error('ChatGPT did not return a valid list of relevant backgrounds')
-        }
-
-        return response.message.parsed.paths
-      } catch (error) {
-        console.error('Error during relevant backgrounds suggestion: ', error)
-        throw new Error('Failed to suggest relevant backgrounds')
-      }
-    })
-  }
-
-  public async suggestRelevantParentCollection(collections: string[], imageUrl: string) {
-    return this.retryOperation(async () => {
-      const parentCollectionPicker = new ParentCollectionPicker()
-      try {
-        const { responseFormat, payload, systemPrompt } = parentCollectionPicker.prepareRequest(
-          collections,
-          imageUrl
-        )
-
-        const completion = await this.openai.beta.chat.completions.parse({
-          model: Env.get('OPENAI_MODEL'),
-          messages: [
-            {
-              role: 'system',
-              content: systemPrompt,
-            },
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: `Collections: ${payload.collections}`,
-                },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: payload.imageUrl,
-                  },
-                },
-              ],
-            },
-          ],
-          response_format: zodResponseFormat(responseFormat, 'parent_collection'),
-        })
-        const response = completion.choices[0]
-
-        if (response.finish_reason === 'length') {
-          throw new Error('ChatGPT did not return a complete parent collection')
-        } else if (response.message.refusal) {
-          throw new Error(
-            `ChatGPT refused to generate a parent collection for the following reason: ${response.message.refusal}`
-          )
-        } else if (!response.message.parsed) {
-          throw new Error('ChatGPT did not return a valid parent collection')
-        }
-
-        return response.message.parsed.parentCollection
-      } catch (error) {
-        console.error('Error during parent collection generation: ', error)
-        throw new Error('Failed to generate parent collection')
-      }
-    })
-  }
-
-  public async suggestTags(tags: string[], imageUrl: string) {
     return this.retryOperation(async () => {
       const tagPicker = new TagPicker()
 
       try {
         const { responseFormat, payload, systemPrompt } = tagPicker.prepareRequest(tags, imageUrl)
 
+        const userContent: any[] = [
+          {
+            type: 'text',
+            text: `Product type: "${productType}". Collection: "${collectionTitle}". This artwork belongs to this collection, adapt your tags to match the collection's theme and style and the product type.`,
+          },
+          {
+            type: 'text',
+            text: `Tags: ${payload.tags}`,
+          },
+          {
+            type: 'image_url',
+            image_url: {
+              url: payload.imageUrl,
+            },
+          },
+        ]
+
         const completion = await this.openai.beta.chat.completions.parse({
           model: Env.get('OPENAI_MODEL'),
           messages: [
@@ -387,18 +316,7 @@ export default class ProductPublisher extends Authentication {
             },
             {
               role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: `Tags: ${payload.tags}`,
-                },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: payload.imageUrl,
-                  },
-                },
-              ],
+              content: userContent,
             },
           ],
           response_format: zodResponseFormat(responseFormat, 'tags'),

@@ -80,6 +80,8 @@ Route.group(() => {
 
   Route.post('/webhooks', 'WebhooksController.handle')
 
+  Route.get('/collections', 'CollectionsController.getByType')
+
   Route.post(
     '/shopify-product-publisher/publish',
     'ShopifyProductPublishersController.publishOnShopify'

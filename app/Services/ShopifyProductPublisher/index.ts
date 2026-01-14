@@ -1,99 +1,104 @@
-import type { Collection } from 'Types/Collection'
-import type { ExtensionRequest, Ratio } from 'Types/ShopifyProductPublisher'
+import type { ExtensionRequest, Ratio, ImageType, ProductType } from 'Types/ShopifyProductPublisher'
 import ImageComposer from './ImageComposer'
-import Shopify from 'App/Services/Shopify'
-import ProductPublisher from 'App/Services/ChatGPT/ProductPublisher'
-import Env from '@ioc:Adonis/Core/Env'
 
 export default class ShopifyProductPublisher {
   private imageComposer: ImageComposer
+  private images: Array<{ base64Image: string; mockupContext?: string; type: ImageType }>
+  private ratio: Ratio
+  private productType: ProductType
+  private parentCollection: { id: string; title: string }
 
-  constructor(base64Image: string) {
-    this.imageComposer = new ImageComposer(base64Image)
+  constructor(request: ExtensionRequest) {
+    this.imageComposer = new ImageComposer()
+    this.images = request.images
+    this.ratio = request.ratio
+    this.productType = request.productType
+    this.parentCollection = request.parentCollection
   }
 
   public async cleanupSavedImages(): Promise<void> {
     await this.imageComposer.cleanupSavedImages()
   }
 
-  public getAspectRatio(request: ExtensionRequest): Ratio {
-    const aspectRatio = request.aspectRatio ?? '1:1'
-    const [width, height] = aspectRatio.split(':').map(Number)
-
-    if (width === height) {
-      return 'square'
-    } else if (width < height) {
-      return 'portrait'
-    } else {
-      return 'landscape'
+  /**
+   * Get the index of the first original image
+   */
+  public getOriginalImageIndex(): number {
+    const originalIndex = this.images.findIndex((image) => image.type === 'original')
+    if (originalIndex === -1) {
+      throw new Error('No original image found in images array')
     }
+    return originalIndex
   }
 
-  public async getImagesWithBackground(
-    mainImageUrl: string,
-    ratio: Ratio,
-    descriptionHtml: string
-  ) {
-    const imagesWithBackground = await this.imageComposer.getImagesWithBackground(
-      mainImageUrl,
-      ratio,
-      descriptionHtml
+  /**
+   * Get the main artwork image (first image with type: "original")
+   * This is used for AI analysis
+   */
+  public getMainArtworkImage() {
+    const originalIndex = this.getOriginalImageIndex()
+    return this.images[originalIndex]
+  }
+
+  /**
+   * Process all images (optimize, resize, save)
+   * @returns Array of URLs for processed images
+   */
+  public async processAllImages(): Promise<string[]> {
+    const processedUrls = await Promise.all(
+      this.images.map(async (image) => {
+        return await this.imageComposer.processImage(image.base64Image, this.ratio)
+      })
     )
-
-    const imagesWithBackgroundUrls = imagesWithBackground.map((image) =>
-      this.replaceUrlForDevelopment(image)
-    )
-
-    const uniqueImages = [...new Set(imagesWithBackgroundUrls)]
-    return uniqueImages
+    return processedUrls
   }
 
-  public async getLikesCount() {
-    const likesCount = Math.floor(Math.random() * 200)
-    return likesCount
+  /**
+   * Get random likes count
+   */
+  public async getLikesCount(): Promise<number> {
+    return Math.floor(Math.random() * 200)
   }
 
-  public async getMainImage(ratio: Ratio) {
-    const mainImage = await this.imageComposer.getMainImage(ratio)
-    return this.replaceUrlForDevelopment(mainImage)
+  /**
+   * Get parent collection ID
+   */
+  public getParentCollectionID(): string {
+    return this.parentCollection.id
   }
 
-  public async getOptimizedImage(ratio: Ratio): Promise<string> {
-    let url = await this.imageComposer.getOptimizedImage(ratio)
-    return this.replaceUrlForDevelopment(url)
+  /**
+   * Get collection title for AI context
+   */
+  public getCollectionTitle(): string {
+    return this.parentCollection.title
   }
 
-  public async getParentCollection(imageUrl: string) {
-    const shopify = new Shopify()
-    const collections = await shopify.collection.getAll()
-    const collectionTitles = collections.map((collection) => collection.title)
+  /**
+   * Get product type (painting, poster, or tapestry)
+   */
+  public getProductType(): ProductType {
+    return this.productType
+  }
 
-    const productPublisher = new ProductPublisher()
-    const parentCollectionTitle = await productPublisher.suggestRelevantParentCollection(
-      collectionTitles,
-      imageUrl
-    )
+  /**
+   * Replace source filename with SEO-friendly name
+   */
+  public async replaceSrcName(src: string, filename: string): Promise<string> {
+    return await this.imageComposer.replaceSrcName(src, filename)
+  }
 
-    const parentCollection = this.getCollectionByTitle(collections, parentCollectionTitle)
-    if (!parentCollection) {
-      throw new Error(`Parent collection not found for title: ${parentCollectionTitle}`)
+  /**
+   * Get mockup context for a specific image index
+   */
+  public getMockupContext(index: number): string {
+    if (index < 0 || index >= this.images.length) {
+      throw new Error(`Invalid image index: ${index}`)
     }
-    return parentCollection
-  }
-
-  public async replaceSrcName(src: string, filename: string) {
-    const newSrc = await this.imageComposer.replaceSrcName(src, filename)
-    return this.replaceUrlForDevelopment(newSrc)
-  }
-
-  private getCollectionByTitle(collections: Collection[], title: string) {
-    return collections.find((collection) => collection.title === title)
-  }
-
-  private replaceUrlForDevelopment(url: string): string {
-    if (Env.get('NODE_ENV') === 'development') {
-      return url.replace(Env.get('APP_URL'), Env.get('NGROK_URL'))
+    const context = this.images[index].mockupContext
+    if (!context) {
+      throw new Error(`Image at index ${index} does not have a mockupContext`)
     }
-    return url
+    return context
   }
 }
