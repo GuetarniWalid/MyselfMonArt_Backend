@@ -104,6 +104,88 @@ export default class Product extends Authentication {
     }
   }
 
+  /**
+   * Poll product media status until all media are READY or FAILED
+   * Shopify processes media asynchronously - this ensures images are processed before cleanup
+   * @param productId - The Shopify product ID
+   * @param maxAttempts - Maximum polling attempts (default: 30)
+   * @param intervalMs - Interval between polls in milliseconds (default: 2000)
+   * @returns Object with allReady boolean and failed media IDs array
+   */
+  public async waitForMediaProcessing(
+    productId: string,
+    maxAttempts: number = 30,
+    intervalMs: number = 2000
+  ): Promise<{ allReady: boolean; failedMedia: string[] }> {
+    console.log(`[Shopify] Polling media status for product ${productId}...`)
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const { query, variables } = this.getMediaStatusQuery(productId)
+      const response = await this.fetchGraphQL(query, variables, 50)
+
+      const product = response.product
+      if (!product || !product.media?.nodes?.length) {
+        console.warn('[Shopify] Product has no media to process')
+        return { allReady: true, failedMedia: [] }
+      }
+
+      const mediaStatuses = product.media.nodes.map((node) => ({
+        id: node.id,
+        status: node.status,
+        alt: node.alt,
+      }))
+
+      const processing = mediaStatuses.filter(
+        (m) => m.status === 'PROCESSING' || m.status === 'UPLOADED'
+      )
+      const ready = mediaStatuses.filter((m) => m.status === 'READY')
+      const failed = mediaStatuses.filter((m) => m.status === 'FAILED')
+
+      console.log(
+        `[Shopify] Media status (attempt ${attempt}/${maxAttempts}): ${ready.length} ready, ${processing.length} processing, ${failed.length} failed`
+      )
+
+      // All media processed (either READY or FAILED)
+      if (processing.length === 0) {
+        if (failed.length > 0) {
+          console.error(`[Shopify] ${failed.length} media failed to process:`)
+          failed.forEach((m) => console.error(`  - ${m.id}: ${m.alt || 'no alt'}`))
+        }
+        return {
+          allReady: failed.length === 0,
+          failedMedia: failed.map((m) => m.id),
+        }
+      }
+
+      // Wait before next poll
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs))
+      }
+    }
+
+    console.warn(`[Shopify] Media processing timeout after ${maxAttempts} attempts`)
+    return { allReady: false, failedMedia: [] }
+  }
+
+  private getMediaStatusQuery(productId: string) {
+    return {
+      query: `query GetProductMediaStatus($productId: ID!) {
+        product(id: $productId) {
+          id
+          media(first: 20) {
+            nodes {
+              id
+              status
+              alt
+              mediaContentType
+            }
+          }
+        }
+      }`,
+      variables: { productId },
+    }
+  }
+
   public async deleteAllOptions(productId: string) {
     const product = await this.getProductById(productId)
     const optionIds = product.options.map((option) => option.id)

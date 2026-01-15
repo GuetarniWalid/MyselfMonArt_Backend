@@ -19,26 +19,89 @@ export default class ImageComposer {
   }
 
   /**
-   * Process a single image from the images array
+   * Process a single image from the images array (with compression for AI calls)
    * @param base64Image - The base64 encoded image
    * @param ratio - The ratio (portrait/landscape/square)
    * @returns URL of the optimized and saved image
    */
   public async processImage(base64Image: string, ratio: Ratio): Promise<string> {
     try {
-      // Remove the "data:image/...;base64," prefix if present
-      const cleanBase64 = base64Image.replace(/^data:image\/[a-z]+;base64,/, '')
+      // Remove data URI prefix - handle both "data:image/..." and "data:application/octet-stream"
+      const cleanBase64 = base64Image.replace(
+        /^data:(image\/[a-z]+|application\/octet-stream);base64,/,
+        ''
+      )
 
-      // Optimize the image
+      // Optimize the image (always outputs JPEG)
       const imageBuffer = await this.optimizeBase64Image(cleanBase64, ratio)
 
-      // Save locally
-      const imageUrl = await this.saveImageLocally(imageBuffer)
+      // Save locally as JPEG (optimization always converts to JPEG)
+      const imageUrl = await this.saveImageLocally(imageBuffer, 'jpg')
 
       // Replace URL for development if needed
       return this.replaceUrlForDevelopment(imageUrl)
     } catch (error: any) {
       console.warn(`Failed to process image: ${error.message}`)
+      throw error
+    }
+  }
+
+  /**
+   * Save original image without compression (for Shopify publication)
+   * @param base64Image - The base64 encoded image
+   * @returns URL of the original saved image
+   */
+  public async saveOriginalImage(base64Image: string): Promise<string> {
+    try {
+      // Remove data URI prefix - handle both "data:image/..." and "data:application/octet-stream"
+      const cleanBase64 = base64Image.replace(
+        /^data:(image\/[a-z]+|application\/octet-stream);base64,/,
+        ''
+      )
+
+      // Extract format from original data URI to save with correct extension
+      let format = 'jpg'
+      const formatMatch = base64Image.match(/^data:image\/([a-z]+);base64,/)
+      if (formatMatch) {
+        format = formatMatch[1]
+      }
+
+      // Convert to buffer WITHOUT any processing - save original as-is
+      const imageBuffer = Buffer.from(cleanBase64, 'base64')
+
+      // Save locally with original format (no compression, no re-encoding)
+      const imageUrl = await this.saveImageLocally(imageBuffer, format)
+
+      // Replace URL for development if needed
+      return this.replaceUrlForDevelopment(imageUrl)
+    } catch (error: any) {
+      console.warn(`Failed to save original image: ${error.message}`)
+      throw error
+    }
+  }
+
+  /**
+   * Compress image and return as base64 data URI (for AI calls)
+   * @param base64Image - The base64 encoded image
+   * @param ratio - The ratio (portrait/landscape/square)
+   * @returns Base64 data URI of the compressed image
+   */
+  public async compressImageToDataUri(base64Image: string, ratio: Ratio): Promise<string> {
+    try {
+      // Remove data URI prefix - handle both "data:image/..." and "data:application/octet-stream"
+      const cleanBase64 = base64Image.replace(
+        /^data:(image\/[a-z]+|application\/octet-stream);base64,/,
+        ''
+      )
+
+      // Optimize the image
+      const imageBuffer = await this.optimizeBase64Image(cleanBase64, ratio)
+
+      // Convert to base64 data URI
+      const base64Data = imageBuffer.toString('base64')
+      return `data:image/jpeg;base64,${base64Data}`
+    } catch (error: any) {
+      console.warn(`Failed to compress image: ${error.message}`)
       throw error
     }
   }
@@ -103,10 +166,10 @@ export default class ImageComposer {
   /**
    * Save image buffer to disk and return public URL
    */
-  private async saveImageLocally(imageBuffer: Buffer): Promise<string> {
+  private async saveImageLocally(imageBuffer: Buffer, format: string = 'jpg'): Promise<string> {
     await fs.mkdir(this.UPLOAD_DIR, { recursive: true })
 
-    const filename = `${randomUUID()}.jpg`
+    const filename = `${randomUUID()}.${format}`
     const filepath = path.join(this.UPLOAD_DIR, filename)
 
     await fs.writeFile(filepath, imageBuffer)
@@ -138,7 +201,7 @@ export default class ImageComposer {
     this.savedImageFiles.push(newPath)
 
     const newSrc = `${this.BASE_URL}/uploads/${newFilename}`
-    return newSrc
+    return this.replaceUrlForDevelopment(newSrc)
   }
 
   /**
@@ -180,7 +243,11 @@ export default class ImageComposer {
    */
   private replaceUrlForDevelopment(url: string): string {
     if (Env.get('NODE_ENV') === 'development') {
-      return url.replace(Env.get('APP_URL'), Env.get('NGROK_URL'))
+      const ngrokUrl = Env.get('NGROK_URL')
+      if (ngrokUrl) {
+        // Replace the actual BASE_URL being used (not APP_URL from env)
+        return url.replace(this.BASE_URL, ngrokUrl)
+      }
     }
     return url
   }

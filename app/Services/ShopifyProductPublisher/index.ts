@@ -7,6 +7,7 @@ export default class ShopifyProductPublisher {
   private ratio: Ratio
   private productType: ProductType
   private parentCollection: { id: string; title: string }
+  private compressedMainArtworkDataUri: string | null = null
 
   constructor(request: ExtensionRequest) {
     this.imageComposer = new ImageComposer()
@@ -41,16 +42,40 @@ export default class ShopifyProductPublisher {
   }
 
   /**
-   * Process all images (optimize, resize, save)
-   * @returns Array of URLs for processed images
+   * Save all images as originals (without compression) for Shopify publication
+   * @returns Array of URLs for original images
    */
   public async processAllImages(): Promise<string[]> {
-    const processedUrls = await Promise.all(
+    const originalUrls = await Promise.all(
       this.images.map(async (image) => {
-        return await this.imageComposer.processImage(image.base64Image, this.ratio)
+        return await this.imageComposer.saveOriginalImage(image.base64Image)
       })
     )
-    return processedUrls
+    return originalUrls
+  }
+
+  /**
+   * Get compressed main artwork as base64 data URI for AI calls ONLY
+   * This saves API token costs by sending a compressed version to the AI
+   * Returns a data URI that can be directly processed by Claude (no URL fetch needed)
+   * @returns Compressed base64 data URI of the main artwork (first original image)
+   */
+  public async getCompressedMainArtworkDataUri(): Promise<string> {
+    // Return cached version if already generated
+    if (this.compressedMainArtworkDataUri) {
+      return this.compressedMainArtworkDataUri
+    }
+
+    const originalIndex = this.getOriginalImageIndex()
+    const mainArtwork = this.images[originalIndex]
+
+    // Compress the main artwork and return as data URI for AI
+    this.compressedMainArtworkDataUri = await this.imageComposer.compressImageToDataUri(
+      mainArtwork.base64Image,
+      this.ratio
+    )
+
+    return this.compressedMainArtworkDataUri
   }
 
   /**
