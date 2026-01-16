@@ -90,7 +90,7 @@ export default class TestTask extends BaseCommand {
     const product = await shopify.product.getProductById(productId)
 
     console.info(`📄 Product title: ${product.title}`)
-    console.info(`🏷️  Template: ${product.templateSuffix}`)
+    console.info(`🏷️  Artwork Type: ${product.artworkTypeMetafield?.value || 'N/A'}`)
     console.info(`🏷️  Tags: ${product.tags.join(', ')}`)
 
     const areMediaLoaded = await shopify.product.artworkCopier.areMediaImagesLoaded(product)
@@ -162,7 +162,7 @@ export default class TestTask extends BaseCommand {
     const copier = shopify.product.getModelCopier(product)
 
     console.info(`📄 Product title: ${product.title}`)
-    console.info(`🏷️  Template: ${product.templateSuffix}`)
+    console.info(`🏷️  Artwork Type: ${product.artworkTypeMetafield?.value || 'N/A'}`)
     console.info(`🏷️  Tags: ${product.tags.join(', ')}`)
 
     const isModel = copier.isModelProduct(product)

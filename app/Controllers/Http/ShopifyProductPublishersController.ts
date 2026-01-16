@@ -134,6 +134,12 @@ export default class ShopifyProductPublishersController {
         value: shortTitle,
         type: 'single_line_text_field',
       })
+      product.metafields.push({
+        namespace: 'artwork',
+        key: 'type',
+        value: productType,
+        type: 'single_line_text_field',
+      })
 
       const productCreated = await shopify.product.create(product)
       await shopify.publications.publishProductOnAll(productCreated.id)

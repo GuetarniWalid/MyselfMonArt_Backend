@@ -21,7 +21,7 @@ export default class TapestryCopier extends ModelCopier {
   public canProcessProductCreate(product: ProductById | Product): boolean {
     if (!product) return false
     if (this.isModelProduct(product)) return false
-    if (product.templateSuffix !== 'tapestry') return false
+    if (product.artworkTypeMetafield?.value !== 'tapestry') return false
     return true
   }
 
@@ -41,7 +41,7 @@ export default class TapestryCopier extends ModelCopier {
       const isModel = this.isModelProduct(p)
       if (isModel) return false
 
-      return p.templateSuffix === 'tapestry'
+      return p.artworkTypeMetafield?.value === 'tapestry'
     })
   }
 }

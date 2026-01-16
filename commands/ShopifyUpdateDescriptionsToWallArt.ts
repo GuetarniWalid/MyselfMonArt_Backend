@@ -71,6 +71,6 @@ export default class ShopifyUpdateDescriptionsToWallArt extends BaseCommand {
   }
 
   private getPaintingProducts(products: Product[]) {
-    return products.filter((product) => product.templateSuffix === 'painting')
+    return products.filter((product) => product.artworkTypeMetafield?.value === 'painting')
   }
 }

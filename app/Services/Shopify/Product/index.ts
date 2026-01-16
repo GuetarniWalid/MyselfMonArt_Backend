@@ -315,6 +315,9 @@ export default class Product extends Authentication {
                       }
                       tags
                       templateSuffix
+                      artworkTypeMetafield: metafield(namespace: "artwork", key: "type") {
+                        value
+                      }
                       category {
                         id
                       }
@@ -354,8 +357,9 @@ export default class Product extends Authentication {
   }
 
   public getModelCopier(product: ProductById | ShopifyProduct) {
-    const isArtwork = product.templateSuffix === 'painting' || product.templateSuffix === 'poster'
-    const isTapestry = product.templateSuffix === 'tapestry'
+    const artworkType = product.artworkTypeMetafield?.value
+    const isArtwork = artworkType === 'painting' || artworkType === 'poster'
+    const isTapestry = artworkType === 'tapestry'
 
     if (isArtwork) return new ArtworkCopier()
     if (isTapestry) return new TapestryCopier()

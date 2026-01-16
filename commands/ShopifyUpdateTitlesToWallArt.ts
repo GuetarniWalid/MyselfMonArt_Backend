@@ -70,7 +70,7 @@ export default class ShopifyUpdateTitlesToWallArt extends BaseCommand {
   }
 
   private getPaintingProducts(products: Product[]) {
-    return products.filter((product) => product.templateSuffix === 'painting')
+    return products.filter((product) => product.artworkTypeMetafield?.value === 'painting')
   }
 
   private getUrlHandleAccordingTitle(title: string) {

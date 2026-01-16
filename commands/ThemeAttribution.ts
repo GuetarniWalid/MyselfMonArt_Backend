@@ -48,8 +48,9 @@ export default class ThemeAttribution extends BaseCommand {
       // Step 2: Filter for paintings that can be processed
       console.info(`🔍 Filtering for painting products...`)
       const paintingProducts = allProducts.filter((product) => {
-        // Must be a painting or poster template
-        if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'poster') {
+        // Must be a painting or poster artwork
+        const artworkType = product.artworkTypeMetafield?.value
+        if (artworkType !== 'painting' && artworkType !== 'poster') {
           return false
         }
 

@@ -3,7 +3,7 @@ import { z } from 'zod'
 type ProductContext = {
   title: string
   description: string
-  templateSuffix: string | null
+  artworkType: string | null
   tags: string[]
   mockupTemplatePath?: string // e.g., "Cuisine/Grande cuisine" or "Vierge/Toile"
   customPrompt?: string // Custom AI prompt for CUSTOM_CONTEXT mode
@@ -73,7 +73,7 @@ export default class MockupAltGenerator {
     const basePayload = {
       productTitle: product.title,
       productDescription: product.description,
-      templateSuffix: product.templateSuffix,
+      artworkType: product.artworkType,
       tags: product.tags,
     }
 

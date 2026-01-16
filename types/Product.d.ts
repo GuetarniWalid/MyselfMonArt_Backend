@@ -171,6 +171,9 @@ export interface Product {
   }
   tags: string[]
   templateSuffix: string | null
+  artworkTypeMetafield?: {
+    value: string
+  }
   translations: {
     key: string
     locale: string

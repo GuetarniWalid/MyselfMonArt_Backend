@@ -147,7 +147,7 @@ export default class WebhooksController {
     if (!canProcess) return
 
     // Check if product matches the type we're processing
-    if (product.templateSuffix !== type) return
+    if (product.artworkTypeMetafield?.value !== type) return
 
     console.info(`🚀 Filling model data on ${type}: ${id}`)
     await shopify.product.artworkCopier.copyModelDataFromImageRatio(product)

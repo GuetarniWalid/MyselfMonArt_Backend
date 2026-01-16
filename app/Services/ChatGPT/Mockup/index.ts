@@ -6,7 +6,7 @@ import Env from '@ioc:Adonis/Core/Env'
 type ProductContext = {
   title: string
   description: string
-  templateSuffix: string | null
+  artworkType: string | null
   tags: string[]
   mockupTemplatePath?: string
 }

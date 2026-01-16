@@ -107,8 +107,9 @@ RÈGLES STRICTES :
       // Step 2: Filter for eligible products
       console.info(`🔍 Filtering for eligible products...`)
       const eligibleProducts = allProducts.filter((product) => {
-        // Must be painting or poster
-        if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'poster') {
+        // Must be painting or poster artwork
+        const artworkType = product.artworkTypeMetafield?.value
+        if (artworkType !== 'painting' && artworkType !== 'poster') {
           return false
         }
 
@@ -225,7 +226,7 @@ RÈGLES STRICTES :
           const productContext = {
             title: fullProduct.title,
             description: fullProduct.description,
-            templateSuffix: fullProduct.templateSuffix,
+            artworkType: fullProduct.artworkTypeMetafield?.value || null,
             tags: fullProduct.tags,
             // Include customPrompt if MODE is CUSTOM_CONTEXT
             ...(MODE === 'CUSTOM_CONTEXT' ? { customPrompt: CUSTOM_PROMPT } : {}),

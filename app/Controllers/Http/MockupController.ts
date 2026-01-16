@@ -586,7 +586,7 @@ export default class MockupController {
         // Get all products from Shopify (including unpublished) and filter painting products first
         const allProducts = await shopify.product.getAll(true)
         const paintingProducts = allProducts.filter(
-          (product) => product.templateSuffix === 'painting'
+          (product) => product.artworkTypeMetafield?.value === 'painting'
         )
 
         console.log(`📦 Total painting products found: ${paintingProducts.length}`)
@@ -831,7 +831,7 @@ export default class MockupController {
       const productContext = {
         title: product.title,
         description: product.description || '',
-        templateSuffix: product.templateSuffix,
+        artworkType: product.artworkTypeMetafield?.value || null,
         tags: product.tags || [],
         mockupTemplatePath: mockupTemplatePath,
       }
@@ -983,11 +983,12 @@ export default class MockupController {
 
   /**
    * Generate fallback alt text when AI generation fails
-   * @param product Product object with title and templateSuffix
+   * @param product Product object with title and artworkTypeMetafield
    * @returns Fallback alt text (respects 125 character limit)
    */
   private generateFallbackAlt(product: any): string {
-    const suffix = product.templateSuffix === 'tapestry' ? 'tapisserie' : 'tableau'
+    const artworkType = product.artworkTypeMetafield?.value
+    const suffix = artworkType === 'tapestry' ? 'tapisserie' : 'tableau'
     const alt = `${product.title} - ${suffix} décoratif mural en situation`
     return alt
   }

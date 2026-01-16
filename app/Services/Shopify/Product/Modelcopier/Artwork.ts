@@ -206,7 +206,8 @@ export default class ArtworkCopier extends ModelCopier {
    */
   protected compareCategory(product: ProductById, model: ProductByTag): CategoryDiff | undefined {
     // Only set category for regular artworks (not models)
-    if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'poster') {
+    const artworkType = product.artworkTypeMetafield?.value
+    if (artworkType !== 'painting' && artworkType !== 'poster') {
       return undefined
     }
 
@@ -261,7 +262,8 @@ export default class ArtworkCopier extends ModelCopier {
   public canProcessProductCreate(product: ProductById | Product): boolean {
     if (!product) return false
     if (this.isModelProduct(product)) return false
-    if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'poster') return false
+    const artworkType = product.artworkTypeMetafield?.value
+    if (artworkType !== 'painting' && artworkType !== 'poster') return false
     if (product.media.nodes.length < 1) return false
     if (!product.media.nodes[1].image) return false
     return true
@@ -313,7 +315,8 @@ export default class ArtworkCopier extends ModelCopier {
   public async areMediaImagesLoaded(product: ProductById | Product): Promise<boolean> {
     if (!product) return false
     if (this.isModelProduct(product)) return false
-    if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'poster') return false
+    const artworkType = product.artworkTypeMetafield?.value
+    if (artworkType !== 'painting' && artworkType !== 'poster') return false
     if (product.media.nodes.length < 1) return false
 
     // Wait for media images to be loaded
@@ -445,7 +448,8 @@ export default class ArtworkCopier extends ModelCopier {
     const tag = this.getTagFromModel(product)
 
     return products.filter((p) => {
-      if (p.templateSuffix !== 'painting' && p.templateSuffix !== 'poster') return false
+      const artworkType = p.artworkTypeMetafield?.value
+      if (artworkType !== 'painting' && artworkType !== 'poster') return false
 
       const pSecondImage = p.media.nodes[1]
       if (!pSecondImage?.image) return false

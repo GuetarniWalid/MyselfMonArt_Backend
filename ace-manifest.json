@@ -36,6 +36,18 @@
       "aliases": [],
       "flags": []
     },
+    "migrate:artwork-type": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/MigrateArtworkTypeMetafield",
+      "commandName": "migrate:artwork-type",
+      "description": "Migrate existing products: add artwork.type metafield based on templateSuffix",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
     "photoshop:mockup_automation": {
       "settings": {
         "loadApp": true,
