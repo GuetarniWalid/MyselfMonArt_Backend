@@ -49,8 +49,9 @@ export default class ShortTitleGenerator extends BaseCommand {
       // Step 2: Filter for eligible products
       console.info(`🔍 Filtering for painting, poster, and tapestry products...`)
       const eligibleProducts = allProducts.filter((product) => {
-        // Must be one of the three target template types
-        if (!['painting', 'poster', 'tapestry'].includes(product.templateSuffix || '')) {
+        // Must be one of the three target artwork types
+        const artworkType = product.artworkTypeMetafield?.value || ''
+        if (!['painting', 'poster', 'tapestry'].includes(artworkType)) {
           return false
         }
 
@@ -127,7 +128,7 @@ export default class ShortTitleGenerator extends BaseCommand {
         console.info(`\n${'─'.repeat(60)}`)
         console.info(`${progress} Processing: ${product.title}`)
         console.info(`${progress} Product ID: ${product.id}`)
-        console.info(`${progress} Template: ${product.templateSuffix}`)
+        console.info(`${progress} Type: ${product.artworkTypeMetafield?.value}`)
         console.info(`${'─'.repeat(60)}`)
 
         try {
@@ -150,7 +151,10 @@ export default class ShortTitleGenerator extends BaseCommand {
           const productPublisher = new ProductPublisher()
 
           // Generate short title using Claude
-          const productType = fullProduct.templateSuffix as 'poster' | 'painting' | 'tapestry'
+          const productType = fullProduct.artworkTypeMetafield?.value as
+            | 'poster'
+            | 'painting'
+            | 'tapestry'
           const { shortTitle } = await productPublisher.generateTitleAndSeo(
             fullProduct.description, // HTML description
             '', // collectionTitle (empty for batch processing)
