@@ -15,7 +15,6 @@ export default class TitleAndSeoGenerator {
     return z.object({
       shortTitle: z
         .string()
-        .max(30, 'Short title must be maximum 30 characters')
         .describe('Ultra-short title for collections (2-3 words max, concrete and creative)'),
       title: z.string().describe('H1 product title with SEO keywords'),
       metaTitle: z
