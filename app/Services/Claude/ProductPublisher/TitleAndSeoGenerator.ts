@@ -61,47 +61,74 @@ export default class TitleAndSeoGenerator {
 <output_fields>
 
   <field name="shortTitle" type="titre collection">
-    <purpose>Titre affiché dans les grilles de collection, doit être clair et accrocheur en un coup d'œil</purpose>
+    <purpose>Titre affiché dans les grilles de collection, doit capturer L'ESSENCE ÉMOTIONNELLE de l'œuvre en un coup d'œil</purpose>
     
     <rules>
       – MAXIMUM 3 mots (idéalement 2)
-      – Orienté EXPÉRIENCE CLIENT, pas SEO
-      – CONCRET : on doit savoir ce que représente l'œuvre
-      – Tourné de façon creative et adapté au public cible de l'œuvre
-      – Si référence iconique identifiée → elle DOIT apparaître
       – PAS de mot-clé SEO type "${productTypeFr}"
+      – Si référence iconique identifiée → elle DOIT apparaître
     </rules>
 
     <approach>
-      Le shortTitle doit donné envie de cliquer sur la fiche produit et parlé au public cible
-
-      PUBLIC CIBLE — le public cible est l'acheteur et non la personne qui accroche l'œuvre, par exemple un tableau pour enfant sera pour l'enfant mais c'est la maman qui achète.
+      PRIORITÉ D'ANGLE (dans cet ordre) :
       
-      EXPÉRIENCE CLIENT — Etre creatif, la simple description ne suffit pas , il faut un axe créatif et humain.
+      1. HISTOIRE/ÉMOTION — Quelle action, quel moment, quel sentiment l'œuvre capture ?
+        → "Méditation du Touareg" plutôt que "Touareg coucher soleil"
+        → "Frida rêveuse" plutôt que "Frida Kahlo fleurs"
       
-      RÉFÉRENCE ICONIQUE — si personnage/marque/lieu reconnaissable.
-
-      Adefault le titre peut être simplement informatif si tout les autres critère ne peuvent pas être remplis.
+      2. RÉFÉRENCE ICONIQUE + TWIST — Si personnage/marque/lieu reconnaissable, ajouter un angle
+        → "Blanche-Neige rebelle" (référence + attitude)
+        → "Mustang en fuite" (référence + action)
+      
+      3. DESCRIPTION ÉVOCATRICE — En dernier recours seulement, si pas d'émotion/histoire claire
+        → "Lion doré" (on visualise, acceptable si l'œuvre est purement décorative)
+      
+      INTERDIT : La simple juxtaposition sujet + attribut visuel
+      ❌ "Touareg coucher soleil" = sujet + contexte visuel = REJETÉ
+      ❌ "Lion noir blanc" = sujet + couleurs = REJETÉ
     </approach>
 
-    <examples>
-      ✅ "Paris lumière" (référence + créativité)
-      ✅ "Lion noir et blanc" (concret, on visualise)
-      ✅ "Pivoines aquarelle" (sujet + style)
-      ✅ "Blanche-Neige rebelle" (référence iconique)
-      ✅ "Mustang 67 rouge" (référence + attribut)
+    <decision_process>
+      AVANT de générer le shortTitle, réponds mentalement à ces questions :
       
-      ❌ "Évasion marine" (creux, ça veut rien dire)
-      ❌ "Douceur florale" (faussement poétique)
-      ❌ "Sérénité dorée" (vide de sens)
-      ❌ "Élégance sauvage" (marketing creux)
-      ❌ "Tableau tigre noir" (mot-clé SEO = mauvais ici)
+      Q1: Quelle ÉMOTION domine ? (sérénité, rébellion, mélancolie, puissance, tendresse...)
+      Q2: Quelle ACTION ou MOMENT est capturé ? (contempler, fuir, rêver, attendre...)
+      Q3: Y a-t-il une HISTOIRE implicite ? (un avant/après, une tension, une transformation...)
+      
+      Si tu peux répondre à Q1, Q2 ou Q3 → utilise cette réponse dans le shortTitle
+      Sinon → description évocatrice acceptable
+    </decision_process>
+
+    <examples>
+      ✅ EXCELLENT (émotion/histoire) :
+      "Méditation du Touareg" (moment + sujet)
+      "Prière au désert" (action + lieu)
+      "Blanche-Neige rebelle" (référence + attitude)
+      "Frida songeuse" (référence + émotion)
+      "Mustang en fuite" (référence + action)
+      "Attente sous la pluie" (moment + contexte)
+      
+      ✅ ACCEPTABLE (descriptif mais évocateur) :
+      "Lion royal" (sujet + caractère)
+      "Paris lumière" (lieu + ambiance)
+      "Pivoines en éclat" (sujet + dynamique)
+      
+      ❌ REJETÉ (description plate) :
+      "Touareg coucher soleil" (sujet + contexte visuel)
+      "Lion noir et blanc" (sujet + couleurs)
+      "Femme robe rouge" (sujet + vêtement)
+      "Voiture route désert" (sujet + lieu)
+      "Fleurs vase bleu" (sujet + contenant + couleur)
     </examples>
 
     <quality_test>
-      Test : Si quelqu'un lit le shortTitle, peut-il décrire l'œuvre à quelqu'un d'autre ?
-      "Lion doré" → OUI, on sait que c'est un lion aux tons dorés
-      "Évasion marine" → NON, ça peut être n'importe quoi
+      Test : Le shortTitle évoque-t-il une ÉMOTION ou une HISTOIRE plutôt qu'une simple image ?
+      
+      "Méditation du Touareg" → OUI, on ressent la contemplation, le recueillement
+      "Touareg coucher soleil" → NON, c'est juste ce qu'on voit
+      
+      "Blanche-Neige rebelle" → OUI, on devine une attitude, une réinterprétation
+      "Blanche-Neige colorée" → NON, c'est juste visuel
     </quality_test>
   </field>
 

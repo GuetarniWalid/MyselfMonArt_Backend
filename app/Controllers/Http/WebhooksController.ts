@@ -127,31 +127,39 @@ export default class WebhooksController {
 
   private async handleProductCreate(id: string) {
     console.info(`🚀 Handling product create: ${id}`)
-    await this.handlePaintingCreate(id)
+    await this.handleArtworkCreate(id, 'painting')
+    await this.handleArtworkCreate(id, 'poster')
     await this.handleTapestryCreate(id)
   }
 
-  private async handlePaintingCreate(id: string) {
+  /**
+   * Unified handler for artworks (paintings and posters)
+   * Both use ratio-based models and require color/theme detection
+   */
+  private async handleArtworkCreate(id: string, type: 'painting' | 'poster') {
     const shopify = new Shopify()
     const product = await shopify.product.getProductById(id)
 
-    const areMediaLoaded = await shopify.product.paintingCopier.areMediaImagesLoaded(product)
+    const areMediaLoaded = await shopify.product.artworkCopier.areMediaImagesLoaded(product)
     if (!areMediaLoaded) return
 
-    const canProcess = shopify.product.paintingCopier.canProcessProductCreate(product)
+    const canProcess = shopify.product.artworkCopier.canProcessProductCreate(product)
     if (!canProcess) return
 
-    console.info(`🚀 Filling model data on product`)
-    await shopify.product.paintingCopier.copyModelDataFromImageRatio(product)
-    console.info(`🚀 Data successfully copied on product ${id}`)
+    // Check if product matches the type we're processing
+    if (product.templateSuffix !== type) return
+
+    console.info(`🚀 Filling model data on ${type}: ${id}`)
+    await shopify.product.artworkCopier.copyModelDataFromImageRatio(product)
+    console.info(`🚀 Data successfully copied on ${type} ${id}`)
 
     // Color detection (runs after model data copy)
-    console.info(`🎨 Detecting colors for product ${id}`)
+    console.info(`🎨 Detecting colors for ${type} ${id}`)
     const chatGPT = new ChatGPT()
     await chatGPT.colorPattern.detectAndSetColors(product)
 
     // Theme detection (runs after color detection)
-    console.info(`🏷️  Detecting themes for product ${id}`)
+    console.info(`🏷️  Detecting themes for ${type} ${id}`)
     await chatGPT.theme.detectAndSetThemes(product)
   }
 

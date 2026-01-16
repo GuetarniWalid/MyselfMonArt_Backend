@@ -922,7 +922,7 @@ export default abstract class ModelCopier {
         // Don't throw - category failure shouldn't block other updates
       }
 
-      // Update metafields if needed (hook for subclasses like PaintingCopier)
+      // Update metafields if needed (hook for subclasses like ArtworkCopier)
       await this.updateMetafieldsIfNeeded(product, diff)
 
       // Update bundle.products metafield if needed (shared across all products)
@@ -956,7 +956,7 @@ export default abstract class ModelCopier {
 
   /**
    * Hook for subclasses to update metafields or other custom data
-   * Override this in subclasses like PaintingCopier
+   * Override this in subclasses like ArtworkCopier
    */
   protected async updateMetafieldsIfNeeded(
     _product: ProductById,

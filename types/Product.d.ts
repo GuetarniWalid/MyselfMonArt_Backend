@@ -29,7 +29,7 @@ export type Image = {
   product_id?: number
 }
 
-export type Ratio = 'square' | 'portrait' | 'landscape' | 'personalized portrait'
+export type Ratio = 'square' | 'portrait' | 'landscape'
 
 export interface ProductWithOutdatedTranslations {
   id: string
@@ -220,6 +220,9 @@ export interface ProductUpdate {
 
 export interface ProductByTag {
   id: string
+  artworkTypeMetafield?: {
+    value: string
+  }
   category?: {
     id: string
   }
@@ -302,6 +305,9 @@ export interface ProductById {
     }[]
   }
   altTextsMetaObject: {
+    value: string
+  }
+  artworkTypeMetafield?: {
     value: string
   }
   metafields: {

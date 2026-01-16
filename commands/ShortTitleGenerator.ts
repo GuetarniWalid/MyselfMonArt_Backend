@@ -1,11 +1,12 @@
 import { BaseCommand } from '@adonisjs/core/build/standalone'
 import { logTaskBoundary } from 'App/Utils/Logs'
 import Shopify from 'App/Services/Shopify'
-import ChatGPT from 'App/Services/ChatGPT'
+import ProductPublisher from 'App/Services/Claude/ProductPublisher'
 
-export default class ThemeAttribution extends BaseCommand {
-  public static commandName = 'theme:attribution'
-  public static description = 'Run theme detection on all painting products'
+export default class ShortTitleGenerator extends BaseCommand {
+  public static commandName = 'product:generate-short-titles'
+  public static description =
+    'Generate and set short titles for painting, poster, and tapestry products'
 
   public static settings = {
     loadApp: true,
@@ -13,26 +14,26 @@ export default class ThemeAttribution extends BaseCommand {
   }
 
   public async run() {
-    logTaskBoundary(true, 'Theme Attribution')
+    logTaskBoundary(true, 'Short Title Generation')
 
     // ====================================================================
     // CONFIGURATION
     // ====================================================================
-    // Set to true to see what would be processed without actually running theme detection
+    // Set to true to see what would be processed without actually generating titles
     const DRY_RUN = false
 
     // Maximum number of products to process (safety limit)
     // Set to null to process ALL products (use with caution!)
     const MAX_PRODUCTS: number | null = null
 
-    // Skip products that already have themes set
-    const SKIP_EXISTING_THEMES = true
+    // Skip products that already have a short title metafield
+    const SKIP_EXISTING_SHORT_TITLES = true
     // ====================================================================
 
-    console.info(`🏷️  Theme Attribution - Batch Processing`)
+    console.info(`📝 Short Title Generation - Batch Processing`)
     console.info(`${'='.repeat(60)}`)
     console.info(`Mode: ${DRY_RUN ? '🔍 DRY RUN (no changes)' : '✅ LIVE (will update products)'}`)
-    console.info(`Skip existing themes: ${SKIP_EXISTING_THEMES ? 'Yes' : 'No'}`)
+    console.info(`Skip existing short titles: ${SKIP_EXISTING_SHORT_TITLES ? 'Yes' : 'No'}`)
     if (MAX_PRODUCTS) {
       console.warn(`⚠️  Safety limit: Max ${MAX_PRODUCTS} products`)
     }
@@ -45,41 +46,46 @@ export default class ThemeAttribution extends BaseCommand {
       const allProducts = await shopify.product.getAll()
       console.info(`✅ Fetched ${allProducts.length} total products\n`)
 
-      // Step 2: Filter for paintings that can be processed
-      console.info(`🔍 Filtering for painting products...`)
-      const paintingProducts = allProducts.filter((product) => {
-        // Must be a painting or poster template
-        if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'poster') {
+      // Step 2: Filter for eligible products
+      console.info(`🔍 Filtering for painting, poster, and tapestry products...`)
+      const eligibleProducts = allProducts.filter((product) => {
+        // Must be one of the three target template types
+        if (!['painting', 'poster', 'tapestry'].includes(product.templateSuffix || '')) {
           return false
         }
 
         // Must not be a model product
         const isModel = product.tags.some((tag) =>
-          ['portrait model', 'paysage model', 'square model'].includes(tag)
+          ['portrait model', 'paysage model', 'square model', 'tapestry model'].includes(tag)
         )
         if (isModel) {
           return false
         }
 
-        // Must have at least 2 media items
-        if (!product.media?.nodes || product.media.nodes.length < 2) {
+        // Must have a title
+        if (!product.title || product.title.trim() === '') {
+          return false
+        }
+
+        // Must have a description
+        if (!product.description || product.description.trim() === '') {
           return false
         }
 
         return true
       })
 
-      console.info(`✅ Found ${paintingProducts.length} painting products eligible for processing`)
+      console.info(`✅ Found ${eligibleProducts.length} products eligible for processing`)
 
       // Step 3: Apply safety limit if configured
       const productsToProcess =
         MAX_PRODUCTS && MAX_PRODUCTS > 0
-          ? paintingProducts.slice(0, MAX_PRODUCTS)
-          : paintingProducts
+          ? eligibleProducts.slice(0, MAX_PRODUCTS)
+          : eligibleProducts
 
-      if (MAX_PRODUCTS && MAX_PRODUCTS > 0 && paintingProducts.length > MAX_PRODUCTS) {
+      if (MAX_PRODUCTS && MAX_PRODUCTS > 0 && eligibleProducts.length > MAX_PRODUCTS) {
         console.warn(
-          `⚠️  SAFETY LIMIT: Only processing first ${MAX_PRODUCTS} of ${paintingProducts.length} products`
+          `⚠️  SAFETY LIMIT: Only processing first ${MAX_PRODUCTS} of ${eligibleProducts.length} products`
         )
       }
 
@@ -97,13 +103,13 @@ export default class ThemeAttribution extends BaseCommand {
         }
         console.info(`${'─'.repeat(60)}\n`)
         console.info(`✅ Dry run complete. Set DRY_RUN = false to process.`)
-        logTaskBoundary(false, 'Theme Attribution')
+        logTaskBoundary(false, 'Short Title Generation')
         return
       }
 
       // Step 4: Process each product
       console.info(`\n${'═'.repeat(60)}`)
-      console.info(`🚀 Starting theme detection...`)
+      console.info(`🚀 Starting short title generation...`)
       console.info(`${'═'.repeat(60)}\n`)
 
       const results = {
@@ -111,9 +117,7 @@ export default class ThemeAttribution extends BaseCommand {
         processed: 0,
         skipped: 0,
         failed: 0,
-        noThemesFound: 0,
         errors: [] as Array<{ productId: string; productTitle: string; error: string }>,
-        productsWithoutThemes: [] as Array<{ productId: string; productTitle: string }>,
       }
 
       for (let i = 0; i < productsToProcess.length; i++) {
@@ -123,48 +127,41 @@ export default class ThemeAttribution extends BaseCommand {
         console.info(`\n${'─'.repeat(60)}`)
         console.info(`${progress} Processing: ${product.title}`)
         console.info(`${progress} Product ID: ${product.id}`)
+        console.info(`${progress} Template: ${product.templateSuffix}`)
         console.info(`${'─'.repeat(60)}`)
 
         try {
           // Fetch full product details (with metafields)
           const fullProduct = await shopify.product.getProductById(product.id)
 
-          // Initialize ChatGPT service
-          const chatGPT = new ChatGPT()
-
-          // Check if should skip (themes already set)
-          if (SKIP_EXISTING_THEMES) {
-            // This check will be done inside detectAndSetThemes, but we can log it here
-            const hasThemes = fullProduct.metafields?.edges.find(
-              (edge) => edge.node.namespace === 'shopify' && edge.node.key === 'theme'
+          // Check if should skip (short title already exists)
+          if (SKIP_EXISTING_SHORT_TITLES) {
+            const existingShortTitle = fullProduct.metafields?.edges.find(
+              (edge) => edge.node.namespace === 'title' && edge.node.key === 'short'
             )
-            if (hasThemes) {
-              console.info(`⏭️  Skipped: Themes already set`)
+            if (existingShortTitle) {
+              console.info(`⏭️  Skipped: Short title already exists`)
               results.skipped++
               continue
             }
           }
 
-          // Run theme detection
-          await chatGPT.theme.detectAndSetThemes(fullProduct)
+          // Initialize ProductPublisher service
+          const productPublisher = new ProductPublisher()
 
-          // Verify if themes were actually set
-          const updatedProduct = await shopify.product.getProductById(product.id)
-          const hasThemesNow = updatedProduct.metafields?.edges.find(
-            (edge) => edge.node.namespace === 'shopify' && edge.node.key === 'theme'
+          // Generate short title using Claude
+          const productType = fullProduct.templateSuffix as 'poster' | 'painting' | 'tapestry'
+          const { shortTitle } = await productPublisher.generateTitleAndSeo(
+            fullProduct.description, // HTML description
+            '', // collectionTitle (empty for batch processing)
+            productType
           )
 
-          if (hasThemesNow) {
-            console.info(`✅ Success - Themes assigned`)
-            results.processed++
-          } else {
-            console.warn(`⚠️  No themes found for this product`)
-            results.noThemesFound++
-            results.productsWithoutThemes.push({
-              productId: product.id,
-              productTitle: product.title,
-            })
-          }
+          // Update metafield using Shopify service
+          await shopify.metafield.update(fullProduct.id, 'title', 'short', shortTitle)
+
+          console.info(`✅ Success - Short title: "${shortTitle}"`)
+          results.processed++
         } catch (error: any) {
           console.error(`❌ Failed: ${error.message}`)
           results.failed++
@@ -183,14 +180,13 @@ export default class ThemeAttribution extends BaseCommand {
       console.info(`${'═'.repeat(60)}`)
       console.info(`Total products:            ${results.total}`)
       console.info(`✅ Successfully processed:     ${results.processed}`)
-      console.info(`⏭️  Skipped (has themes):      ${results.skipped}`)
-      console.info(`⚠️  No themes found:           ${results.noThemesFound}`)
-      console.info(`❌ Failed (errors):            ${results.failed}`)
+      console.info(`⏭️  Skipped:                   ${results.skipped}`)
+      console.info(`❌ Failed:                     ${results.failed}`)
       console.info(`${'═'.repeat(60)}`)
 
       if (results.errors.length > 0) {
         console.error(`\n${'━'.repeat(60)}`)
-        console.error(`❌ FAILED PRODUCTS (Errors):`)
+        console.error(`❌ FAILED PRODUCTS:`)
         console.error(`${'━'.repeat(60)}`)
         results.errors.forEach((err, index) => {
           console.error(`\n${index + 1}. ${err.productTitle}`)
@@ -200,31 +196,14 @@ export default class ThemeAttribution extends BaseCommand {
         console.error(`${'━'.repeat(60)}`)
       }
 
-      if (results.productsWithoutThemes.length > 0) {
-        console.warn(`\n${'━'.repeat(60)}`)
-        console.warn(`⚠️  PRODUCTS WITHOUT THEMES (No themes detected):`)
-        console.warn(`${'━'.repeat(60)}`)
-        results.productsWithoutThemes.forEach((prod, index) => {
-          console.warn(`${index + 1}. ${prod.productTitle}`)
-          console.warn(`   Product ID: ${prod.productId}`)
-        })
-        console.warn(`${'━'.repeat(60)}`)
-      }
-
       if (results.processed > 0) {
-        console.info(`\n🎉 Theme attribution completed successfully!`)
-      }
-
-      if (results.noThemesFound > 0 || results.failed > 0) {
-        console.warn(
-          `\n⚠️  ${results.noThemesFound + results.failed} product(s) require manual review (see lists above)`
-        )
+        console.info(`\n🎉 Short title generation completed successfully!`)
       }
     } catch (error: any) {
       console.error(`\n❌ Fatal error during batch processing:`, error.message)
       console.error(error.stack)
     }
 
-    logTaskBoundary(false, 'Theme Attribution')
+    logTaskBoundary(false, 'Short Title Generation')
   }
 }

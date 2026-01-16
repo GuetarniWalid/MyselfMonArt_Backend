@@ -3,7 +3,12 @@ import Shopify from '../..'
 import ModelCopier from './index'
 import { DiffResult, MetafieldsDiff, CategoryDiff } from './types'
 
-export default class PaintingCopier extends ModelCopier {
+/**
+ * Model copier for ratio-based artworks (paintings and posters)
+ * Both product types use the same ratio-based models (portrait/landscape/square)
+ * and share the same copying logic
+ */
+export default class ArtworkCopier extends ModelCopier {
   /**
    * Main entry point - uses differential update system
    * Replaces legacy full recreation approach
@@ -23,8 +28,9 @@ export default class PaintingCopier extends ModelCopier {
   }
 
   /**
-   * Compare painting metafields between model and product
+   * Compare artwork metafields between model and product
    * Identifies specific metafields that need updating
+   * Note: Uses 'painting' namespace for both paintings and posters
    */
   private compareMetafields(product: ProductById, model: ProductByTag): MetafieldsDiff {
     const diff: MetafieldsDiff = {
@@ -97,7 +103,8 @@ export default class PaintingCopier extends ModelCopier {
     })
 
     // Compare painting.layout metafield (single metaobject reference)
-    // This is a category-specific metafield available after setting the paintings category
+    // This is a category-specific metafield available after setting the category
+    // Note: Uses 'painting' namespace for both paintings and posters
     const productLayoutId = product.paintingLayoutMetafield?.reference?.id
     const modelLayoutId = model.paintingLayoutMetafield?.reference?.id
 
@@ -195,11 +202,11 @@ export default class PaintingCopier extends ModelCopier {
   /**
    * Compare category between product and model
    * Returns needsUpdate: true if product's category differs from model's category
-   * Only applies to regular paintings (templateSuffix === 'painting')
+   * Only applies to regular artworks: paintings and posters (not models)
    */
   protected compareCategory(product: ProductById, model: ProductByTag): CategoryDiff | undefined {
-    // Only set category for regular paintings (not personalized, not models)
-    if (product.templateSuffix !== 'painting') {
+    // Only set category for regular artworks (not models)
+    if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'poster') {
       return undefined
     }
 
@@ -247,17 +254,14 @@ export default class PaintingCopier extends ModelCopier {
 
   public isModelProduct(product: ProductById | Product): boolean {
     return product.tags.some((tag) =>
-      ['portrait model', 'paysage model', 'square model', 'personalized portrait model'].includes(
-        tag
-      )
+      ['portrait model', 'paysage model', 'square model'].includes(tag)
     )
   }
 
   public canProcessProductCreate(product: ProductById | Product): boolean {
     if (!product) return false
     if (this.isModelProduct(product)) return false
-    if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'personalized')
-      return false
+    if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'poster') return false
     if (product.media.nodes.length < 1) return false
     if (!product.media.nodes[1].image) return false
     return true
@@ -309,8 +313,7 @@ export default class PaintingCopier extends ModelCopier {
   public async areMediaImagesLoaded(product: ProductById | Product): Promise<boolean> {
     if (!product) return false
     if (this.isModelProduct(product)) return false
-    if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'personalized')
-      return false
+    if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'poster') return false
     if (product.media.nodes.length < 1) return false
 
     // Wait for media images to be loaded
@@ -347,19 +350,30 @@ export default class PaintingCopier extends ModelCopier {
 
     const ratio = imageWidth / imageHeight
 
-    const isPersonalized = product.tags.includes('personnalisé')
-
     const shopify = new Shopify()
-    const tag = shopify.product.getTagByRatio(ratio, isPersonalized)
-    const model = await shopify.product.getProductByTag(tag)
+    const tag = shopify.product.getTagByRatio(ratio)
+
+    // Get artwork type from metafield to find the correct model
+    const artworkType = product.artworkTypeMetafield?.value as
+      | 'painting'
+      | 'poster'
+      | 'tapestry'
+      | undefined
+
+    if (!artworkType) {
+      console.warn(
+        `⚠️  Product ${product.id} is missing artwork.type metafield. Cannot determine correct model.`
+      )
+      return
+    }
+
+    const model = await shopify.product.getProductByTag(tag, artworkType)
     return model
   }
 
   public getTagFromModel(product: ProductById | Product) {
     const tag = product.tags.find((tag) =>
-      ['portrait model', 'paysage model', 'square model', 'personalized portrait model'].includes(
-        tag
-      )
+      ['portrait model', 'paysage model', 'square model'].includes(tag)
     )
     if (!tag) throw new Error('Model tag not found')
 
@@ -383,8 +397,7 @@ export default class PaintingCopier extends ModelCopier {
     }
 
     const ratio = image.width / image.height
-    const isPersonalized = product.tags.includes('personnalisé')
-    const tag = shopify.product.getTagByRatio(ratio, isPersonalized)
+    const tag = shopify.product.getTagByRatio(ratio)
     return tag
   }
 
@@ -432,7 +445,7 @@ export default class PaintingCopier extends ModelCopier {
     const tag = this.getTagFromModel(product)
 
     return products.filter((p) => {
-      if (p.templateSuffix !== 'painting' && p.templateSuffix !== 'personalized') return false
+      if (p.templateSuffix !== 'painting' && p.templateSuffix !== 'poster') return false
 
       const pSecondImage = p.media.nodes[1]
       if (!pSecondImage?.image) return false

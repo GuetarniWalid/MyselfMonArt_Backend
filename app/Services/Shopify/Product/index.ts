@@ -6,16 +6,16 @@ import type {
 } from 'Types/Product'
 import Authentication from '../Authentication'
 import Metafield from '../Metafield'
-import PaintingCopier from './Modelcopier/Painting'
+import ArtworkCopier from './Modelcopier/Artwork'
 import TapestryCopier from './Modelcopier/Tapestry'
 
 export default class Product extends Authentication {
-  public paintingCopier: PaintingCopier
+  public artworkCopier: ArtworkCopier
   public tapestryCopier: TapestryCopier
 
   constructor() {
     super()
-    this.paintingCopier = new PaintingCopier()
+    this.artworkCopier = new ArtworkCopier()
     this.tapestryCopier = new TapestryCopier()
   }
 
@@ -354,10 +354,10 @@ export default class Product extends Authentication {
   }
 
   public getModelCopier(product: ProductById | ShopifyProduct) {
-    const isPainting = product.templateSuffix === 'painting'
+    const isArtwork = product.templateSuffix === 'painting' || product.templateSuffix === 'poster'
     const isTapestry = product.templateSuffix === 'tapestry'
 
-    if (isPainting) return new PaintingCopier()
+    if (isArtwork) return new ArtworkCopier()
     if (isTapestry) return new TapestryCopier()
 
     throw new Error('Invalid product type')
@@ -412,6 +412,9 @@ export default class Product extends Authentication {
           }
           altTextsMetaObject: metafield(namespace: "meta_object", key: "media") {
             id
+            value
+          }
+          artworkTypeMetafield: metafield(namespace: "artwork", key: "type") {
             value
           }
           metafields(first: 250) {
@@ -621,25 +624,41 @@ export default class Product extends Authentication {
     }
   }
 
-  public getTagByRatio(ratio: number, isPersonalized = false) {
-    if (ratio > 1) return isPersonalized ? 'personalized paysage model' : 'paysage model'
-    if (ratio < 1) return isPersonalized ? 'personalized portrait model' : 'portrait model'
-    return isPersonalized ? 'personalized square model' : 'square model'
+  public getTagByRatio(ratio: number) {
+    if (ratio > 1) return 'paysage model'
+    if (ratio < 1) return 'portrait model'
+    return 'square model'
   }
 
-  public async getProductByTag(tag: string) {
+  public async getProductByTag(tag: string, artworkType?: 'painting' | 'poster' | 'tapestry') {
     const { query, variables } = this.getProductByTagQuery(tag)
     const response = await this.fetchGraphQL(query, variables)
+
+    // If artworkType is provided, filter by artwork.type metafield
+    if (artworkType) {
+      const matchingProduct = response.products.edges.find((edge: any) => {
+        const artworkTypeMetafield = edge.node.artworkTypeMetafield
+        return artworkTypeMetafield?.value === artworkType
+      })
+      if (!matchingProduct) {
+        throw new Error(`No product found with tag "${tag}" and artwork.type "${artworkType}"`)
+      }
+      return matchingProduct.node as ProductByTag
+    }
+
     return response.products.edges[0].node as ProductByTag
   }
 
   private getProductByTagQuery(tag: string) {
     return {
       query: `query GetProductByTag {
-        products(first: 1, query: "tag:${tag}") {
+        products(first: 10, query: "tag:${tag}") {
           edges {
             node {
               id
+              artworkTypeMetafield: metafield(namespace: "artwork", key: "type") {
+                value
+              }
               category {
                 id
               }

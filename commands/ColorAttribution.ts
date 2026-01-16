@@ -48,19 +48,14 @@ export default class ColorAttribution extends BaseCommand {
       // Step 2: Filter for paintings that can be processed
       console.info(`🔍 Filtering for painting products...`)
       const paintingProducts = allProducts.filter((product) => {
-        // Must be a painting or personalized template
-        if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'personalized') {
+        // Must be a painting or poster template
+        if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'poster') {
           return false
         }
 
         // Must not be a model product
         const isModel = product.tags.some((tag) =>
-          [
-            'portrait model',
-            'paysage model',
-            'square model',
-            'personalized portrait model',
-          ].includes(tag)
+          ['portrait model', 'paysage model', 'square model'].includes(tag)
         )
         if (isModel) {
           return false

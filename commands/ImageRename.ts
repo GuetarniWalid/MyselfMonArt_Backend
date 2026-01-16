@@ -107,19 +107,14 @@ RÈGLES STRICTES :
       // Step 2: Filter for eligible products
       console.info(`🔍 Filtering for eligible products...`)
       const eligibleProducts = allProducts.filter((product) => {
-        // Must be painting or personalized
-        if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'personalized') {
+        // Must be painting or poster
+        if (product.templateSuffix !== 'painting' && product.templateSuffix !== 'poster') {
           return false
         }
 
         // Must not be a model
         const isModel = product.tags.some((tag) =>
-          [
-            'portrait model',
-            'paysage model',
-            'square model',
-            'personalized portrait model',
-          ].includes(tag)
+          ['portrait model', 'paysage model', 'square model'].includes(tag)
         )
         if (isModel) {
           return false

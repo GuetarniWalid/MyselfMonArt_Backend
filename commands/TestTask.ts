@@ -93,13 +93,13 @@ export default class TestTask extends BaseCommand {
     console.info(`🏷️  Template: ${product.templateSuffix}`)
     console.info(`🏷️  Tags: ${product.tags.join(', ')}`)
 
-    const areMediaLoaded = await shopify.product.paintingCopier.areMediaImagesLoaded(product)
+    const areMediaLoaded = await shopify.product.artworkCopier.areMediaImagesLoaded(product)
     if (!areMediaLoaded) {
       console.info(`⏭️  Skipping: Media images not loaded`)
       return
     }
 
-    const canProcess = shopify.product.paintingCopier.canProcessProductCreate(product)
+    const canProcess = shopify.product.artworkCopier.canProcessProductCreate(product)
     if (!canProcess) {
       console.info(
         `⏭️  Skipping: Cannot process product create (might be a model or wrong template)`
@@ -107,9 +107,9 @@ export default class TestTask extends BaseCommand {
       return
     }
 
-    console.info(`🎨 Processing painting product...`)
-    await shopify.product.paintingCopier.copyModelDataFromImageRatio(product)
-    console.info(`✅ Painting data successfully copied`)
+    console.info(`🎨 Processing artwork product...`)
+    await shopify.product.artworkCopier.copyModelDataFromImageRatio(product)
+    console.info(`✅ Artwork data successfully copied`)
 
     // Test color detection (same as webhook handler)
     console.info(`\n🎨 Testing color detection...`)

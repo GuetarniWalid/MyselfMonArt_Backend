@@ -31,7 +31,7 @@
       },
       "commandPath": "./commands/ImageRename",
       "commandName": "image:rename",
-      "description": "Batch rename product first images containing \"mockup\" with AI-generated SEO filenames",
+      "description": "Batch rename product images containing \"mockup\" with AI-generated SEO filenames",
       "args": [],
       "aliases": [],
       "flags": []
@@ -248,6 +248,18 @@
       "commandPath": "./commands/ShopifyUpdateWhebhookSubscriptionCallbackUrl",
       "commandName": "shopify:update_whebhook_subscription_callback_url",
       "description": "Update the webhook subscription callback url",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
+    "product:generate-short-titles": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShortTitleGenerator",
+      "commandName": "product:generate-short-titles",
+      "description": "Generate and set short titles for painting, poster, and tapestry products",
       "args": [],
       "aliases": [],
       "flags": []
