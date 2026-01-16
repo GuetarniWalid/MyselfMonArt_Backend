@@ -114,6 +114,7 @@ export default class ShopifyProductPublishersController {
       product.productType = productType
       product.templateSuffix = productType
 
+      // Step 1: Create product WITHOUT category-dependent metafields
       product.metafields = [
         {
           namespace: 'link',
@@ -121,27 +122,43 @@ export default class ShopifyProductPublishersController {
           value: productPublisher.getParentCollectionID(),
           type: 'collection_reference',
         },
+        {
+          namespace: 'likes',
+          key: 'number',
+          value: likesCount.toString(),
+          type: 'number_integer',
+        },
+        {
+          namespace: 'title',
+          key: 'short',
+          value: shortTitle,
+          type: 'single_line_text_field',
+        },
       ]
-      product.metafields.push({
-        namespace: 'likes',
-        key: 'number',
-        value: likesCount.toString(),
-        type: 'number_integer',
-      })
-      product.metafields.push({
-        namespace: 'title',
-        key: 'short',
-        value: shortTitle,
-        type: 'single_line_text_field',
-      })
-      product.metafields.push({
-        namespace: 'artwork',
-        key: 'type',
-        value: productType,
-        type: 'single_line_text_field',
-      })
 
       const productCreated = await shopify.product.create(product)
+
+      // Step 2: Get model product to copy category from
+      const ratio = productPublisher.getRatio()
+      // Convert ratio string to model tag
+      const modelTag =
+        ratio === 'landscape'
+          ? 'paysage model'
+          : ratio === 'portrait'
+            ? 'portrait model'
+            : 'square model'
+      const modelProduct = await shopify.product.getProductByTag(modelTag, productType)
+
+      // Step 3: Set category BEFORE setting artwork.type metafield
+      // IMPORTANT: Category must be set first because artwork.type metafield
+      // has constraints based on product category
+      if (modelProduct.category?.id) {
+        console.log(`🏷️  Setting category from model: ${modelProduct.category.id}`)
+        await shopify.category.setProductCategory(productCreated.id, modelProduct.category.id)
+      }
+
+      // Step 4: Now set artwork.type metafield (requires category to be set first)
+      await shopify.metafield.update(productCreated.id, 'artwork', 'type', productType)
       await shopify.publications.publishProductOnAll(productCreated.id)
 
       // Poll media status until all images are processed (Shopify recommendation)

@@ -107,6 +107,13 @@ export default class ShopifyProductPublisher {
   }
 
   /**
+   * Get image ratio (used to determine model product)
+   */
+  public getRatio(): Ratio {
+    return this.ratio
+  }
+
+  /**
    * Replace source filename with SEO-friendly name
    */
   public async replaceSrcName(src: string, filename: string): Promise<string> {
