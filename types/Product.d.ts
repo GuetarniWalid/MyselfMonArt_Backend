@@ -132,6 +132,7 @@ export interface Product {
   productType: string
   media: {
     nodes: {
+      id: string
       alt: string
       mediaContentType: string
       image?: {

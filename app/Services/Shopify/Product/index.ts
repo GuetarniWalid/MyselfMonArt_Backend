@@ -269,6 +269,7 @@ export default class Product extends Authentication {
                       hasOnlyDefaultVariant
                       media(first: 10, sortKey: POSITION) {
                         nodes {
+                          id
                           alt
                           mediaContentType
                           ... on MediaImage {
