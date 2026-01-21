@@ -7,7 +7,7 @@ import axios from 'axios'
 import Env from '@ioc:Adonis/Core/Env'
 import Shopify from 'App/Services/Shopify'
 import MockupQueue from 'App/Services/MockupQueue'
-import Mockup from 'App/Services/ChatGPT/Mockup'
+import ClaudeMockup from 'App/Services/Claude/Mockup'
 
 export default class MockupController {
   private queue = MockupQueue.getInstance()
@@ -181,17 +181,29 @@ export default class MockupController {
 
       // Upload to Shopify if successful
       if (data.success && data.resultPath && data.productId) {
-        // Retrieve original job metadata (including mockupTemplatePath and batchId)
+        // Get metadata from request body first (for PM2 cluster mode compatibility),
+        // then fall back to queue metadata (for single-process mode)
         const jobMetadata = this.queue.getJobMetadata(data.jobId)
-        const mockupTemplatePath = jobMetadata?.mockupTemplatePath
-        const batchId = jobMetadata?.batchId
+        const mockupTemplatePath = data.mockupTemplatePath || jobMetadata?.mockupTemplatePath || ''
+        const batchId = data.batchId || jobMetadata?.batchId || ''
+        const insertMode =
+          (data.insertMode as 'replace' | 'insert') ||
+          (jobMetadata?.insertMode as 'replace' | 'insert') ||
+          'replace'
+        const mockupContext =
+          (data.mockupContext as string) || (jobMetadata?.mockupContext as string) || ''
 
         console.log('🔍 DEBUG: Starting Shopify upload with:', {
           resultPath: data.resultPath,
           productId: data.productId,
           targetImagePosition: data.targetImagePosition,
+          insertMode: insertMode,
+          mockupContext: mockupContext
+            ? `${mockupContext.substring(0, 50)}${mockupContext.length > 50 ? '...' : ''}`
+            : '(none)',
           mockupTemplatePath: mockupTemplatePath,
           batchId: batchId,
+          source: data.insertMode ? 'request' : jobMetadata ? 'queue' : 'default',
         })
 
         let uploadResult
@@ -200,6 +212,8 @@ export default class MockupController {
             productId: data.productId,
             mockupFilePath: data.resultPath,
             targetImagePosition: data.targetImagePosition || 0,
+            insertMode: insertMode,
+            mockupContext: mockupContext,
             mockupTemplatePath: mockupTemplatePath,
             batchId: batchId,
           })
@@ -514,11 +528,20 @@ export default class MockupController {
 
   // Start mockup automation for specific collection(s)
   public async startAutomation({ request, response }: HttpContextContract) {
-    const { collectionIds, productIds, mockupTemplatePath, targetImagePosition } = request.only([
+    const {
+      collectionIds,
+      productIds,
+      mockupTemplatePath,
+      targetImagePosition,
+      insertMode,
+      mockupContext,
+    } = request.only([
       'collectionIds',
       'productIds',
       'mockupTemplatePath',
       'targetImagePosition',
+      'insertMode',
+      'mockupContext',
     ])
 
     // Validate template path
@@ -537,7 +560,14 @@ export default class MockupController {
       })
     }
 
+    // Validate insert mode (optional, defaults to 'replace')
+    const validInsertMode = insertMode === 'insert' ? 'insert' : 'replace'
+
     console.log('🎨 Starting Mockup Automation via API')
+    console.log(`   Insert Mode: ${validInsertMode}`)
+    console.log(
+      `   Mockup Context: ${mockupContext ? `"${mockupContext.substring(0, 50)}${mockupContext.length > 50 ? '...' : ''}"` : '(none, using template path)'}`
+    )
 
     // Determine if using range selection (productIds) or collection selection (collectionIds)
     const useRangeSelection = productIds && Array.isArray(productIds) && productIds.length > 0
@@ -684,6 +714,8 @@ export default class MockupController {
           mockupTemplatePath: mockupTemplatePath,
           orientation: orientation,
           targetImagePosition: targetImagePosition,
+          insertMode: validInsertMode, // 'replace' or 'insert'
+          mockupContext: mockupContext || '', // Context from context.txt
           batchId: batchId, // Track batch for cleanup
         }
 
@@ -766,19 +798,24 @@ export default class MockupController {
   }
 
   /**
-   * Upload mockup to Shopify and replace product image at target position
+   * Upload mockup to Shopify and replace or insert product image at target position
+   * @param insertMode - 'replace' to replace existing image, 'insert' to insert and shift others
    */
   private async uploadMockupToShopify({
     productId,
     mockupFilePath,
     targetImagePosition,
+    insertMode = 'replace',
     mockupTemplatePath,
+    mockupContext,
     batchId,
   }: {
     productId: string
     mockupFilePath: string
     targetImagePosition: number
+    insertMode?: 'replace' | 'insert'
     mockupTemplatePath?: string
+    mockupContext?: string
     batchId?: string
   }): Promise<{
     reordered: boolean
@@ -793,14 +830,22 @@ export default class MockupController {
     const currentMediaCount = product.media?.nodes?.length || 0
 
     console.log(
-      `📸 Product has ${currentMediaCount} images, target position: ${targetImagePosition + 1}`
+      `📸 Product has ${currentMediaCount} images, target position: ${targetImagePosition + 1}, mode: ${insertMode}`
     )
 
-    // Save the old media ID at target position (if exists) - we'll delete it after reordering
+    // Save the old media ID at target position (if exists) - only for replace mode
     let oldMediaId: string | null = null
-    if (currentMediaCount > targetImagePosition && product.media?.nodes) {
+    if (
+      insertMode === 'replace' &&
+      currentMediaCount > targetImagePosition &&
+      product.media?.nodes
+    ) {
       oldMediaId = (product.media.nodes[targetImagePosition] as any).id
-      console.log(`📝 Old media at position ${targetImagePosition + 1}: ${oldMediaId}`)
+      console.log(
+        `📝 Old media at position ${targetImagePosition + 1}: ${oldMediaId} (will be replaced)`
+      )
+    } else if (insertMode === 'insert') {
+      console.log(`📝 Insert mode: existing media will be shifted right`)
     }
 
     // 2. Generate public URL for mockup (file already uploaded by plugin)
@@ -825,40 +870,79 @@ export default class MockupController {
       if (mockupTemplatePath) {
         console.log(`   📁 Template: ${mockupTemplatePath}`)
       }
-
-      const mockupService = new Mockup()
-
-      const productContext = {
-        title: product.title,
-        description: product.description || '',
-        artworkType: product.artworkTypeMetafield?.value || null,
-        tags: product.tags || [],
-        mockupTemplatePath: mockupTemplatePath,
+      if (mockupContext) {
+        console.log(
+          `   📝 Context: ${mockupContext.substring(0, 80)}${mockupContext.length > 80 ? '...' : ''}`
+        )
       }
 
-      const altResult = await mockupService.generateMockupAlt(productContext)
+      const claudeMockup = new ClaudeMockup()
 
-      // Validate length (50-125 characters)
-      if (altResult.alt.length >= 50 && altResult.alt.length <= 125) {
+      // Extract mainAlt from first media item
+      const firstMedia = product.media?.nodes?.[0] as any
+      const mainAlt = firstMedia?.alt || ''
+
+      // Extract collectionTitle from mother_collection metafield
+      let collectionTitle = ''
+      if (product.metafields?.edges) {
+        const motherCollectionEdge = product.metafields.edges.find(
+          (edge) => edge.node.namespace === 'link' && edge.node.key === 'mother_collection'
+        )
+        const reference = (motherCollectionEdge?.node as any)?.reference
+        if (reference?.title) {
+          collectionTitle = reference.title
+        }
+      }
+
+      // Map artworkType to productType
+      const artworkType = product.artworkTypeMetafield?.value || 'painting'
+      const productType: 'poster' | 'painting' | 'tapestry' =
+        artworkType === 'poster' ? 'poster' : artworkType === 'tapestry' ? 'tapestry' : 'painting'
+
+      // Build MockupMetadata for the generator
+      const mockupMetadata = {
+        mainAlt: mainAlt,
+        description: product.description || '',
+        title: product.title,
+        tags: product.tags || [],
+        collectionTitle: collectionTitle,
+        productType: productType,
+      }
+
+      console.log(`   🖼️  Main alt: ${mainAlt.substring(0, 50)}${mainAlt.length > 50 ? '...' : ''}`)
+      console.log(`   📁 Collection: ${collectionTitle || '(none)'}`)
+
+      const altResult = await claudeMockup.generateMockupAlt(
+        mockupMetadata,
+        mockupContext || mockupTemplatePath || ''
+      )
+
+      // Validate minimum length (50 chars for quality)
+      if (altResult.alt.length >= 50) {
         altText = altResult.alt
+        if (altResult.alt.length > 130) {
+          console.log(`⚠️  Alt text longer than preferred (${altText.length} chars), but accepted`)
+        }
         console.log(`✅ Generated alt text (${altText.length} chars): ${altText}`)
         console.log(`   📝 Generated filename: ${altResult.filename}`)
       } else {
-        console.warn(
-          `⚠️  Alt text length (${altResult.alt.length}) outside 50-125 range, using fallback`
-        )
+        console.warn(`⚠️  Alt text too short (${altResult.alt.length} chars), using fallback`)
         altText = this.generateFallbackAlt(product)
       }
 
-      // Handle AI-generated filename and file rename
-      if (altResult.filename && this.validateFilename(altResult.filename)) {
+      // Handle AI-generated filename and file rename (always use AI filename, sanitize if needed)
+      if (altResult.filename) {
+        const sanitizedFilename = this.sanitizeFilename(altResult.filename)
         console.log(`🏷️  AI-generated filename: ${altResult.filename}`)
+        if (sanitizedFilename !== altResult.filename) {
+          console.log(`   📝 Sanitized to: ${sanitizedFilename}`)
+        }
 
         // Find unique filename (handles duplicates)
         const assetsDir = Application.publicPath('assets')
-        const uniqueFilename = this.findUniqueFilename(altResult.filename, '.jpg', assetsDir)
+        const uniqueFilename = this.findUniqueFilename(sanitizedFilename, '.jpg', assetsDir)
 
-        if (uniqueFilename !== `${altResult.filename}.jpg`) {
+        if (uniqueFilename !== `${sanitizedFilename}.jpg`) {
           console.log(`   ⚠️  Duplicate detected, using: ${uniqueFilename}`)
         }
 
@@ -899,12 +983,6 @@ export default class MockupController {
           console.log(`   Using original filename`)
           // Keep original filename on error
         }
-      } else {
-        if (altResult.filename) {
-          console.warn(
-            `⚠️  Invalid AI filename "${altResult.filename}", using original: ${fileName}`
-          )
-        }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
@@ -940,26 +1018,100 @@ export default class MockupController {
     const currentNewMediaPosition = newMediaCount - 1
     let reordered = false
 
+    console.log(
+      `🔍 DEBUG: insertMode = "${insertMode}", currentNewMediaPosition = ${currentNewMediaPosition}, targetImagePosition = ${targetImagePosition}`
+    )
+
     if (currentNewMediaPosition !== targetImagePosition) {
-      console.log(
-        `🔄 Reordering: moving new media from position ${currentNewMediaPosition + 1} to position ${targetImagePosition + 1}`
-      )
+      if (insertMode === 'insert') {
+        // Insert mode: insert new media at target position, shifting existing media right
+        console.log(
+          `🔄 Insert mode: inserting new media at position ${targetImagePosition + 1} and shifting others`
+        )
 
-      await shopify.product.reorderMedia(productId, [
-        {
-          id: newMediaId,
-          newPosition: targetImagePosition.toString(),
-        },
-      ])
+        const moves: Array<{ id: string; newPosition: string }> = []
+        const mediaNodes = updatedProduct.media?.nodes || []
 
-      console.log(`✅ Media reordered successfully`)
-      reordered = true
+        console.log(`   📊 Total media nodes: ${mediaNodes.length}`)
+        console.log(`   📊 New media ID: ${newMediaId}`)
+        console.log(`   📊 Target position: ${targetImagePosition}`)
+
+        // Build the desired order:
+        // - Items before targetImagePosition keep their positions (0 to targetImagePosition-1)
+        // - New item goes to targetImagePosition
+        // - Items that were at targetImagePosition and after shift right by 1
+
+        // Collect all media IDs except the new one, in their current order
+        const existingMediaIds: string[] = []
+        for (const node of mediaNodes) {
+          const mediaId = (node as any).id
+          if (mediaId !== newMediaId) {
+            existingMediaIds.push(mediaId)
+          }
+        }
+
+        console.log(`   📊 Existing media count (excluding new): ${existingMediaIds.length}`)
+
+        // Build the new order
+        let positionCounter = 0
+        for (let i = 0; i < existingMediaIds.length; i++) {
+          if (positionCounter === targetImagePosition) {
+            // Insert new media at target position
+            console.log(`   🆕 New media → position ${positionCounter}`)
+            moves.push({
+              id: newMediaId,
+              newPosition: positionCounter.toString(),
+            })
+            positionCounter++
+          }
+
+          // Place existing media
+          console.log(
+            `   📍 Existing media ${i} (${existingMediaIds[i].slice(-8)}) → position ${positionCounter}`
+          )
+          moves.push({
+            id: existingMediaIds[i],
+            newPosition: positionCounter.toString(),
+          })
+          positionCounter++
+        }
+
+        // If target position is at the end, add new media there
+        if (targetImagePosition >= existingMediaIds.length) {
+          console.log(`   🆕 New media → position ${positionCounter} (at end)`)
+          moves.push({
+            id: newMediaId,
+            newPosition: positionCounter.toString(),
+          })
+        }
+
+        console.log(`   📋 Reorder moves (${moves.length} total): ${JSON.stringify(moves)}`)
+        await shopify.product.reorderMedia(productId, moves)
+        console.log(`✅ Media inserted and shifted successfully`)
+        reordered = true
+      } else {
+        // Replace mode: just move new media to target position
+        console.log(
+          `🔄 Reordering: moving new media from position ${currentNewMediaPosition + 1} to position ${targetImagePosition + 1}`
+        )
+
+        await shopify.product.reorderMedia(productId, [
+          {
+            id: newMediaId,
+            newPosition: targetImagePosition.toString(),
+          },
+        ])
+
+        console.log(`✅ Media reordered successfully`)
+        reordered = true
+      }
     } else {
       console.log(`✅ New media already at correct position ${targetImagePosition + 1}`)
     }
 
+    // Only delete old media in replace mode
     let oldMediaDetached = false
-    if (oldMediaId) {
+    if (insertMode === 'replace' && oldMediaId) {
       try {
         console.log(`🗑️  Removing old media from product: ${oldMediaId}`)
         const result = await shopify.product.detachMediaFromProduct(productId, [oldMediaId])
@@ -975,9 +1127,12 @@ export default class MockupController {
         console.warn(`⚠️  Failed to detach old media: ${errorMessage}`)
         console.warn(`   Old media remains at position ${targetImagePosition + 1}`)
       }
+    } else if (insertMode === 'insert') {
+      console.log(`✅ Insert mode: no media deleted, total images now: ${newMediaCount}`)
     }
 
-    console.log(`🎨 Mockup replacement complete at position ${targetImagePosition + 1}`)
+    const actionVerb = insertMode === 'insert' ? 'insertion' : 'replacement'
+    console.log(`🎨 Mockup ${actionVerb} complete at position ${targetImagePosition + 1}`)
     return { reordered, oldMediaDetached, finalFilePath, finalFileName }
   }
 
@@ -994,19 +1149,28 @@ export default class MockupController {
   }
 
   /**
-   * Validate and sanitize AI-generated filename
-   * @param filename The filename to validate (without extension)
-   * @returns true if filename is valid, false otherwise
+   * Sanitize filename by removing accents, special characters, and formatting as slug
+   * @param filename The filename to sanitize (without extension)
+   * @returns Sanitized filename (lowercase, hyphens only)
    */
-  private validateFilename(filename: string): boolean {
-    // Check length (without extension)
-    if (!filename || filename.length === 0 || filename.length > 50) {
-      return false
-    }
-
-    // Check format: lowercase, hyphens, letters, numbers only
-    const validPattern = /^[a-z0-9-]+$/
-    return validPattern.test(filename)
+  private sanitizeFilename(filename: string): string {
+    return (
+      filename
+        // Normalize unicode to decompose accented characters (é → e + ́)
+        .normalize('NFD')
+        // Remove diacritics/accents (the combining characters)
+        .replace(/[\u0300-\u036f]/g, '')
+        // Convert to lowercase
+        .toLowerCase()
+        // Replace spaces, underscores, and other separators with hyphens
+        .replace(/[\s_]+/g, '-')
+        // Remove any character that's not a-z, 0-9, or hyphen
+        .replace(/[^a-z0-9-]/g, '')
+        // Replace multiple consecutive hyphens with single hyphen
+        .replace(/-+/g, '-')
+        // Remove leading/trailing hyphens
+        .replace(/^-+|-+$/g, '')
+    )
   }
 
   /**

@@ -973,6 +973,8 @@ let currentJobFileInfo = null // Track current job's file info for cleanup on er
 
 // Image position and error handling
 let targetImagePosition = 0 // Default to first image (0-indexed)
+let insertMode = 'replace' // 'replace' or 'insert' - default to replace (current behavior)
+let selectedMockupContext = '' // Content from context.txt file in template folder
 let dotAnimationInterval = null // Track the dot animation interval
 
 // Mode selection state
@@ -997,6 +999,7 @@ function updateUIVisibility() {
   const productsModeSection = document.getElementById('productsModeSection')
   const mockupTemplateSection = document.getElementById('mockupTemplateSection')
   const imagePositionSection = document.getElementById('imagePositionSection')
+  const insertModeSection = document.getElementById('insertModeSection')
   const startAutomationBtn = document.getElementById('startAutomationBtn')
 
   // Mode toggle: visible when connected
@@ -1022,6 +1025,10 @@ function updateUIVisibility() {
 
   if (imagePositionSection) {
     imagePositionSection.style.display = isConnected ? 'block' : 'none'
+  }
+
+  if (insertModeSection) {
+    insertModeSection.style.display = isConnected ? 'block' : 'none'
   }
 
   if (startAutomationBtn) {
@@ -1652,6 +1659,11 @@ function init() {
         e.target.checked = true
       }
     })
+  })
+
+  // Insert mode toggle event listeners
+  document.querySelectorAll('input[name="insertMode"]').forEach((radio) => {
+    radio.addEventListener('change', handleInsertModeToggle)
   })
 
   // Validation modal event listener
@@ -2404,6 +2416,32 @@ function handleModeToggle(event) {
 }
 
 /**
+ * Handle insert mode toggle between Replace and Insert
+ */
+function handleInsertModeToggle(event) {
+  const selectedMode = event.target.value
+  insertMode = selectedMode
+
+  console.log(`🔄 Switching to ${selectedMode} insert mode`)
+
+  // Update radio label styling
+  const replaceLabel = document.getElementById('replaceModeLabel')
+  const insertLabel = document.getElementById('insertModeLabel')
+
+  if (replaceLabel && insertLabel) {
+    if (selectedMode === 'replace') {
+      replaceLabel.classList.add('checked')
+      insertLabel.classList.remove('checked')
+    } else {
+      insertLabel.classList.add('checked')
+      replaceLabel.classList.remove('checked')
+    }
+  }
+
+  addLog('info', `Insert mode set to: ${selectedMode}`)
+}
+
+/**
  * Load all mockup templates with categories as optgroups
  */
 async function loadMockupCategories() {
@@ -2529,6 +2567,30 @@ async function handleTemplateChange() {
       const ext = entry.name.toLowerCase().split('.').pop()
       return !entry.isFolder && ['jpg', 'jpeg', 'png', 'gif'].includes(ext)
     })
+
+    // Read context.txt file if it exists
+    const contextFile = entries.find(
+      (entry) => !entry.isFolder && entry.name.toLowerCase() === 'context.txt'
+    )
+
+    if (contextFile) {
+      try {
+        const uxpStorage = require('uxp').storage
+        const contextData = await contextFile.read({ format: uxpStorage.formats.utf8 })
+        selectedMockupContext = contextData.trim()
+        addLog(
+          'info',
+          `Context loaded: "${selectedMockupContext.substring(0, 50)}${selectedMockupContext.length > 50 ? '...' : ''}"`
+        )
+      } catch (contextError) {
+        console.error('Failed to read context.txt:', contextError)
+        selectedMockupContext = ''
+        addLog('warn', 'Failed to read context.txt')
+      }
+    } else {
+      selectedMockupContext = ''
+      addLog('info', 'No context.txt found, using template path as context')
+    }
 
     if (imageFiles.length < 3) {
       addLog('warning', `Only ${imageFiles.length} images found, expected 3`)
@@ -2773,6 +2835,8 @@ async function handleStartAutomation() {
         productIds: productIds,
         mockupTemplatePath: mockupTemplatePath,
         targetImagePosition: targetImagePosition,
+        insertMode: insertMode,
+        mockupContext: selectedMockupContext,
       }
     } else if (usingRangeSelection) {
       // Range selection mode - send productIds from range
@@ -2786,6 +2850,8 @@ async function handleStartAutomation() {
         productIds: rangeProductIds,
         mockupTemplatePath: mockupTemplatePath,
         targetImagePosition: targetImagePosition,
+        insertMode: insertMode,
+        mockupContext: selectedMockupContext,
       }
     } else {
       // Collection selection mode - send collectionIds
@@ -2795,6 +2861,8 @@ async function handleStartAutomation() {
         collectionIds: collectionIds,
         mockupTemplatePath: mockupTemplatePath,
         targetImagePosition: targetImagePosition,
+        insertMode: insertMode,
+        mockupContext: selectedMockupContext,
       }
     }
 
@@ -3187,6 +3255,11 @@ async function processNextJob() {
             imageUrl: job.imageUrl,
             productId: job.productId,
             targetImagePosition: job.targetImagePosition,
+            // Include metadata for cross-process compatibility (PM2 cluster mode)
+            insertMode: job.insertMode || 'replace',
+            mockupContext: job.mockupContext || '',
+            mockupTemplatePath: job.mockupTemplatePath || '',
+            batchId: job.batchId || '',
             success: true,
           })
 
