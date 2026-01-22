@@ -79,10 +79,10 @@ export default class ShopifyProductPublisher {
   }
 
   /**
-   * Get random likes count
+   * Get initial likes count
    */
   public async getLikesCount(): Promise<number> {
-    return Math.floor(Math.random() * 200)
+    return 0
   }
 
   /**
