@@ -35,7 +35,10 @@ export default class PublicationSelector {
   }
 
   private getShopifyProductFromRecommendation(recommendation: PinterestBoardRecommendation) {
-    return this.shopifyProducts.find((p) => p.id === recommendation.productId) as ShopifyProduct
+    return this.shopifyProducts.find((p) => {
+      const numericId = p.id.replace('gid://shopify/Product/', '')
+      return p.id === recommendation.productId || numericId === recommendation.productId
+    }) as ShopifyProduct
   }
 
   private getProductPins(productId: string): PinterestPin[] {
@@ -46,7 +49,11 @@ export default class PublicationSelector {
     try {
       const url = new URL(pin.link)
       const pinProductId = url.searchParams.get('shopify_product_id')
-      return pinProductId === productId
+      if (!pinProductId) return false
+
+      const numericProductId = productId.replace('gid://shopify/Product/', '')
+      const numericPinProductId = pinProductId.replace('gid://shopify/Product/', '')
+      return numericProductId === numericPinProductId
     } catch (error) {
       return false
     }
@@ -64,7 +71,9 @@ export default class PublicationSelector {
     const productPins = this.getProductPins(recommendation.productId)
     const currentBoardIds = new Set(productPins.map((pin) => pin.board_id))
 
-    const availableBoards = this.boards.filter((board) => !currentBoardIds.has(board.id))
+    const availableBoards = this.boards.filter(
+      (board) => recommendation.boardIds.includes(board.id) && !currentBoardIds.has(board.id)
+    )
     return this.pickRandomAvailableBoard(availableBoards)
   }
 

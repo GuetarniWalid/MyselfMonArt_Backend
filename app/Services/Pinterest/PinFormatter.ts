@@ -4,7 +4,7 @@ import sharp from 'sharp'
 import fs from 'fs/promises'
 import path from 'path'
 import { randomUUID } from 'crypto'
-import Pinterest from '../ChatGPT/Pinterest'
+import Pinterest from '../Claude/Pinterest'
 
 export default class PinFormatter {
   private readonly UPLOAD_DIR = 'public/uploads'
@@ -15,7 +15,12 @@ export default class PinFormatter {
   public async buildPinPayload(shopifyProduct: ShopifyProduct, board: Board): Promise<PinPayload> {
     const { publicUrl, imageAlt } = await this.processAndUploadImage(shopifyProduct, board)
     const pinterest = new Pinterest()
-    const pinPayload = await pinterest.pinAI.buildPinPayload(shopifyProduct, imageAlt, board)
+    const productType = this.getProductTypeFr(shopifyProduct)
+    const pinPayload = await pinterest.generatePinPayload(
+      shopifyProduct.title,
+      shopifyProduct.description,
+      productType
+    )
 
     return {
       board_id: board.id,
@@ -27,6 +32,20 @@ export default class PinFormatter {
         url: publicUrl,
         source_type: 'image_url',
       },
+    }
+  }
+
+  private getProductTypeFr(shopifyProduct: ShopifyProduct): string {
+    const artworkType = shopifyProduct.artworkTypeMetafield?.value
+    switch (artworkType) {
+      case 'painting':
+        return 'Tableau sur toile'
+      case 'poster':
+        return 'Poster'
+      case 'tapestry':
+        return 'Tapisserie murale'
+      default:
+        return 'Tableau décoratif'
     }
   }
 
