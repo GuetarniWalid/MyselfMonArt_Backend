@@ -1,3 +1,5 @@
+export type ArtworkCategory = 'figuratif' | 'abstrait' | 'pop_art_street_art' | 'enfant'
+
 export interface IProductPublisher {
   // Core generation methods
   generateAlt(

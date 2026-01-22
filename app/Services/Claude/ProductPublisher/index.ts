@@ -7,10 +7,10 @@ import TagPicker from './TagPicker'
 import MockupAltGenerator from './MockupAltGenerator'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import Env from '@ioc:Adonis/Core/Env'
-import type { IProductPublisher, MockupMetadata } from 'Types/ProductPublisher'
+import type { IProductPublisher, MockupMetadata, ArtworkCategory } from 'Types/ProductPublisher'
 
 export default class ProductPublisher extends Authentication implements IProductPublisher {
-  private imageAnalysis: { haveToBeDetailed: boolean } | null = null
+  private imageAnalysis: { category: ArtworkCategory } | null = null
 
   /**
    * Generate alt text and filename for main artwork
@@ -34,7 +34,7 @@ export default class ProductPublisher extends Authentication implements IProduct
 
       const response = await this.anthropic.messages.create({
         model: Env.get('CLAUDE_MODEL'),
-        max_tokens: 512,
+        max_tokens: 1024,
         tools: [
           {
             name: 'generate_alt',
@@ -83,7 +83,7 @@ export default class ProductPublisher extends Authentication implements IProduct
 
     return this.retryOperation(async () => {
       const descriptionGenerator = new DescriptionGenerator(
-        this.imageAnalysis!.haveToBeDetailed,
+        this.imageAnalysis!.category,
         productType as 'poster' | 'painting' | 'tapestry'
       )
       const { responseFormat, systemPrompt } = descriptionGenerator.prepareRequest(imageUrl)
@@ -98,7 +98,7 @@ export default class ProductPublisher extends Authentication implements IProduct
 
       const response = await this.anthropic.messages.create({
         model: Env.get('CLAUDE_MODEL'),
-        max_tokens: 2048,
+        max_tokens: 4096,
         tools: [
           {
             name: 'generate_description',
@@ -131,7 +131,7 @@ export default class ProductPublisher extends Authentication implements IProduct
       }
 
       const validated = responseFormat.parse(toolUse.input)
-      return validated.description
+      return `<h2>${validated.title}</h2>${validated.description}`
     })
   }
 
@@ -162,7 +162,7 @@ export default class ProductPublisher extends Authentication implements IProduct
 
       const response = await this.anthropic.messages.create({
         model: Env.get('CLAUDE_MODEL'),
-        max_tokens: 512,
+        max_tokens: 1024,
         tools: [
           {
             name: 'generate_title_and_seo',
@@ -221,7 +221,7 @@ export default class ProductPublisher extends Authentication implements IProduct
 
       const response = await this.anthropic.messages.create({
         model: Env.get('CLAUDE_MODEL'),
-        max_tokens: 512,
+        max_tokens: 1024,
         tools: [
           {
             name: 'suggest_tags',
@@ -288,7 +288,7 @@ export default class ProductPublisher extends Authentication implements IProduct
 
       const response = await this.anthropic.messages.create({
         model: Env.get('CLAUDE_MODEL'),
-        max_tokens: 512,
+        max_tokens: 1024,
         tools: [
           {
             name: 'generate_mockup_alt',
@@ -318,7 +318,7 @@ export default class ProductPublisher extends Authentication implements IProduct
   /**
    * Image analysis (determines if artwork requires detailed description)
    */
-  private async analyseImage(imageUrl: string): Promise<{ haveToBeDetailed: boolean }> {
+  private async analyseImage(imageUrl: string): Promise<{ category: ArtworkCategory }> {
     return this.retryOperation(async () => {
       const imageAnalyzer = new ImageAnalyser()
       const { responseFormat, systemPrompt } = imageAnalyzer.prepareRequest(imageUrl)
@@ -333,7 +333,7 @@ export default class ProductPublisher extends Authentication implements IProduct
 
       const response = await this.anthropic.messages.create({
         model: Env.get('CLAUDE_MODEL'),
-        max_tokens: 256,
+        max_tokens: 512,
         tools: [
           {
             name: 'analyze_image',
