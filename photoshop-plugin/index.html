@@ -1079,6 +1079,24 @@
             </div>
           </div>
 
+          <!-- Alt Text Mode Toggle -->
+          <div id="altTextModeSection" class="form-group" style="display: none; margin-bottom: 20px">
+            <label class="form-label">Mode de texte alternatif :</label>
+            <div style="font-size: 11px; color: #999; margin-bottom: 8px">
+              Copier l'alt de l'image principale ou générer avec l'IA
+            </div>
+            <div class="radio-group">
+              <label class="radio-label" id="copyAltModeLabel">
+                <input type="radio" name="altTextMode" value="copy" />
+                <span>Alt Copié</span>
+              </label>
+              <label class="radio-label checked" id="generateAltModeLabel">
+                <input type="radio" name="altTextMode" value="generate" checked />
+                <span>Alt Généré</span>
+              </label>
+            </div>
+          </div>
+
         <!-- Products Mode Section -->
         <div class="form-group" id="productsModeSection" style="display: none; margin-bottom: 20px">
         <label class="form-label">Sélectionner des produits :</label>

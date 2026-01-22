@@ -97,6 +97,60 @@ export default class Mockup extends Authentication {
   }
 
   /**
+   * Generate filename only for mockup image (when alt is copied from main image)
+   * Uses a simpler prompt focused only on filename generation
+   */
+  public async generateMockupFilename(
+    metadata: MockupMetadata,
+    mockupContext: string
+  ): Promise<string> {
+    return this.retryOperation(async () => {
+      const generator = new MockupAltGenerator()
+      const { systemPrompt, payload } = generator.prepareFilenameRequest(metadata, mockupContext)
+
+      const filenameSchema = {
+        type: 'object' as const,
+        properties: {
+          filename: {
+            type: 'string',
+            pattern: '^[a-z0-9-]+$',
+            description:
+              'SEO-friendly filename slug without extension (lowercase, hyphens only, max 80 chars)',
+          },
+        },
+        required: ['filename'],
+      }
+
+      const response = await this.anthropic.messages.create({
+        model: Env.get('CLAUDE_MODEL'),
+        max_tokens: 256,
+        tools: [
+          {
+            name: 'generate_mockup_filename',
+            description: 'Generate SEO-friendly filename for mockup image',
+            input_schema: filenameSchema,
+          },
+        ],
+        tool_choice: { type: 'tool', name: 'generate_mockup_filename' },
+        messages: [
+          {
+            role: 'user',
+            content: `${systemPrompt}\n\nProduct data:\n${JSON.stringify(payload, null, 2)}`,
+          },
+        ],
+      })
+
+      const toolUse = response.content.find((c) => c.type === 'tool_use')
+      if (!toolUse || toolUse.type !== 'tool_use') {
+        throw new Error('Claude did not return tool use response')
+      }
+
+      const rawInput = toolUse.input as { filename: string }
+      return this.sanitizeFilename(rawInput.filename)
+    })
+  }
+
+  /**
    * Retry operation with exponential backoff for rate limits and overload errors
    */
   private async retryOperation<T>(

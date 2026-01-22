@@ -192,12 +192,15 @@ export default class MockupController {
           'replace'
         const mockupContext =
           (data.mockupContext as string) || (jobMetadata?.mockupContext as string) || ''
+        const copyAltFromMain =
+          (data.copyAltFromMain as boolean) || (jobMetadata?.copyAltFromMain as boolean) || false
 
         console.log('🔍 DEBUG: Starting Shopify upload with:', {
           resultPath: data.resultPath,
           productId: data.productId,
           targetImagePosition: data.targetImagePosition,
           insertMode: insertMode,
+          copyAltFromMain: copyAltFromMain,
           mockupContext: mockupContext
             ? `${mockupContext.substring(0, 50)}${mockupContext.length > 50 ? '...' : ''}`
             : '(none)',
@@ -215,6 +218,7 @@ export default class MockupController {
             insertMode: insertMode,
             mockupContext: mockupContext,
             mockupTemplatePath: mockupTemplatePath,
+            copyAltFromMain: copyAltFromMain,
             batchId: batchId,
           })
           console.log(`✅ DEBUG: Mockup uploaded to Shopify for product ${data.productId}`)
@@ -535,6 +539,7 @@ export default class MockupController {
       targetImagePosition,
       insertMode,
       mockupContext,
+      copyAltFromMain,
     } = request.only([
       'collectionIds',
       'productIds',
@@ -542,6 +547,7 @@ export default class MockupController {
       'targetImagePosition',
       'insertMode',
       'mockupContext',
+      'copyAltFromMain',
     ])
 
     // Validate template path
@@ -716,6 +722,7 @@ export default class MockupController {
           targetImagePosition: targetImagePosition,
           insertMode: validInsertMode, // 'replace' or 'insert'
           mockupContext: mockupContext || '', // Context from context.txt
+          copyAltFromMain: copyAltFromMain || false, // Copy alt from main image or generate with AI
           batchId: batchId, // Track batch for cleanup
         }
 
@@ -808,6 +815,7 @@ export default class MockupController {
     insertMode = 'replace',
     mockupTemplatePath,
     mockupContext,
+    copyAltFromMain = false,
     batchId,
   }: {
     productId: string
@@ -816,6 +824,7 @@ export default class MockupController {
     insertMode?: 'replace' | 'insert'
     mockupTemplatePath?: string
     mockupContext?: string
+    copyAltFromMain?: boolean
     batchId?: string
   }): Promise<{
     reordered: boolean
@@ -878,9 +887,10 @@ export default class MockupController {
 
       const claudeMockup = new ClaudeMockup()
 
-      // Extract mainAlt from first media item
-      const firstMedia = product.media?.nodes?.[0] as any
-      const mainAlt = firstMedia?.alt || ''
+      // Extract mainAlt from second media item (index 1) - the main artwork image
+      // Index 0 is typically a mockup/lifestyle image, index 1 is the actual artwork
+      const mainArtworkMedia = product.media?.nodes?.[1] as any
+      const mainAlt = mainArtworkMedia?.alt || ''
 
       // Extract collectionTitle from mother_collection metafield
       let collectionTitle = ''
@@ -909,32 +919,60 @@ export default class MockupController {
         productType: productType,
       }
 
-      console.log(`   🖼️  Main alt: ${mainAlt.substring(0, 50)}${mainAlt.length > 50 ? '...' : ''}`)
+      console.log(
+        `   🖼️  Artwork alt (media[1]): ${mainAlt ? mainAlt.substring(0, 50) + (mainAlt.length > 50 ? '...' : '') : '(empty)'}`
+      )
       console.log(`   📁 Collection: ${collectionTitle || '(none)'}`)
 
-      const altResult = await claudeMockup.generateMockupAlt(
-        mockupMetadata,
-        mockupContext || mockupTemplatePath || ''
-      )
+      let generatedFilename: string | undefined
 
-      // Validate minimum length (50 chars for quality)
-      if (altResult.alt.length >= 50) {
-        altText = altResult.alt
-        if (altResult.alt.length > 130) {
-          console.log(`⚠️  Alt text longer than preferred (${altText.length} chars), but accepted`)
-        }
-        console.log(`✅ Generated alt text (${altText.length} chars): ${altText}`)
-        console.log(`   📝 Generated filename: ${altResult.filename}`)
+      if (copyAltFromMain && mainAlt && mainAlt.length >= 10) {
+        // COPY MODE: Use mainAlt directly, only generate filename via Claude
+        console.log(`🔄 Copy alt mode: using mainAlt directly, generating filename only`)
+        altText = mainAlt
+        console.log(`✅ Using copied alt text (${mainAlt.length} chars): ${mainAlt}`)
+
+        // Generate filename only via Claude
+        generatedFilename = await claudeMockup.generateMockupFilename(
+          mockupMetadata,
+          mockupContext || mockupTemplatePath || ''
+        )
+        console.log(`   📝 Generated filename: ${generatedFilename}`)
       } else {
-        console.warn(`⚠️  Alt text too short (${altResult.alt.length} chars), using fallback`)
-        altText = this.generateFallbackAlt(product)
+        // GENERATE MODE: Current behavior - generate both via Claude
+        if (copyAltFromMain) {
+          console.warn(`⚠️  Main alt too short or missing, falling back to full AI generation`)
+        }
+        console.log(`🤖 Generate alt mode: generating both alt and filename via Claude`)
+
+        const altResult = await claudeMockup.generateMockupAlt(
+          mockupMetadata,
+          mockupContext || mockupTemplatePath || ''
+        )
+
+        // Validate minimum length (50 chars for quality)
+        if (altResult.alt.length >= 50) {
+          altText = altResult.alt
+          if (altResult.alt.length > 130) {
+            console.log(
+              `⚠️  Alt text longer than preferred (${altText.length} chars), but accepted`
+            )
+          }
+          console.log(`✅ Generated alt text (${altText.length} chars): ${altText}`)
+          console.log(`   📝 Generated filename: ${altResult.filename}`)
+        } else {
+          console.warn(`⚠️  Alt text too short (${altResult.alt.length} chars), using fallback`)
+          altText = this.generateFallbackAlt(product)
+        }
+
+        generatedFilename = altResult.filename
       }
 
       // Handle AI-generated filename and file rename (always use AI filename, sanitize if needed)
-      if (altResult.filename) {
-        const sanitizedFilename = this.sanitizeFilename(altResult.filename)
-        console.log(`🏷️  AI-generated filename: ${altResult.filename}`)
-        if (sanitizedFilename !== altResult.filename) {
+      if (generatedFilename) {
+        const sanitizedFilename = this.sanitizeFilename(generatedFilename)
+        console.log(`🏷️  AI-generated filename: ${generatedFilename}`)
+        if (sanitizedFilename !== generatedFilename) {
           console.log(`   📝 Sanitized to: ${sanitizedFilename}`)
         }
 

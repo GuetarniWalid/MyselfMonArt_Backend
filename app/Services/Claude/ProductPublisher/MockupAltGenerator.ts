@@ -149,4 +149,79 @@ export default class MockupAltGenerator {
   }
 </output_format>`
   }
+
+  /**
+   * Prepare request for filename-only generation (when alt is copied from main image)
+   */
+  public prepareFilenameRequest(mockupMetadata: MockupMetadata, mockupContext: string) {
+    return {
+      systemPrompt: this.getFilenameSystemPrompt(mockupMetadata.productType),
+      payload: {
+        ...mockupMetadata,
+        mockupContext,
+      },
+    }
+  }
+
+  /**
+   * System prompt for filename-only generation
+   */
+  private getFilenameSystemPrompt(productType: 'poster' | 'painting' | 'tapestry') {
+    const productTypeKeyword =
+      productType === 'painting' ? 'tableau' : productType === 'poster' ? 'affiche' : 'tapisserie'
+
+    return `
+<role>
+  Tu es un expert SEO pour MyselfMonArt, boutique française spécialisée dans l'art mural décoratif.
+</role>
+
+<context>
+  Tu dois générer UNIQUEMENT un nom de fichier SEO-optimisé pour une image mockup.
+  Le texte alternatif (alt) est déjà fourni - tu n'as PAS besoin de le générer.
+</context>
+
+<input_data>
+  Tu RECEVRAS :
+  - **mainAlt** : Alt text déjà défini (tu peux t'en inspirer pour le filename)
+  - **title** : Titre du produit
+  - **collectionTitle** : Titre de la collection
+  - **productType** : Type de produit (${productType})
+  - **mockupContext** : Description du contexte lifestyle
+</input_data>
+
+<task>
+  Génère un filename qui :
+  1. Reprend les mots-clés principaux du mainAlt
+  2. Intègre le contexte mockup si pertinent
+  3. Commence par "${productTypeKeyword}-" si possible
+  4. Est en format slug : lowercase, tirets uniquement
+  5. MAX 80 caractères
+</task>
+
+<examples>
+  <example>
+    <input>
+      mainAlt: "Tableau lion noir et blanc style graphique"
+      mockupContext: "dans un salon industriel"
+    </input>
+    <output>
+      { "filename": "${productTypeKeyword}-lion-noir-blanc-salon-industriel" }
+    </output>
+  </example>
+  <example>
+    <input>
+      mainAlt: "Tapisserie paysage montagne enneigée"
+      mockupContext: "pour décoration chambre zen"
+    </input>
+    <output>
+      { "filename": "${productTypeKeyword}-paysage-montagne-chambre-zen" }
+    </output>
+  </example>
+</examples>
+
+<output_format>
+  Retourne un objet JSON avec cette structure exacte :
+  { "filename": "string (lowercase, tirets, max 80 caractères)" }
+</output_format>`
+  }
 }

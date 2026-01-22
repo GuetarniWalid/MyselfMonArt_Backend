@@ -974,6 +974,7 @@ let currentJobFileInfo = null // Track current job's file info for cleanup on er
 // Image position and error handling
 let targetImagePosition = 0 // Default to first image (0-indexed)
 let insertMode = 'replace' // 'replace' or 'insert' - default to replace (current behavior)
+let altTextMode = 'generate' // 'copy' or 'generate' - default to generate (AI generation)
 let selectedMockupContext = '' // Content from context.txt file in template folder
 let dotAnimationInterval = null // Track the dot animation interval
 
@@ -1029,6 +1030,11 @@ function updateUIVisibility() {
 
   if (insertModeSection) {
     insertModeSection.style.display = isConnected ? 'block' : 'none'
+  }
+
+  const altTextModeSection = document.getElementById('altTextModeSection')
+  if (altTextModeSection) {
+    altTextModeSection.style.display = isConnected ? 'block' : 'none'
   }
 
   if (startAutomationBtn) {
@@ -1664,6 +1670,11 @@ function init() {
   // Insert mode toggle event listeners
   document.querySelectorAll('input[name="insertMode"]').forEach((radio) => {
     radio.addEventListener('change', handleInsertModeToggle)
+  })
+
+  // Alt text mode toggle event listeners
+  document.querySelectorAll('input[name="altTextMode"]').forEach((radio) => {
+    radio.addEventListener('change', handleAltTextModeToggle)
   })
 
   // Validation modal event listener
@@ -2442,6 +2453,32 @@ function handleInsertModeToggle(event) {
 }
 
 /**
+ * Handle alt text mode toggle between Copy and Generate
+ */
+function handleAltTextModeToggle(event) {
+  const selectedMode = event.target.value
+  altTextMode = selectedMode
+
+  console.log(`🔄 Switching to ${selectedMode} alt text mode`)
+
+  // Update radio label styling
+  const copyLabel = document.getElementById('copyAltModeLabel')
+  const generateLabel = document.getElementById('generateAltModeLabel')
+
+  if (copyLabel && generateLabel) {
+    if (selectedMode === 'copy') {
+      copyLabel.classList.add('checked')
+      generateLabel.classList.remove('checked')
+    } else {
+      generateLabel.classList.add('checked')
+      copyLabel.classList.remove('checked')
+    }
+  }
+
+  addLog('info', `Alt text mode set to: ${selectedMode}`)
+}
+
+/**
  * Load all mockup templates with categories as optgroups
  */
 async function loadMockupCategories() {
@@ -2837,6 +2874,7 @@ async function handleStartAutomation() {
         targetImagePosition: targetImagePosition,
         insertMode: insertMode,
         mockupContext: selectedMockupContext,
+        copyAltFromMain: altTextMode === 'copy',
       }
     } else if (usingRangeSelection) {
       // Range selection mode - send productIds from range
@@ -2852,6 +2890,7 @@ async function handleStartAutomation() {
         targetImagePosition: targetImagePosition,
         insertMode: insertMode,
         mockupContext: selectedMockupContext,
+        copyAltFromMain: altTextMode === 'copy',
       }
     } else {
       // Collection selection mode - send collectionIds
@@ -2863,11 +2902,21 @@ async function handleStartAutomation() {
         targetImagePosition: targetImagePosition,
         insertMode: insertMode,
         mockupContext: selectedMockupContext,
+        copyAltFromMain: altTextMode === 'copy',
       }
     }
 
     // Give immediate visual feedback - activate step 1 right away
     updateStep(1, 'active')
+
+    // Debug log for alt text mode
+    console.log(
+      `🔍 DEBUG: altTextMode = ${altTextMode}, copyAltFromMain = ${requestBody.copyAltFromMain}`
+    )
+    addLog(
+      'info',
+      `Alt text mode: ${altTextMode === 'copy' ? 'Copy from main' : 'Generate with AI'}`
+    )
 
     const response = await fetch(`${config.BACKEND_URL}/api/mockup/start-automation`, {
       method: 'POST',
@@ -3259,6 +3308,7 @@ async function processNextJob() {
             insertMode: job.insertMode || 'replace',
             mockupContext: job.mockupContext || '',
             mockupTemplatePath: job.mockupTemplatePath || '',
+            copyAltFromMain: job.copyAltFromMain || false,
             batchId: job.batchId || '',
             success: true,
           })
