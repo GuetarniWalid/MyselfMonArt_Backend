@@ -8,6 +8,10 @@ import Authentication from '../Authentication'
 import Metafield from '../Metafield'
 import ArtworkCopier from './Modelcopier/Artwork'
 import TapestryCopier from './Modelcopier/Tapestry'
+import fs from 'fs'
+import path from 'path'
+import FormData from 'form-data'
+import axios from 'axios'
 
 export default class Product extends Authentication {
   public artworkCopier: ArtworkCopier
@@ -1233,11 +1237,34 @@ export default class Product extends Authentication {
    * Requires: write_products access scope
    * Note: Media is asynchronously uploaded and associated with the product
    * @param productId - The product ID
-   * @param mediaUrl - The public URL of the image to add (not a file ID)
+   * @param mediaUrl - The public URL of the image to add (for images only)
+   * @param alt - Optional alt text for the media
+   * @param mediaContentType - Type of media: 'IMAGE' or 'VIDEO' (default: 'IMAGE')
+   * @param localFilePath - Local file path (required for VIDEO, Shopify needs staged upload)
    * @returns All media nodes for the product (newly added media is at the end)
    */
-  public async createMedia(productId: string, mediaUrl: string, alt?: string) {
-    const { query, variables } = this.getCreateMediaQuery(productId, mediaUrl, alt)
+  public async createMedia(
+    productId: string,
+    mediaUrl: string,
+    alt?: string,
+    mediaContentType: 'IMAGE' | 'VIDEO' = 'IMAGE',
+    localFilePath?: string
+  ) {
+    // For videos, use staged upload workflow (Shopify requirement)
+    if (mediaContentType === 'VIDEO') {
+      if (!localFilePath) {
+        throw new Error('Local file path is required for video uploads')
+      }
+      return this.createVideoMedia(productId, localFilePath, alt)
+    }
+
+    // For images, use direct URL (existing behavior)
+    const { query, variables } = this.getCreateMediaQuery(
+      productId,
+      mediaUrl,
+      alt,
+      mediaContentType
+    )
     const response = await this.fetchGraphQL(query, variables)
 
     if (response.productUpdate.userErrors?.length) {
@@ -1248,7 +1275,246 @@ export default class Product extends Authentication {
     return response.productUpdate.product.media.nodes
   }
 
-  private getCreateMediaQuery(productId: string, mediaUrl: string, alt?: string) {
+  /**
+   * Add video to a product using Shopify's staged upload workflow
+   * Videos cannot use external URLs - must be uploaded through Shopify's S3
+   * @see https://shopify.dev/docs/api/admin-graphql/latest/mutations/stageduploadscreate
+   */
+  private async createVideoMedia(productId: string, localFilePath: string, alt?: string) {
+    const fileName = path.basename(localFilePath)
+    console.log(`🎬 Starting staged upload for video: ${fileName}`)
+
+    try {
+      // Step 1: Get file info and validate
+      if (!fs.existsSync(localFilePath)) {
+        throw new Error(`Video file not found: ${localFilePath}`)
+      }
+      const fileStats = fs.statSync(localFilePath)
+      const fileSize = fileStats.size.toString()
+      const fileSizeMB = fileStats.size / 1024 / 1024
+
+      // Validate file size (Shopify limit: 1GB for videos)
+      const MAX_VIDEO_SIZE_MB = 1024 // 1GB
+      if (fileSizeMB > MAX_VIDEO_SIZE_MB) {
+        throw new Error(
+          `Video file too large (${fileSizeMB.toFixed(0)}MB). Shopify limit: ${MAX_VIDEO_SIZE_MB}MB`
+        )
+      }
+
+      // Get MIME type from extension
+      const mimeType = this.getVideoMimeType(localFilePath)
+
+      console.log(`   📁 File: ${fileName}, Size: ${fileSizeMB.toFixed(2)} MB, Type: ${mimeType}`)
+
+      // Step 2: Create staged upload target
+      const stagedUpload = await this.createStagedUpload(fileName, fileSize, mimeType)
+      console.log(`   ✅ Staged upload target created`)
+
+      // Step 3: Upload file to Shopify's S3 (with retry)
+      await this.uploadToStagedTarget(localFilePath, stagedUpload, mimeType)
+      console.log(`   ✅ File uploaded to Shopify S3`)
+
+      // Step 4: Create media on product using resourceUrl
+      console.log(`   🔗 Attaching video to product using resourceUrl...`)
+      const { query, variables } = this.getCreateMediaQuery(
+        productId,
+        stagedUpload.resourceUrl,
+        alt,
+        'VIDEO'
+      )
+      const response = await this.fetchGraphQL(query, variables)
+
+      if (response.productUpdate.userErrors?.length) {
+        throw new Error(response.productUpdate.userErrors[0].message)
+      }
+
+      console.log(`   ✅ Video attached to product`)
+      return response.productUpdate.product.media.nodes
+    } finally {
+      // Always cleanup the local video file (success or failure)
+      this.cleanupLocalFile(localFilePath)
+    }
+  }
+
+  /**
+   * Safely delete a local file after processing
+   */
+  private cleanupLocalFile(filePath: string): void {
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath)
+        console.log(`   🗑️  Cleaned up local video file: ${path.basename(filePath)}`)
+      }
+    } catch (error: any) {
+      // Log but don't throw - cleanup failure shouldn't break the flow
+      console.warn(`   ⚠️  Failed to cleanup local file: ${error.message}`)
+    }
+  }
+
+  /**
+   * Get MIME type for video files based on extension
+   */
+  private getVideoMimeType(filePath: string): string {
+    const ext = path.extname(filePath).toLowerCase()
+    const mimeTypes: Record<string, string> = {
+      '.mp4': 'video/mp4',
+      '.mov': 'video/quicktime',
+      '.webm': 'video/webm',
+      '.avi': 'video/x-msvideo',
+    }
+    const mimeType = mimeTypes[ext]
+    if (!mimeType) {
+      console.warn(`   ⚠️  Unknown video extension "${ext}", defaulting to video/mp4`)
+    }
+    return mimeType || 'video/mp4'
+  }
+
+  /**
+   * Create a staged upload target for video files
+   */
+  private async createStagedUpload(
+    fileName: string,
+    fileSize: string,
+    mimeType: string
+  ): Promise<{
+    url: string
+    resourceUrl: string
+    parameters: Array<{ name: string; value: string }>
+  }> {
+    const query = `mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+      stagedUploadsCreate(input: $input) {
+        stagedTargets {
+          url
+          resourceUrl
+          parameters {
+            name
+            value
+          }
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }`
+
+    const variables = {
+      input: [
+        {
+          filename: fileName,
+          mimeType: mimeType,
+          fileSize: fileSize,
+          resource: 'VIDEO',
+          httpMethod: 'POST',
+        },
+      ],
+    }
+
+    const response = await this.fetchGraphQL(query, variables)
+
+    if (response.stagedUploadsCreate.userErrors?.length) {
+      throw new Error(`Staged upload failed: ${response.stagedUploadsCreate.userErrors[0].message}`)
+    }
+
+    const target = response.stagedUploadsCreate.stagedTargets[0]
+    if (!target) {
+      throw new Error('No staged upload target returned')
+    }
+
+    return target
+  }
+
+  /**
+   * Upload file to Shopify's S3 using staged upload credentials
+   * Includes retry logic for transient network failures
+   */
+  private async uploadToStagedTarget(
+    localFilePath: string,
+    stagedUpload: {
+      url: string
+      parameters: Array<{ name: string; value: string }>
+    },
+    mimeType: string
+  ): Promise<void> {
+    const maxRetries = 3
+    const baseDelayMs = 2000 // 2 seconds
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      let fileStream: fs.ReadStream | null = null
+
+      try {
+        // Create fresh FormData for each attempt (streams can't be reused)
+        const form = new FormData()
+
+        // Add all parameters from staged upload (authentication)
+        for (const param of stagedUpload.parameters) {
+          form.append(param.name, param.value)
+        }
+
+        // Add the file last (required by S3)
+        fileStream = fs.createReadStream(localFilePath)
+        const fileName = path.basename(localFilePath)
+        form.append('file', fileStream, {
+          filename: fileName,
+          contentType: mimeType,
+        })
+
+        // Upload to S3 using axios with timeout (10 minutes for large files)
+        await axios.post(stagedUpload.url, form, {
+          headers: {
+            ...form.getHeaders(),
+          },
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
+          timeout: 10 * 60 * 1000, // 10 minutes
+        })
+
+        // Success - exit retry loop
+        return
+      } catch (error: any) {
+        // Always close the file stream to prevent resource leaks
+        if (fileStream) {
+          fileStream.destroy()
+        }
+
+        // Parse error message properly (S3 may return XML)
+        let errorMessage = error.message
+        if (error.response?.data) {
+          errorMessage =
+            typeof error.response.data === 'string'
+              ? error.response.data.substring(0, 500) // Truncate long XML
+              : JSON.stringify(error.response.data)
+        }
+        const statusCode = error.response?.status || 'unknown'
+
+        // Check if we should retry (network errors, timeouts, 5xx errors)
+        const isRetryable =
+          !error.response || // Network error
+          error.code === 'ECONNRESET' ||
+          error.code === 'ETIMEDOUT' ||
+          (error.response?.status >= 500 && error.response?.status < 600)
+
+        if (isRetryable && attempt < maxRetries) {
+          const delay = baseDelayMs * Math.pow(2, attempt - 1) // Exponential backoff
+          console.warn(
+            `   ⚠️  S3 upload failed (attempt ${attempt}/${maxRetries}), retrying in ${delay / 1000}s...`
+          )
+          await new Promise((resolve) => setTimeout(resolve, delay))
+          continue
+        }
+
+        // Final attempt failed or non-retryable error
+        throw new Error(`S3 upload failed (${statusCode}): ${errorMessage}`)
+      }
+    }
+  }
+
+  private getCreateMediaQuery(
+    productId: string,
+    mediaUrl: string,
+    alt?: string,
+    mediaContentType: 'IMAGE' | 'VIDEO' = 'IMAGE'
+  ) {
     return {
       query: `mutation productUpdate($product: ProductUpdateInput!, $media: [CreateMediaInput!]) {
         productUpdate(product: $product, media: $media) {
@@ -1259,6 +1525,13 @@ export default class Product extends Authentication {
                 id
                 alt
                 mediaContentType
+                status
+                ... on Video {
+                  sources {
+                    url
+                    mimeType
+                  }
+                }
               }
             }
           }
@@ -1274,9 +1547,9 @@ export default class Product extends Authentication {
         },
         media: [
           {
-            mediaContentType: 'IMAGE',
+            mediaContentType: mediaContentType,
             originalSource: mediaUrl,
-            ...(alt && { alt }), // Conditionally add alt if provided
+            ...(alt && { alt }),
           },
         ],
       },
@@ -1375,6 +1648,92 @@ export default class Product extends Authentication {
       variables: {
         id: productId,
         moves,
+      },
+    }
+  }
+
+  /**
+   * Poll video media status until processed
+   * Shopify videos require more processing time than images
+   * Video status can be: UPLOADED, PROCESSING, READY, FAILED
+   * @param productId - The product ID
+   * @param mediaId - The media ID to check
+   * @param maxAttempts - Maximum polling attempts (default: 60 = ~3 minutes)
+   * @param intervalMs - Interval between attempts in ms (default: 3000)
+   * @returns Object with ready status and video sources if ready
+   */
+  public async waitForVideoProcessing(
+    productId: string,
+    mediaId: string,
+    maxAttempts: number = 60,
+    intervalMs: number = 3000
+  ): Promise<{ ready: boolean; sources?: Array<{ url: string; mimeType: string }> }> {
+    console.log(`🎬 Polling video processing status for ${mediaId}...`)
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const { query, variables } = this.getVideoStatusQuery(productId)
+        const response = await this.fetchGraphQL(query, variables)
+
+        const mediaNodes = response?.product?.media?.nodes || []
+        const media = mediaNodes.find((m: { id: string }) => m.id === mediaId)
+
+        if (!media) {
+          console.log(`⏳ Video media ${mediaId} not found yet, attempt ${attempt}/${maxAttempts}`)
+          await new Promise((resolve) => setTimeout(resolve, intervalMs))
+          continue
+        }
+
+        const status = media.status
+
+        if (status === 'READY') {
+          console.log(
+            `✅ Video ready after ${attempt} attempts (${(attempt * intervalMs) / 1000}s)`
+          )
+          return { ready: true, sources: media.sources }
+        }
+
+        if (status === 'FAILED') {
+          console.error(`❌ Video processing failed for ${mediaId}`)
+          return { ready: false }
+        }
+
+        // PROCESSING or UPLOADED - continue polling
+        console.log(`⏳ Video status: ${status}, attempt ${attempt}/${maxAttempts}`)
+      } catch (error) {
+        console.warn(`⚠️  Error checking video status on attempt ${attempt}:`, error.message)
+      }
+
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs))
+      }
+    }
+
+    console.warn(`⚠️  Video processing timeout after ${maxAttempts} attempts`)
+    return { ready: false }
+  }
+
+  private getVideoStatusQuery(productId: string) {
+    return {
+      query: `query GetVideoStatus($productId: ID!) {
+        product(id: $productId) {
+          media(first: 50) {
+            nodes {
+              id
+              status
+              mediaContentType
+              ... on Video {
+                sources {
+                  url
+                  mimeType
+                }
+              }
+            }
+          }
+        }
+      }`,
+      variables: {
+        productId,
       },
     }
   }

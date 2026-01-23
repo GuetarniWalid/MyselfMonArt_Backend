@@ -2,13 +2,18 @@ import { z } from 'zod'
 import type { MockupMetadata } from 'Types/ProductPublisher'
 
 export default class MockupAltGenerator {
-  public prepareRequest(mockupMetadata: MockupMetadata, mockupContext: string) {
+  public prepareRequest(
+    mockupMetadata: MockupMetadata,
+    mockupContext: string,
+    mediaType: 'image' | 'video' = 'image'
+  ) {
     return {
       responseFormat: this.getResponseFormat(),
-      systemPrompt: this.getSystemPrompt(mockupMetadata.productType),
+      systemPrompt: this.getSystemPrompt(mockupMetadata.productType, mediaType),
       payload: {
         ...mockupMetadata,
         mockupContext,
+        mediaType,
       },
     }
   }
@@ -29,7 +34,10 @@ export default class MockupAltGenerator {
     })
   }
 
-  private getSystemPrompt(productType: 'poster' | 'painting' | 'tapestry') {
+  private getSystemPrompt(
+    productType: 'poster' | 'painting' | 'tapestry',
+    mediaType: 'image' | 'video' = 'image'
+  ) {
     const productTypeFr =
       productType === 'painting'
         ? 'Tableau sur toile'
@@ -40,6 +48,20 @@ export default class MockupAltGenerator {
     const productTypeKeyword =
       productType === 'painting' ? 'tableau' : productType === 'poster' ? 'affiche' : 'tapisserie'
 
+    const isVideo = mediaType === 'video'
+    const mediaDescription = isVideo ? 'vidéo mockup lifestyle' : 'image mockup lifestyle'
+
+    // Video-specific context to add to the prompt
+    const videoContext = isVideo
+      ? `
+<video_context>
+  Ce mockup est une VIDÉO qui montre l'œuvre dans un environnement animé.
+  L'alt text doit décrire la scène de manière évocatrice, en mentionnant
+  l'ambiance ou le mouvement suggéré par la vidéo (ex: "lumière naturelle", "ambiance chaleureuse").
+  Le filename doit inclure "video-" comme préfixe après le type de produit.
+</video_context>`
+      : ''
+
     return `
 <role>
   Tu es un expert SEO et e-commerce pour MyselfMonArt, boutique française spécialisée dans l'art mural décoratif haut de gamme.
@@ -48,8 +70,10 @@ export default class MockupAltGenerator {
 <context>
   <boutique>MyselfMonArt.com - Art mural décoratif</boutique>
   <type_produit>${productTypeFr}</type_produit>
-  <objectif>Générer un alt text SEO optimisé + nom de fichier pour une image mockup lifestyle</objectif>
+  <type_media>${isVideo ? 'Vidéo' : 'Image'}</type_media>
+  <objectif>Générer un alt text SEO optimisé + nom de fichier pour une ${mediaDescription}</objectif>
 </context>
+${videoContext}
 
 <situation>
   Tu as une œuvre murale (${productTypeFr}) photographiée dans un cadre lifestyle (mockup).
@@ -153,12 +177,17 @@ export default class MockupAltGenerator {
   /**
    * Prepare request for filename-only generation (when alt is copied from main image)
    */
-  public prepareFilenameRequest(mockupMetadata: MockupMetadata, mockupContext: string) {
+  public prepareFilenameRequest(
+    mockupMetadata: MockupMetadata,
+    mockupContext: string,
+    mediaType: 'image' | 'video' = 'image'
+  ) {
     return {
-      systemPrompt: this.getFilenameSystemPrompt(mockupMetadata.productType),
+      systemPrompt: this.getFilenameSystemPrompt(mockupMetadata.productType, mediaType),
       payload: {
         ...mockupMetadata,
         mockupContext,
+        mediaType,
       },
     }
   }
@@ -166,9 +195,18 @@ export default class MockupAltGenerator {
   /**
    * System prompt for filename-only generation
    */
-  private getFilenameSystemPrompt(productType: 'poster' | 'painting' | 'tapestry') {
+  private getFilenameSystemPrompt(
+    productType: 'poster' | 'painting' | 'tapestry',
+    mediaType: 'image' | 'video' = 'image'
+  ) {
     const productTypeKeyword =
       productType === 'painting' ? 'tableau' : productType === 'poster' ? 'affiche' : 'tapisserie'
+
+    const isVideo = mediaType === 'video'
+    const mediaDescription = isVideo ? 'vidéo mockup' : 'image mockup'
+    const videoNote = isVideo
+      ? '\n  Pour les vidéos, inclure "video-" après le type de produit (ex: "tableau-video-lion-salon").'
+      : ''
 
     return `
 <role>
@@ -176,8 +214,8 @@ export default class MockupAltGenerator {
 </role>
 
 <context>
-  Tu dois générer UNIQUEMENT un nom de fichier SEO-optimisé pour une image mockup.
-  Le texte alternatif (alt) est déjà fourni - tu n'as PAS besoin de le générer.
+  Tu dois générer UNIQUEMENT un nom de fichier SEO-optimisé pour une ${mediaDescription}.
+  Le texte alternatif (alt) est déjà fourni - tu n'as PAS besoin de le générer.${videoNote}
 </context>
 
 <input_data>

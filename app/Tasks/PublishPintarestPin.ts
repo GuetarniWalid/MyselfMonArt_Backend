@@ -13,6 +13,7 @@ export default class PublishPinterestPin extends BaseTask {
   }
 
   public async handle() {
+    return
     try {
       logTaskBoundary(true, 'Publish Pinterest Pin')
 

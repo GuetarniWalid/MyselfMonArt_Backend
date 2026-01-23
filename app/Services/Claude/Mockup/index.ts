@@ -32,18 +32,23 @@ export default class Mockup extends Authentication {
   }
 
   /**
-   * Generate alt text and filename for mockup image using Claude
+   * Generate alt text and filename for mockup image/video using Claude
    * Uses the same MockupAltGenerator as ProductPublisher for consistency
+   * @param metadata - Product metadata for alt generation
+   * @param mockupContext - Context description from context.txt
+   * @param mediaType - Type of media: 'image' or 'video' (default: 'image')
    */
   public async generateMockupAlt(
     metadata: MockupMetadata,
-    mockupContext: string
+    mockupContext: string,
+    mediaType: 'image' | 'video' = 'image'
   ): Promise<{ alt: string; filename: string }> {
     return this.retryOperation(async () => {
       const generator = new MockupAltGenerator()
       const { responseFormat, systemPrompt, payload } = generator.prepareRequest(
         metadata,
-        mockupContext
+        mockupContext,
+        mediaType
       )
       const jsonSchema: any = zodToJsonSchema(responseFormat, 'mockup_alt')
 
@@ -97,16 +102,24 @@ export default class Mockup extends Authentication {
   }
 
   /**
-   * Generate filename only for mockup image (when alt is copied from main image)
+   * Generate filename only for mockup image/video (when alt is copied from main image)
    * Uses a simpler prompt focused only on filename generation
+   * @param metadata - Product metadata for filename generation
+   * @param mockupContext - Context description from context.txt
+   * @param mediaType - Type of media: 'image' or 'video' (default: 'image')
    */
   public async generateMockupFilename(
     metadata: MockupMetadata,
-    mockupContext: string
+    mockupContext: string,
+    mediaType: 'image' | 'video' = 'image'
   ): Promise<string> {
     return this.retryOperation(async () => {
       const generator = new MockupAltGenerator()
-      const { systemPrompt, payload } = generator.prepareFilenameRequest(metadata, mockupContext)
+      const { systemPrompt, payload } = generator.prepareFilenameRequest(
+        metadata,
+        mockupContext,
+        mediaType
+      )
 
       const filenameSchema = {
         type: 'object' as const,

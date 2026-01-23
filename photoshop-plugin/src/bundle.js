@@ -17,6 +17,8 @@ const config = {
   ENV: 'development',
 }
 
+console.log(`🎬 Mockup Automation Plugin v${config.VERSION} loaded`)
+
 class MockupProcessor {
   constructor(onLog, onStep) {
     this.onLog = onLog
@@ -144,14 +146,19 @@ class MockupProcessor {
   }
 
   /**
-   * Get specific mockup PSD file based on orientation
+   * Get specific mockup PSD file based on orientation and template type
+   * @param orientation - 'landscape', 'portrait', or 'square'
+   * @param templateType - 'image' or 'video' (defaults to 'image')
    */
-  async getMockupTemplateForOrientation(orientation) {
+  async getMockupTemplateForOrientation(orientation, templateType = 'image') {
     if (!this.mockupTemplateFolder) {
       throw new Error('No mockup template folder selected')
     }
 
-    this.log('info', `Selecting ${orientation}.psd from ${this.mockupTemplateFolder}`)
+    // For video templates, look for {orientation}-video.psd
+    const psdFileName = templateType === 'video' ? `${orientation}-video.psd` : `${orientation}.psd`
+
+    this.log('info', `Selecting ${psdFileName} from ${this.mockupTemplateFolder}`)
 
     try {
       // Get plugin folder
@@ -164,7 +171,6 @@ class MockupProcessor {
       const templateFolder = await categoryFolder.getEntry(subfolderName)
 
       // Get the specific PSD file
-      const psdFileName = `${orientation}.psd`
       const psdFile = await templateFolder.getEntry(psdFileName)
 
       if (!psdFile) {
@@ -485,6 +491,17 @@ class MockupProcessor {
       const docNames = app.documents.map((d) => `"${d.name}" (ID:${d.id})`).join(', ')
       this.log('info', `All open documents: ${docNames}`)
 
+      // Verify we're in the smart object document, not the main document
+      this.log(
+        'info',
+        `🔍 DIAGNOSTIC: About to place image in document "${smartObjectDoc.name}" (ID: ${smartObjectDoc.id})`
+      )
+      this.log('info', `🔍 DIAGNOSTIC: Main doc was "${mainDoc.name}" (ID: ${mainDoc.id})`)
+      if (smartObjectDoc.id === mainDoc.id) {
+        this.log('error', '❌ CRITICAL: Smart object did not open! Still in main document!')
+        throw new Error('Smart object failed to open - cannot place image correctly')
+      }
+
       // Place the new image
       this.log('info', 'Placing new image as top layer in smart object...')
       await batchPlay(
@@ -496,6 +513,12 @@ class MockupProcessor {
           },
         ],
         {}
+      )
+
+      // Verify image was placed in the correct document
+      this.log(
+        'info',
+        `🔍 DIAGNOSTIC: After place, active doc is "${app.activeDocument.name}" (ID: ${app.activeDocument.id})`
       )
 
       // Get canvas and image dimensions for cover calculation
@@ -648,6 +671,121 @@ class MockupProcessor {
   }
 
   /**
+   * Save document as MP4 video
+   * Uses batchPlay to render video from Photoshop timeline
+   * Requires document to have a timeline/video layers
+   *
+   * Note: The export dialog may still appear despite dialogOptions settings.
+   * This is a known limitation with video export in Photoshop UXP.
+   * Use Alchemist plugin to capture the exact descriptor for your PS version:
+   * https://github.com/jardicc/alchemist
+   */
+  async saveAsMP4(doc, outputName) {
+    this.log('info', `Rendering video as: ${outputName}`)
+
+    try {
+      if (!this.tempFolder) {
+        await this.initTempFolder()
+      }
+
+      // Get folder token for batchPlay (video export uses directory + name separately)
+      const { storage } = require('uxp')
+      const folderToken = await storage.localFileSystem.createSessionToken(this.tempFolder)
+
+      this.log('info', `Folder token created for video export`)
+      this.log('info', `Output folder: ${this.tempFolder.nativePath}`)
+      this.log('info', `Output filename: ${outputName}`)
+
+      // Get document ID for the target
+      const docId = doc.id
+
+      // Estimate total frames (assume 30fps and 10 second default duration)
+      // This will be overridden by useDocumentFrameRate if timeline exists
+      const estimatedOutFrame = 300 // 10 seconds at 30fps
+
+      // Render video using batchPlay with correct descriptor structure
+      // Based on: https://forums.creativeclouddeveloper.com/t/how-to-export-a-video-programmatically-with-batchplay/9701
+      const { batchPlay } = require('photoshop').action
+      const { core } = require('photoshop')
+
+      await core.executeAsModal(
+        async () => {
+          return await batchPlay(
+            [
+              {
+                _obj: 'export',
+                _target: [{ _ref: 'document', _id: docId }],
+                using: {
+                  _obj: 'videoExport',
+                  // Directory token (folder, not file)
+                  directory: {
+                    _path: folderToken,
+                    _kind: 'local',
+                  },
+                  // Filename (including extension)
+                  name: outputName,
+                  // Adobe Media Encoder format
+                  ameFormatName: 'H.264',
+                  // Preset name - "High Quality" is commonly available
+                  // Alternative: "1_High Quality.epr", "YouTube 1080p HD"
+                  amePresetName: 'High Quality',
+                  // Use document's native size
+                  useDocumentSize: true,
+                  // Use document's timeline frame rate
+                  useDocumentFrameRate: true,
+                  // Pixel aspect ratio from document
+                  pixelAspectRatio: {
+                    _enum: 'pixelAspectRatio',
+                    _value: 'document',
+                  },
+                  // Field order preset
+                  fieldOrder: {
+                    _enum: 'videoField',
+                    _value: 'preset',
+                  },
+                  // Manage color
+                  manage: true,
+                  // Frame range (0 = start of timeline)
+                  inFrame: 0,
+                  // End frame (will use actual timeline length if shorter)
+                  outFrame: estimatedOutFrame,
+                  // No alpha channel rendering
+                  renderAlpha: {
+                    _enum: 'alphaRendering',
+                    _value: 'none',
+                  },
+                  // Quality 1 = highest
+                  quality: 1,
+                  // 3D quality threshold
+                  Z3DPrefHighQualityErrorThreshold: 5,
+                },
+                _options: {
+                  dialogOptions: 'dontDisplay',
+                },
+              },
+            ],
+            { modalBehavior: 'execute' }
+          )
+        },
+        { commandName: 'Export Video' }
+      )
+
+      // Construct the expected output path
+      const outputPath = `${this.tempFolder.nativePath}\\${outputName}`
+      this.log('success', `Video export completed. Expected path: ${outputPath}`)
+
+      // Try to get the file entry for the output
+      const outputFile = await this.tempFolder.getEntry(outputName)
+      return outputFile
+    } catch (error) {
+      this.log('error', `Video render failed: ${error.message}`)
+      // Log more details for debugging
+      console.error('Video export error details:', error)
+      throw error
+    }
+  }
+
+  /**
    * Close document
    */
   async closeDocument(doc, save = false) {
@@ -666,6 +804,15 @@ class MockupProcessor {
     this.log('info', `Processing job: ${job.id}`)
     this.log('info', `Product: ${job.productTitle}`)
     this.log('info', `Orientation: ${job.orientation}`)
+    this.log(
+      'info',
+      `Template Type: ${job.templateType || 'undefined'} (expected: 'video' or 'image')`
+    )
+    console.log(
+      '🔍 DEBUG processJob: job.templateType =',
+      job.templateType,
+      typeof job.templateType
+    )
 
     let doc = null
     let productImage = null
@@ -678,10 +825,14 @@ class MockupProcessor {
       productImage = await this.downloadImage(job.imageUrl, job.batchId, job.productId)
       this.step(1, 'completed')
 
-      // Step 2: Get mockup template based on orientation
+      // Step 2: Get mockup template based on orientation and type (image or video)
       this.step(2, 'active')
-      this.log('info', `Step 2/5: Selecting ${job.orientation} mockup...`)
-      const templateFile = await this.getMockupTemplateForOrientation(job.orientation)
+      const templateTypeSuffix = job.templateType === 'video' ? '-video' : ''
+      this.log('info', `Step 2/5: Selecting ${job.orientation}${templateTypeSuffix} mockup...`)
+      const templateFile = await this.getMockupTemplateForOrientation(
+        job.orientation,
+        job.templateType
+      )
       this.step(2, 'completed')
 
       // Step 3-5: Execute Photoshop operations in modal scope
@@ -706,13 +857,19 @@ class MockupProcessor {
           doc = mainDocAfter
           this.log('info', 'Using main document reference returned from smart object replacement')
 
-          // Step 5: Save result
+          // Step 5: Save result (image or video based on template type)
           this.step(5, 'active')
-          this.log('info', 'Step 5/5: Saving result...')
+          const isVideo = job.templateType === 'video'
+          this.log('info', `Step 5/5: Saving result as ${isVideo ? 'MP4 video' : 'JPEG image'}...`)
           const numericId = job.productId.split('/').pop()
-          const outputName = `mockup-${numericId}-${Date.now()}.jpg`
+          const extension = isVideo ? '.mp4' : '.jpg'
+          const outputName = `mockup-${numericId}-${Date.now()}${extension}`
 
-          outputFile = await this.saveAsJPEG(doc, outputName)
+          if (isVideo) {
+            outputFile = await this.saveAsMP4(doc, outputName)
+          } else {
+            outputFile = await this.saveAsJPEG(doc, outputName)
+          }
           this.step(5, 'completed')
 
           // Read file data INSIDE modal scope to ensure it's accessible
@@ -739,6 +896,7 @@ class MockupProcessor {
             fileName: outputFile.name,
             fileData: fileData, // Return binary data (might be null if read failed)
             outputFile: fileData ? null : outputFile, // Keep file reference if read failed
+            mediaType: isVideo ? 'VIDEO' : 'IMAGE', // Media type for Shopify upload
           }
         },
         {
@@ -976,6 +1134,7 @@ let targetImagePosition = 0 // Default to first image (0-indexed)
 let insertMode = 'replace' // 'replace' or 'insert' - default to replace (current behavior)
 let altTextMode = 'generate' // 'copy' or 'generate' - default to generate (AI generation)
 let selectedMockupContext = '' // Content from context.txt file in template folder
+let selectedTemplateType = 'image' // 'image' or 'video' - detected from template folder
 let dotAnimationInterval = null // Track the dot animation interval
 
 // Mode selection state
@@ -2629,6 +2788,21 @@ async function handleTemplateChange() {
       addLog('info', 'No context.txt found, using template path as context')
     }
 
+    // Detect video templates (video.txt marker or -video.psd suffix)
+    const videoMarker = entries.find(
+      (entry) => !entry.isFolder && entry.name.toLowerCase() === 'video.txt'
+    )
+    const hasVideoSuffix = entries.some(
+      (entry) => !entry.isFolder && entry.name.toLowerCase().includes('-video.psd')
+    )
+
+    if (videoMarker || hasVideoSuffix) {
+      selectedTemplateType = 'video'
+      addLog('info', '🎬 Video template detected - will export as MP4')
+    } else {
+      selectedTemplateType = 'image'
+    }
+
     if (imageFiles.length < 3) {
       addLog('warning', `Only ${imageFiles.length} images found, expected 3`)
     }
@@ -2786,8 +2960,11 @@ async function handleStartAutomation() {
     return
   }
 
-  // Verify we have 3 mockup files loaded
-  if (selectedMockupImages.length !== 3) {
+  // Verify we have mockup files loaded (3 for images, at least template exists for video)
+  if (selectedTemplateType === 'video') {
+    // Video templates don't need preview images, just the PSD with timeline
+    addLog('info', '🎬 Video template - skipping preview image validation')
+  } else if (selectedMockupImages.length !== 3) {
     addLog('error', 'Invalid mockup template - expected 3 files')
     return
   }
@@ -2875,6 +3052,7 @@ async function handleStartAutomation() {
         insertMode: insertMode,
         mockupContext: selectedMockupContext,
         copyAltFromMain: altTextMode === 'copy',
+        templateType: selectedTemplateType,
       }
     } else if (usingRangeSelection) {
       // Range selection mode - send productIds from range
@@ -2891,6 +3069,7 @@ async function handleStartAutomation() {
         insertMode: insertMode,
         mockupContext: selectedMockupContext,
         copyAltFromMain: altTextMode === 'copy',
+        templateType: selectedTemplateType,
       }
     } else {
       // Collection selection mode - send collectionIds
@@ -2903,20 +3082,24 @@ async function handleStartAutomation() {
         insertMode: insertMode,
         mockupContext: selectedMockupContext,
         copyAltFromMain: altTextMode === 'copy',
+        templateType: selectedTemplateType,
       }
     }
 
     // Give immediate visual feedback - activate step 1 right away
     updateStep(1, 'active')
 
-    // Debug log for alt text mode
+    // Debug log for alt text mode and template type
     console.log(
       `🔍 DEBUG: altTextMode = ${altTextMode}, copyAltFromMain = ${requestBody.copyAltFromMain}`
     )
+    console.log(`🔍 DEBUG: selectedTemplateType = ${selectedTemplateType}`)
+    console.log(`🔍 DEBUG: requestBody.templateType = ${requestBody.templateType}`)
     addLog(
       'info',
       `Alt text mode: ${altTextMode === 'copy' ? 'Copy from main' : 'Generate with AI'}`
     )
+    addLog('info', `Template type: ${selectedTemplateType}`)
 
     const response = await fetch(`${config.BACKEND_URL}/api/mockup/start-automation`, {
       method: 'POST',
@@ -3147,16 +3330,18 @@ function handleNewJob(message) {
 
   addLog('info', `New job received: ${job.productTitle}`)
   addLog('info', `Job ID: ${job.id}`)
+  addLog('info', `Template Type from backend: ${job.templateType || 'undefined'}`)
 
   // Add to queue
   jobQueue.push(job)
   addLog('info', `Job added to queue (${jobQueue.length} job(s) in queue)`)
 
-  console.log('🔍 DEBUG addJobToQueue:', {
-    jobId: job.id,
-    isProcessingJob,
-    queueLength: jobQueue.length,
-  })
+  console.log('🔍 DEBUG handleNewJob: Full job object:', JSON.stringify(job, null, 2))
+  console.log(
+    '🔍 DEBUG handleNewJob: job.templateType =',
+    job.templateType,
+    typeof job.templateType
+  )
 
   // Start processing if not already processing
   if (!isProcessingJob) {
@@ -3269,8 +3454,10 @@ async function processNextJob() {
           // Create FormData for file upload
           const formData = new FormData()
 
-          const blob = new Blob([fileData], { type: 'image/jpeg' })
-          console.log('🔍 DEBUG: Blob created, size:', blob.size)
+          // Use correct MIME type based on media type
+          const mimeType = result.mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg'
+          const blob = new Blob([fileData], { type: mimeType })
+          console.log('🔍 DEBUG: Blob created, size:', blob.size, 'type:', mimeType)
 
           formData.append('mockup', blob, result.fileName)
           formData.append('fileName', result.fileName)
@@ -3310,6 +3497,7 @@ async function processNextJob() {
             mockupTemplatePath: job.mockupTemplatePath || '',
             copyAltFromMain: job.copyAltFromMain || false,
             batchId: job.batchId || '',
+            mediaType: result.mediaType || 'IMAGE', // Pass media type for Shopify (VIDEO or IMAGE)
             success: true,
           })
 

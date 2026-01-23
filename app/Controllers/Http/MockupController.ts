@@ -8,6 +8,7 @@ import Env from '@ioc:Adonis/Core/Env'
 import Shopify from 'App/Services/Shopify'
 import MockupQueue from 'App/Services/MockupQueue'
 import ClaudeMockup from 'App/Services/Claude/Mockup'
+import VideoCompressor from 'App/Services/Video/VideoCompressor'
 
 export default class MockupController {
   private queue = MockupQueue.getInstance()
@@ -146,6 +147,12 @@ export default class MockupController {
   // Get pending jobs
   public async getPendingJobs({ response }: HttpContextContract) {
     const jobs = this.queue.getPendingJobs()
+    if (jobs.length > 0) {
+      console.log(`🔍 DEBUG getPendingJobs: Sending ${jobs.length} job(s) to plugin`)
+      jobs.forEach((job: any) => {
+        console.log(`   - Job ${job.id}: templateType = ${job.templateType}`)
+      })
+    }
     return response.ok(jobs)
   }
 
@@ -194,6 +201,10 @@ export default class MockupController {
           (data.mockupContext as string) || (jobMetadata?.mockupContext as string) || ''
         const copyAltFromMain =
           (data.copyAltFromMain as boolean) || (jobMetadata?.copyAltFromMain as boolean) || false
+        const mediaType =
+          (data.mediaType as 'IMAGE' | 'VIDEO') ||
+          (jobMetadata?.mediaType as 'IMAGE' | 'VIDEO') ||
+          'IMAGE'
 
         console.log('🔍 DEBUG: Starting Shopify upload with:', {
           resultPath: data.resultPath,
@@ -201,6 +212,7 @@ export default class MockupController {
           targetImagePosition: data.targetImagePosition,
           insertMode: insertMode,
           copyAltFromMain: copyAltFromMain,
+          mediaType: mediaType,
           mockupContext: mockupContext
             ? `${mockupContext.substring(0, 50)}${mockupContext.length > 50 ? '...' : ''}`
             : '(none)',
@@ -220,6 +232,7 @@ export default class MockupController {
             mockupTemplatePath: mockupTemplatePath,
             copyAltFromMain: copyAltFromMain,
             batchId: batchId,
+            mediaType: mediaType,
           })
           console.log(`✅ DEBUG: Mockup uploaded to Shopify for product ${data.productId}`)
           console.log(`🎨 Mockup uploaded to Shopify for product ${data.productId}`)
@@ -304,14 +317,14 @@ export default class MockupController {
     return response.ok({ success: true })
   }
 
-  // Upload mockup file from plugin
+  // Upload mockup file from plugin (supports images and videos)
   public async uploadMockup({ request, response }: HttpContextContract) {
     console.log('🔍 DEBUG: uploadMockup endpoint called')
 
     try {
       const mockupFile = request.file('mockup', {
-        size: '20mb',
-        extnames: ['jpg', 'jpeg', 'png'],
+        size: '500mb', // Increased for video files
+        extnames: ['jpg', 'jpeg', 'png', 'mp4', 'mov'],
       })
 
       console.log('🔍 DEBUG: mockupFile:', {
@@ -357,6 +370,12 @@ export default class MockupController {
       console.log('✅ DEBUG: File saved successfully')
       console.log(`📤 Mockup file uploaded: ${fileName}`)
 
+      // Detect media type from extension
+      const extname = mockupFile.extname?.toLowerCase() || ''
+      const isVideo = ['mp4', 'mov'].includes(extname)
+      const mediaType = isVideo ? 'VIDEO' : 'IMAGE'
+      console.log(`🔍 DEBUG: Detected media type: ${mediaType} (extension: ${extname})`)
+
       // Track file to batch for cleanup
       if (batchId && MockupController.batchFiles.has(batchId)) {
         MockupController.batchFiles.get(batchId)?.push(filePath)
@@ -377,6 +396,7 @@ export default class MockupController {
         success: true,
         filePath: filePath,
         fileName: fileName,
+        mediaType: mediaType as 'IMAGE' | 'VIDEO',
       }
 
       console.log('🔍 DEBUG: Returning upload result:', result)
@@ -540,6 +560,7 @@ export default class MockupController {
       insertMode,
       mockupContext,
       copyAltFromMain,
+      templateType,
     } = request.only([
       'collectionIds',
       'productIds',
@@ -548,6 +569,7 @@ export default class MockupController {
       'insertMode',
       'mockupContext',
       'copyAltFromMain',
+      'templateType',
     ])
 
     // Validate template path
@@ -569,8 +591,14 @@ export default class MockupController {
     // Validate insert mode (optional, defaults to 'replace')
     const validInsertMode = insertMode === 'insert' ? 'insert' : 'replace'
 
+    // Validate template type (defaults to 'image')
+    const validTemplateType = templateType === 'video' ? 'video' : 'image'
+
     console.log('🎨 Starting Mockup Automation via API')
     console.log(`   Insert Mode: ${validInsertMode}`)
+    console.log(
+      `   Template Type: ${validTemplateType}${validTemplateType === 'video' ? ' 🎬' : ''}`
+    )
     console.log(
       `   Mockup Context: ${mockupContext ? `"${mockupContext.substring(0, 50)}${mockupContext.length > 50 ? '...' : ''}"` : '(none, using template path)'}`
     )
@@ -724,10 +752,12 @@ export default class MockupController {
           mockupContext: mockupContext || '', // Context from context.txt
           copyAltFromMain: copyAltFromMain || false, // Copy alt from main image or generate with AI
           batchId: batchId, // Track batch for cleanup
+          templateType: validTemplateType, // 'image' or 'video'
         }
 
         this.queue.addJob(job)
         console.log(`   📝 Job added to queue: ${jobId}`)
+        console.log(`   🔍 DEBUG: Job templateType = ${job.templateType}`)
         jobs.push(jobId)
       }
 
@@ -807,6 +837,7 @@ export default class MockupController {
   /**
    * Upload mockup to Shopify and replace or insert product image at target position
    * @param insertMode - 'replace' to replace existing image, 'insert' to insert and shift others
+   * @param mediaType - Type of media: 'IMAGE' or 'VIDEO' (default: 'IMAGE')
    */
   private async uploadMockupToShopify({
     productId,
@@ -817,6 +848,7 @@ export default class MockupController {
     mockupContext,
     copyAltFromMain = false,
     batchId,
+    mediaType = 'IMAGE',
   }: {
     productId: string
     mockupFilePath: string
@@ -826,6 +858,7 @@ export default class MockupController {
     mockupContext?: string
     copyAltFromMain?: boolean
     batchId?: string
+    mediaType?: 'IMAGE' | 'VIDEO'
   }): Promise<{
     reordered: boolean
     oldMediaDetached: boolean
@@ -926,6 +959,9 @@ export default class MockupController {
 
       let generatedFilename: string | undefined
 
+      // Convert mediaType for alt generator (lowercase format)
+      const altMediaType = mediaType === 'VIDEO' ? 'video' : 'image'
+
       if (copyAltFromMain && mainAlt && mainAlt.length >= 10) {
         // COPY MODE: Use mainAlt directly, only generate filename via Claude
         console.log(`🔄 Copy alt mode: using mainAlt directly, generating filename only`)
@@ -935,7 +971,8 @@ export default class MockupController {
         // Generate filename only via Claude
         generatedFilename = await claudeMockup.generateMockupFilename(
           mockupMetadata,
-          mockupContext || mockupTemplatePath || ''
+          mockupContext || mockupTemplatePath || '',
+          altMediaType
         )
         console.log(`   📝 Generated filename: ${generatedFilename}`)
       } else {
@@ -947,7 +984,8 @@ export default class MockupController {
 
         const altResult = await claudeMockup.generateMockupAlt(
           mockupMetadata,
-          mockupContext || mockupTemplatePath || ''
+          mockupContext || mockupTemplatePath || '',
+          altMediaType
         )
 
         // Validate minimum length (50 chars for quality)
@@ -968,6 +1006,38 @@ export default class MockupController {
         generatedFilename = altResult.filename
       }
 
+      // === VIDEO COMPRESSION (before rename) ===
+      // Compress video files using FFmpeg to reduce size before Shopify upload
+      if (mediaType === 'VIDEO') {
+        console.log(`🎬 Video detected, compressing before upload...`)
+        const videoCompressor = new VideoCompressor()
+
+        const compressionResult = await videoCompressor.compressVideo(mockupFilePath, {
+          crf: 23, // Good quality/size balance (18-28, lower = better quality)
+          preset: 'medium', // Balanced encoding speed
+          maxWidth: 1920,
+          maxHeight: 1080,
+          timeout: 10 * 60 * 1000, // 10 minutes max
+        })
+
+        if (compressionResult.success) {
+          console.log(
+            `✅ Video compressed: ${videoCompressor.formatFileSize(compressionResult.originalSize)} → ${videoCompressor.formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(2)}x reduction)`
+          )
+          // Update file path if extension changed (e.g., .mov → .mp4)
+          if (compressionResult.outputPath !== mockupFilePath) {
+            console.log(`   📝 Output path updated: ${compressionResult.outputPath}`)
+            mockupFilePath = compressionResult.outputPath
+            // Note: fileName is const, but subsequent code uses mockupFilePath for file operations
+          }
+        } else {
+          // Log warning but continue with original file (graceful degradation)
+          console.warn(`⚠️  Video compression failed: ${compressionResult.error}`)
+          console.warn(`   Continuing with original video file`)
+        }
+      }
+      // === END VIDEO COMPRESSION ===
+
       // Handle AI-generated filename and file rename (always use AI filename, sanitize if needed)
       if (generatedFilename) {
         const sanitizedFilename = this.sanitizeFilename(generatedFilename)
@@ -976,11 +1046,19 @@ export default class MockupController {
           console.log(`   📝 Sanitized to: ${sanitizedFilename}`)
         }
 
+        // Use original file extension (supports both images and videos)
+        const originalExtension =
+          path.extname(mockupFilePath) || (mediaType === 'VIDEO' ? '.mp4' : '.jpg')
+
         // Find unique filename (handles duplicates)
         const assetsDir = Application.publicPath('assets')
-        const uniqueFilename = this.findUniqueFilename(sanitizedFilename, '.jpg', assetsDir)
+        const uniqueFilename = this.findUniqueFilename(
+          sanitizedFilename,
+          originalExtension,
+          assetsDir
+        )
 
-        if (uniqueFilename !== `${sanitizedFilename}.jpg`) {
+        if (uniqueFilename !== `${sanitizedFilename}${originalExtension}`) {
           console.log(`   ⚠️  Duplicate detected, using: ${uniqueFilename}`)
         }
 
@@ -1035,7 +1113,15 @@ export default class MockupController {
     console.log(`🌐 Final public URL: ${finalPublicUrl}`)
 
     // 3. Add new media to product using final public URL with alt text (productUpdate handles upload internally)
-    const allMedia = await shopify.product.createMedia(productId, finalPublicUrl, altText)
+    // For videos: pass local file path for staged upload (Shopify requirement)
+    console.log(`🎬 Creating media with type: ${mediaType}`)
+    const allMedia = await shopify.product.createMedia(
+      productId,
+      finalPublicUrl,
+      altText,
+      mediaType,
+      mediaType === 'VIDEO' ? finalFilePath : undefined
+    )
 
     // Validate that we got media back
     if (!allMedia || allMedia.length === 0) {
@@ -1045,6 +1131,17 @@ export default class MockupController {
     // productUpdate returns ALL media nodes - the new one is at the end
     const newMediaId = allMedia[allMedia.length - 1].id
     console.log(`✅ New media added with ID: ${newMediaId} (appended to end)`)
+
+    // 4. For videos, wait for Shopify to process the video before continuing
+    if (mediaType === 'VIDEO') {
+      console.log(`🎬 Video detected - waiting for Shopify processing...`)
+      const videoStatus = await shopify.product.waitForVideoProcessing(productId, newMediaId)
+      if (!videoStatus.ready) {
+        console.warn(`⚠️  Video processing may not be complete, continuing anyway`)
+      } else {
+        console.log(`✅ Video processing complete`)
+      }
+    }
 
     // 5. Get updated product to see current media state
     const updatedProduct = await shopify.product.getProductById(productId)
