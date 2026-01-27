@@ -85,8 +85,8 @@ export default class Webhook extends Authentication {
   }
 
   public async createWebhookSubscription(
-    topic: 'PRODUCTS_UPDATE' | 'PRODUCTS_CREATE',
-    metafieldNamespaces: string[]
+    topic: 'PRODUCTS_UPDATE' | 'PRODUCTS_CREATE' | 'PRODUCTS_DELETE',
+    metafieldNamespaces: string[] = []
   ) {
     const { query, variables } = this.createWebhookSubscriptionQuery(topic, metafieldNamespaces)
     const response = await this.fetchGraphQL(query, variables)
@@ -94,7 +94,7 @@ export default class Webhook extends Authentication {
   }
 
   private createWebhookSubscriptionQuery(
-    topic: 'PRODUCTS_UPDATE' | 'PRODUCTS_CREATE',
+    topic: 'PRODUCTS_UPDATE' | 'PRODUCTS_CREATE' | 'PRODUCTS_DELETE',
     metafieldNamespaces: string[]
   ) {
     return {

@@ -772,17 +772,48 @@ class MockupProcessor {
 
       // Construct the expected output path
       const outputPath = `${this.tempFolder.nativePath}\\${outputName}`
-      this.log('success', `Video export completed. Expected path: ${outputPath}`)
+      this.log('info', `Video export initiated. Waiting for file: ${outputPath}`)
 
-      // Try to get the file entry for the output
-      const outputFile = await this.tempFolder.getEntry(outputName)
-      return outputFile
+      // Poll for file existence - batchPlay returns before export completes
+      const maxWaitMs = 120000 // 2 minutes timeout for video rendering
+      const pollIntervalMs = 1000 // Check every second
+      let elapsed = 0
+
+      while (elapsed < maxWaitMs) {
+        try {
+          const outputFile = await this.tempFolder.getEntry(outputName)
+          if (outputFile) {
+            // File exists - but wait a bit more to ensure it's fully written
+            await this.sleep(500)
+            this.log('success', `Video export completed after ${elapsed / 1000}s`)
+            return outputFile
+          }
+        } catch (e) {
+          // File doesn't exist yet, continue polling
+        }
+
+        if (elapsed > 0 && elapsed % 10000 === 0) {
+          this.log('info', `Still waiting for video export... (${elapsed / 1000}s)`)
+        }
+
+        await this.sleep(pollIntervalMs)
+        elapsed += pollIntervalMs
+      }
+
+      throw new Error(`Video export timeout: file not found after ${maxWaitMs / 1000}s`)
     } catch (error) {
       this.log('error', `Video render failed: ${error.message}`)
       // Log more details for debugging
       console.error('Video export error details:', error)
       throw error
     }
+  }
+
+  /**
+   * Sleep helper for polling
+   */
+  sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms))
   }
 
   /**

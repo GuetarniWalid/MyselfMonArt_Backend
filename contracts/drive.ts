@@ -9,5 +9,14 @@ import type { InferDisksFromConfig } from '@adonisjs/core/build/config'
 import type driveConfig from '../config/drive'
 
 declare module '@ioc:Adonis/Core/Drive' {
+  // eslint-disable-next-line @typescript-eslint/no-empty-interface
   interface DisksList extends InferDisksFromConfig<typeof driveConfig> {}
+}
+
+// Augment to allow 'spaces' disk (S3-compatible driver for Digital Ocean Spaces)
+declare module '@ioc:Adonis/Core/Drive' {
+  interface DisksList {
+    // @ts-ignore - S3 driver configuration for Digital Ocean Spaces
+    spaces: any
+  }
 }

@@ -103,4 +103,105 @@ export default class Metafield extends Authentication {
       },
     }
   }
+
+  // Video metafield helpers
+  private readonly VIDEO_NAMESPACE = 'video'
+  private readonly VIDEO_URL_KEY = 'url'
+  private readonly VIDEO_ALT_KEY = 'alt'
+
+  /**
+   * Get the video URL from a product's metafield
+   * @param productId - The product GID (e.g., gid://shopify/Product/123)
+   * @returns The video URL or null if not set
+   */
+  public async getVideoUrl(productId: string): Promise<string | null> {
+    const query = `
+      query GetProductVideoUrl($id: ID!) {
+        product(id: $id) {
+          metafield(namespace: "${this.VIDEO_NAMESPACE}", key: "${this.VIDEO_URL_KEY}") {
+            value
+          }
+        }
+      }
+    `
+
+    const response = await this.fetchGraphQL(query, { id: productId })
+    return response.product?.metafield?.value || null
+  }
+
+  /**
+   * Set the video URL metafield on a product
+   * @param productId - The product GID (e.g., gid://shopify/Product/123)
+   * @param url - The video CDN URL
+   */
+  public async setVideoUrl(productId: string, url: string): Promise<void> {
+    console.log(`📝 Setting video URL metafield for product ${productId}`)
+    console.log(`   🔗 URL: ${url}`)
+
+    await this.update(productId, this.VIDEO_NAMESPACE, this.VIDEO_URL_KEY, url)
+
+    console.log(`   ✅ Metafield updated successfully`)
+  }
+
+  /**
+   * Set the video alt text metafield on a product
+   * @param productId - The product GID (e.g., gid://shopify/Product/123)
+   * @param alt - The video alt text for accessibility
+   */
+  public async setVideoAlt(productId: string, alt: string): Promise<void> {
+    console.log(`📝 Setting video alt metafield for product ${productId}`)
+    console.log(`   📄 Alt: ${alt.substring(0, 50)}...`)
+
+    await this.update(productId, this.VIDEO_NAMESPACE, this.VIDEO_ALT_KEY, alt)
+
+    console.log(`   ✅ Video alt metafield updated successfully`)
+  }
+
+  /**
+   * Delete the video alt text metafield from a product
+   * @param productId - The product GID (e.g., gid://shopify/Product/123)
+   */
+  public async deleteVideoAlt(productId: string): Promise<void> {
+    console.log(`🗑️  Deleting video alt metafield for product ${productId}`)
+
+    const query = `
+      mutation MetafieldsDelete($metafields: [MetafieldIdentifierInput!]!) {
+        metafieldsDelete(metafields: $metafields) {
+          deletedMetafields {
+            key
+            namespace
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `
+
+    const variables = {
+      metafields: [
+        {
+          ownerId: productId,
+          namespace: this.VIDEO_NAMESPACE,
+          key: this.VIDEO_ALT_KEY,
+        },
+      ],
+    }
+
+    try {
+      const response = await this.fetchGraphQL(query, variables)
+
+      if (response.metafieldsDelete?.userErrors?.length) {
+        console.warn(
+          `⚠️  Error deleting video alt metafield: ${response.metafieldsDelete.userErrors[0].message}`
+        )
+      } else {
+        console.log(`   ✅ Video alt metafield deleted successfully`)
+      }
+    } catch (error) {
+      // Ignore errors - metafield might not exist
+      console.log(`   ℹ️  Video alt metafield may not exist, skipping deletion`)
+    }
+  }
 }

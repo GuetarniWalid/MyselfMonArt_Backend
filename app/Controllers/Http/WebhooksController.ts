@@ -6,6 +6,7 @@ import ChatGPT from 'App/Services/ChatGPT'
 import WebhookLog from 'App/Models/WebhookLog'
 import Database from '@ioc:Adonis/Lucid/Database'
 import { logTaskBoundary } from 'App/Utils/Logs'
+import VideoStorage from 'App/Services/VideoStorage'
 
 interface UpdateFailure {
   productId: string
@@ -265,6 +266,11 @@ export default class WebhooksController {
           break
         case 'products/update':
           await this.handleProductUpdate(id)
+          // Also check if video metafield was cleared
+          await this.handleVideoMetafieldCheck(id)
+          break
+        case 'products/delete':
+          await this.handleProductDelete(id)
           break
         default:
           console.warn(`Unhandled webhook topic in async processing: ${topic}`)
@@ -279,6 +285,73 @@ export default class WebhooksController {
         WebhooksController.processingProducts.delete(id)
         console.info(`🧹 Removed ${id} from processing set (cooldown complete)`)
       }, WebhooksController.COOLDOWN_PERIOD)
+    }
+  }
+
+  /**
+   * Handle product deletion: Delete associated video from DO Spaces
+   */
+  private async handleProductDelete(id: string | number): Promise<void> {
+    console.info(`🗑️  Handling product delete: ${id}`)
+
+    try {
+      const videoStorage = new VideoStorage()
+
+      // Convert to string and then to GID format for consistent handling
+      const idStr = String(id)
+      const productGid = idStr.startsWith('gid://') ? idStr : `gid://shopify/Product/${idStr}`
+
+      // delete() handles non-existent files gracefully (returns true)
+      const deleted = await videoStorage.delete(productGid)
+      if (!deleted) {
+        console.warn(`⚠️  Failed to delete video from DO Spaces for product ${id}`)
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error(`❌ Error deleting video for product ${id}:`, errorMessage)
+    }
+  }
+
+  /**
+   * Check if video metafield was cleared and delete video from DO Spaces if so.
+   * This is called on products/update to handle manual metafield clearing.
+   */
+  private async handleVideoMetafieldCheck(id: string | number): Promise<void> {
+    try {
+      // Convert to string and then to GID format
+      const idStr = String(id)
+      const productGid = idStr.startsWith('gid://') ? idStr : `gid://shopify/Product/${idStr}`
+
+      // Skip if an upload is currently in progress for this product
+      // This prevents race conditions where webhook fires during upload
+      if (VideoStorage.isUploadInProgress(productGid)) {
+        console.info(`ℹ️  Upload in progress for product ${id}, skipping video metafield check`)
+        return
+      }
+
+      const shopify = new Shopify()
+      const videoStorage = new VideoStorage()
+
+      // Check current metafield value
+      const currentVideoUrl = await shopify.metafield.getVideoUrl(productGid)
+
+      if (!currentVideoUrl) {
+        // Metafield is empty - delete video if it exists (delete() handles non-existent files gracefully)
+        console.info(
+          `🗑️  Video metafield empty for product ${id}, attempting cleanup from DO Spaces...`
+        )
+        const deleted = await videoStorage.delete(productGid)
+
+        if (!deleted) {
+          console.warn(`⚠️  Failed to delete video from DO Spaces`)
+        }
+
+        // Also delete the video alt metafield if it exists
+        await shopify.metafield.deleteVideoAlt(productGid)
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error(`❌ Error checking video metafield for product ${id}:`, errorMessage)
     }
   }
 

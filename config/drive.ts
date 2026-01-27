@@ -9,6 +9,17 @@ import Env from '@ioc:Adonis/Core/Env'
 import { driveConfig } from '@adonisjs/core/build/config'
 import Application from '@ioc:Adonis/Core/Application'
 
+// S3 config for Digital Ocean Spaces (defined separately to avoid TypeScript errors)
+const spacesConfig = {
+  driver: 's3' as const,
+  visibility: 'public' as const,
+  key: Env.get('DO_SPACES_KEY') || '',
+  secret: Env.get('DO_SPACES_SECRET') || '',
+  region: Env.get('DO_SPACES_REGION') || '',
+  bucket: Env.get('DO_SPACES_BUCKET') || '',
+  endpoint: Env.get('DO_SPACES_ENDPOINT') || '',
+}
+
 /*
 |--------------------------------------------------------------------------
 | Drive Config
@@ -18,7 +29,7 @@ import Application from '@ioc:Adonis/Core/Application'
 | defined inside the `contracts` directory.
 |
 */
-export default driveConfig({
+const config = driveConfig({
   /*
   |--------------------------------------------------------------------------
   | Default disk
@@ -28,7 +39,7 @@ export default driveConfig({
   | the `DRIVE_DISK` environment variable.
   |
   */
-  disk: Env.get('DRIVE_DISK'),
+  disk: Env.get('DRIVE_DISK') as 'local',
 
   disks: {
     /*
@@ -82,68 +93,20 @@ export default driveConfig({
 
     /*
     |--------------------------------------------------------------------------
-    | S3 Driver
+    | Digital Ocean Spaces Driver
     |--------------------------------------------------------------------------
     |
-    | Uses the S3 cloud storage to manage files. Make sure to install the s3
-    | drive separately when using it.
-    |
-    |**************************************************************************
-    | npm i @adonisjs/drive-s3
-    |**************************************************************************
+    | Uses Digital Ocean Spaces (S3-compatible) to store video files.
+    | Videos are stored with CDN delivery enabled.
+    | Note: This disk is added programmatically below to avoid TypeScript errors.
     |
     */
-    // s3: {
-    //   driver: 's3',
-    //   visibility: 'public',
-    //   key: Env.get('S3_KEY'),
-    //   secret: Env.get('S3_SECRET'),
-    //   region: Env.get('S3_REGION'),
-    //   bucket: Env.get('S3_BUCKET'),
-    //   endpoint: Env.get('S3_ENDPOINT'),
-    //
-    //  // For minio to work
-    //  // forcePathStyle: true,
-    // },
-
-    /*
-    |--------------------------------------------------------------------------
-    | GCS Driver
-    |--------------------------------------------------------------------------
-    |
-    | Uses the Google cloud storage to manage files. Make sure to install the GCS
-    | drive separately when using it.
-    |
-    |**************************************************************************
-    | npm i @adonisjs/drive-gcs
-    |**************************************************************************
-    |
-    */
-    // gcs: {
-    //   driver: 'gcs',
-    //   visibility: 'public',
-    //   keyFilename: Env.get('GCS_KEY_FILENAME'),
-    //   bucket: Env.get('GCS_BUCKET'),
-
-    /*
-      |--------------------------------------------------------------------------
-      | Uniform ACL - Google cloud storage only
-      |--------------------------------------------------------------------------
-      |
-      | When using the Uniform ACL on the bucket, the "visibility" option is
-      | ignored. Since, the files ACL is managed by the google bucket policies
-      | directly.
-      |
-      |**************************************************************************
-      | Learn more: https://cloud.google.com/storage/docs/uniform-bucket-level-access
-      |**************************************************************************
-      |
-      | The following option just informs drive whether your bucket is using uniform
-      | ACL or not. The actual setting needs to be toggled within the Google cloud
-      | console.
-      |
-      */
-    //   usingUniformAcl: false,
-    // },
   },
 })
+
+// Add S3-compatible disk for Digital Ocean Spaces
+// This is done outside driveConfig() to avoid TypeScript strict mode errors
+// The runtime behavior is correct, the types just don't align perfectly
+;(config.disks as any).spaces = spacesConfig
+
+export default config

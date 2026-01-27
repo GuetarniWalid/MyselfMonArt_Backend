@@ -29,7 +29,8 @@
     "@adonisjs/lucid",
     "adonis5-scheduler",
     "@adonisjs/auth",
-    "@adonisjs/mail"
+    "@adonisjs/mail",
+    "@adonisjs/drive-s3"
   ],
   "metaFiles": [
     {

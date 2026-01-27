@@ -9,6 +9,7 @@ import Shopify from 'App/Services/Shopify'
 import MockupQueue from 'App/Services/MockupQueue'
 import ClaudeMockup from 'App/Services/Claude/Mockup'
 import VideoCompressor from 'App/Services/Video/VideoCompressor'
+import VideoStorage from 'App/Services/VideoStorage'
 
 export default class MockupController {
   private queue = MockupQueue.getInstance()
@@ -1112,15 +1113,58 @@ export default class MockupController {
     const finalPublicUrl = `${baseUrl}/assets/${finalFileName}`
     console.log(`🌐 Final public URL: ${finalPublicUrl}`)
 
-    // 3. Add new media to product using final public URL with alt text (productUpdate handles upload internally)
-    // For videos: pass local file path for staged upload (Shopify requirement)
-    console.log(`🎬 Creating media with type: ${mediaType}`)
+    // 3. Handle media upload based on type
+    console.log(`🎬 Processing media with type: ${mediaType}`)
+
+    // For VIDEO: Upload to Digital Ocean Spaces and set metafield (NOT Shopify media)
+    if (mediaType === 'VIDEO') {
+      console.log(`🎬 Video detected - uploading to Digital Ocean Spaces...`)
+
+      const videoStorage = new VideoStorage()
+      const uploadResult = await videoStorage.upload(productId, finalFilePath)
+
+      if (!uploadResult.success) {
+        throw new Error(`Failed to upload video to DO Spaces: ${uploadResult.error}`)
+      }
+
+      console.log(`✅ Video uploaded to DO Spaces: ${uploadResult.url}`)
+
+      // Set the video URL in the product metafield
+      await shopify.metafield.setVideoUrl(productId, uploadResult.url)
+
+      // Set the video alt text in the product metafield
+      if (altText) {
+        await shopify.metafield.setVideoAlt(productId, altText)
+      }
+
+      console.log(`✅ Video metafields updated (url + alt)`)
+
+      // Clean up local file after successful upload
+      try {
+        if (fs.existsSync(finalFilePath)) {
+          fs.unlinkSync(finalFilePath)
+          console.log(`🗑️  Local video file cleaned up: ${finalFileName}`)
+        }
+      } catch (cleanupError) {
+        console.warn(`⚠️  Failed to clean up local file: ${cleanupError}`)
+      }
+
+      // For videos, we're done - no need to reorder media since it's stored in metafield
+      return {
+        reordered: false,
+        oldMediaDetached: false,
+        finalFilePath,
+        finalFileName,
+      }
+    }
+
+    // For IMAGE: Use existing Shopify media upload flow
     const allMedia = await shopify.product.createMedia(
       productId,
       finalPublicUrl,
       altText,
       mediaType,
-      mediaType === 'VIDEO' ? finalFilePath : undefined
+      undefined
     )
 
     // Validate that we got media back
@@ -1131,17 +1175,6 @@ export default class MockupController {
     // productUpdate returns ALL media nodes - the new one is at the end
     const newMediaId = allMedia[allMedia.length - 1].id
     console.log(`✅ New media added with ID: ${newMediaId} (appended to end)`)
-
-    // 4. For videos, wait for Shopify to process the video before continuing
-    if (mediaType === 'VIDEO') {
-      console.log(`🎬 Video detected - waiting for Shopify processing...`)
-      const videoStatus = await shopify.product.waitForVideoProcessing(productId, newMediaId)
-      if (!videoStatus.ready) {
-        console.warn(`⚠️  Video processing may not be complete, continuing anyway`)
-      } else {
-        console.log(`✅ Video processing complete`)
-      }
-    }
 
     // 5. Get updated product to see current media state
     const updatedProduct = await shopify.product.getProductById(productId)
