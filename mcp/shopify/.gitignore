@@ -1,0 +1,11 @@
+# Source maps (not needed for production)
+*.map
+
+# TypeScript declarations (not needed for runtime)
+*.d.ts
+
+# Dependencies
+node_modules/
+
+# Environment
+.env

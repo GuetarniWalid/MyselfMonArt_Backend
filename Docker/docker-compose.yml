@@ -26,6 +26,7 @@ services:
       - /var/www/certbot:/var/www/certbot
     depends_on:
       - app
+      - mcp-shopify
     restart: always
 
   certbot:
@@ -55,6 +56,16 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: always
+
+  mcp-shopify:
+    image: ${DOCKERHUB_USERNAME}/mcp-shopify:latest
+    env_file:
+      - .env
+    environment:
+      - TRANSPORT_MODE=sse
+      - PORT=3001
+      - TZ=Europe/Paris
     restart: always
 
 volumes:
