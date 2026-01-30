@@ -27,6 +27,7 @@ services:
     depends_on:
       - app
       - mcp-shopify
+      - mcp-gmail
     restart: always
 
   certbot:
@@ -65,6 +66,15 @@ services:
     environment:
       - TRANSPORT_MODE=sse
       - PORT=3001
+      - TZ=Europe/Paris
+    restart: always
+
+  mcp-gmail:
+    image: ${DOCKERHUB_USERNAME}/mcp-gmail:latest
+    env_file:
+      - .env
+    environment:
+      - PORT=3002
       - TZ=Europe/Paris
     restart: always
 

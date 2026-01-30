@@ -47,6 +47,11 @@ jobs:
           docker build -f mcp/shopify/Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME }}/mcp-shopify:latest mcp/shopify
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/mcp-shopify:latest
 
+      - name: Build and push Docker images for MCP Gmail
+        run: |
+          docker build -f mcp/gmail/Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME }}/mcp-gmail:latest mcp/gmail
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/mcp-gmail:latest
+
   deploy:
     runs-on: ubuntu-latest
     needs: build-and-push

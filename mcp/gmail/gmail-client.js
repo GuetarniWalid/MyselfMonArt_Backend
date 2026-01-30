@@ -41,12 +41,29 @@ export class GmailClient {
         threadId: response.data.threadId,
       }
     } catch (error) {
+      // Log full error for debugging
+      console.error(
+        '[GmailClient] Full error:',
+        JSON.stringify(
+          {
+            code: error.code,
+            status: error.status,
+            message: error.message,
+            errors: error.errors,
+            response: error.response?.data,
+          },
+          null,
+          2
+        )
+      )
+
       // Handle specific Gmail API errors
       if (error.code === 401) {
         throw new Error("Échec d'authentification Gmail. Vérifiez les credentials OAuth2.")
       }
       if (error.code === 403) {
-        throw new Error('Accès refusé. Vérifiez les permissions du scope gmail.send.')
+        const details = error.errors?.[0]?.message || error.message || 'Unknown'
+        throw new Error(`Accès refusé (403): ${details}`)
       }
       if (error.code === 429) {
         throw new Error('Quota Gmail dépassé. Réessayez plus tard.')
@@ -66,9 +83,7 @@ export class GmailClient {
    * @private
    */
   _buildMimeMessage(to, subject, htmlBody, replyToMessageId) {
-    const boundary = `----=_Part_${Date.now()}_${Math.random().toString(36).substring(2)}`
-
-    let headers = [
+    const headers = [
       `From: ${this.senderEmail}`,
       `To: ${to}`,
       `Subject: =?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`,
