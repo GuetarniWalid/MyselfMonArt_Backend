@@ -44,7 +44,19 @@ function registerTools(server, shopifyClient) {
       limit: z.number().optional().default(10),
       cursor: z.string().optional(),
       query: z.string().optional(),
-      sortKey: z.enum(['TITLE', 'PRODUCT_TYPE', 'VENDOR', 'CREATED_AT', 'UPDATED_AT']).optional(),
+      sortKey: z
+        .enum([
+          'TITLE',
+          'PRODUCT_TYPE',
+          'VENDOR',
+          'CREATED_AT',
+          'UPDATED_AT',
+          'ID',
+          'INVENTORY_TOTAL',
+          'PUBLISHED_AT',
+          'RELEVANCE',
+        ])
+        .optional(),
       reverse: z.boolean().optional().default(false),
     },
     async (args) => {
@@ -248,10 +260,15 @@ function registerTools(server, shopifyClient) {
         .enum([
           'CREATED_AT',
           'CUSTOMER_NAME',
+          'DESTINATION',
           'FINANCIAL_STATUS',
           'FULFILLMENT_STATUS',
+          'ID',
           'ORDER_NUMBER',
+          'PO_NUMBER',
           'PROCESSED_AT',
+          'RELEVANCE',
+          'TOTAL_ITEMS_QUANTITY',
           'TOTAL_PRICE',
           'UPDATED_AT',
         ])
@@ -336,7 +353,9 @@ function registerTools(server, shopifyClient) {
       limit: z.number().optional().default(10),
       cursor: z.string().optional(),
       query: z.string().optional(),
-      sortKey: z.enum(['NAME', 'CREATED_AT', 'UPDATED_AT', 'TOTAL_SPENT']).optional(),
+      sortKey: z
+        .enum(['NAME', 'CREATED_AT', 'UPDATED_AT', 'ID', 'LOCATION', 'RELEVANCE'])
+        .optional(),
       reverse: z.boolean().optional().default(false),
     },
     async (args) => {
@@ -447,12 +466,12 @@ function registerTools(server, shopifyClient) {
           args.locationId,
           args.quantity
         )
-        if (result.data.inventoryAdjustQuantity.userErrors.length > 0) {
+        if (result.data.inventoryAdjustQuantities.userErrors.length > 0) {
           return {
             content: [
               {
                 type: 'text',
-                text: `Error adjusting inventory: ${JSON.stringify(result.data.inventoryAdjustQuantity.userErrors)}`,
+                text: `Error adjusting inventory: ${JSON.stringify(result.data.inventoryAdjustQuantities.userErrors)}`,
               },
             ],
             isError: true,
@@ -462,7 +481,11 @@ function registerTools(server, shopifyClient) {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(result.data.inventoryAdjustQuantity.inventoryLevel, null, 2),
+              text: JSON.stringify(
+                result.data.inventoryAdjustQuantities.inventoryAdjustmentGroup,
+                null,
+                2
+              ),
             },
           ],
         }
@@ -788,12 +811,13 @@ function registerTools(server, shopifyClient) {
     async (args) => {
       try {
         const result = await shopifyClient.createFulfillment(args)
-        if (result.data.fulfillmentCreateV2.userErrors.length > 0) {
+        // Use fulfillmentCreate response (updated from deprecated fulfillmentCreateV2)
+        if (result.data.fulfillmentCreate.userErrors.length > 0) {
           return {
             content: [
               {
                 type: 'text',
-                text: `Error creating fulfillment: ${JSON.stringify(result.data.fulfillmentCreateV2.userErrors)}`,
+                text: `Error creating fulfillment: ${JSON.stringify(result.data.fulfillmentCreate.userErrors)}`,
               },
             ],
             isError: true,
@@ -803,7 +827,7 @@ function registerTools(server, shopifyClient) {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(result.data.fulfillmentCreateV2.fulfillment, null, 2),
+              text: JSON.stringify(result.data.fulfillmentCreate.fulfillment, null, 2),
             },
           ],
         }
@@ -1610,10 +1634,10 @@ function registerTools(server, shopifyClient) {
       }
     }
   )
-  // Price Rules Tools
+  // Price Rules Tools (migrated to discountNodes API)
   server.tool(
     'listPriceRules',
-    'List price rules',
+    'List discount rules (price rules migrated to new Discounts API)',
     {
       limit: z.number().optional().default(10),
       cursor: z.string().optional(),
@@ -1621,15 +1645,30 @@ function registerTools(server, shopifyClient) {
     async (args) => {
       try {
         const result = await shopifyClient.getPriceRules(args)
-        const priceRules = result.data.priceRules.edges.map((edge) => edge.node)
+        // Transform discountNodes response to a price-rules-like format for compatibility
+        const discounts = result.data.discountNodes.edges.map((edge) => {
+          const discount = edge.node.discount
+          return {
+            id: edge.node.id,
+            title: discount.title,
+            status: discount.status,
+            startsAt: discount.startsAt,
+            endsAt: discount.endsAt,
+            usageLimit: discount.usageLimit || null,
+            usageCount: discount.asyncUsageCount || 0,
+            type: discount.__typename,
+            value: discount.customerGets?.value || null,
+            combinesWith: discount.combinesWith || null,
+          }
+        })
         return {
           content: [
             {
               type: 'text',
               text: JSON.stringify(
                 {
-                  priceRules,
-                  pageInfo: result.data.priceRules.pageInfo,
+                  discounts,
+                  pageInfo: result.data.discountNodes.pageInfo,
                 },
                 null,
                 2
@@ -1642,7 +1681,7 @@ function registerTools(server, shopifyClient) {
           content: [
             {
               type: 'text',
-              text: `Error fetching price rules: ${error.message}`,
+              text: `Error fetching discounts: ${error.message}`,
             },
           ],
           isError: true,

@@ -28,8 +28,8 @@ export class ShopifyClient {
       scopes: [], // Not needed for private apps
       hostName: 'localhost', // Not needed for private apps
       isEmbeddedApp: false, // Required field
-      // Use October25 (2025-10) - latest stable version supported for 12 months
-      apiVersion: config.apiVersion || ApiVersion.October25,
+      // Hardcoded to October25 (2025-10) - latest version with ShopifyQL, inventoryAdjustQuantities, fulfillmentCreate
+      apiVersion: ApiVersion.October25,
       logger: {
         level: logLevel,
         // Redirect all logs to stderr to avoid stdout pollution
@@ -701,39 +701,38 @@ export class ShopifyClient {
     return this.graphql(query, { inventoryItemId })
   }
   async adjustInventory(inventoryItemId, locationId, quantity) {
-    // First, get the inventory level ID
-    const query = `
-      query getInventoryLevel($inventoryItemId: ID!, $locationId: ID!) {
-        inventoryItem(id: $inventoryItemId) {
-          inventoryLevel(locationId: $locationId) {
-            id
-          }
-        }
-      }
-    `
-    const levelResult = await this.graphql(query, { inventoryItemId, locationId })
-    const inventoryLevelId = levelResult.data?.inventoryItem?.inventoryLevel?.id
-    if (!inventoryLevelId) {
-      throw new Error('Inventory level not found for this item and location')
-    }
-    // Now adjust the inventory
+    // Use the new inventoryAdjustQuantities mutation (API 2025-10+)
+    // No longer need to fetch inventoryLevelId first
     const mutation = `
-      mutation adjustInventory($input: InventoryAdjustQuantityInput!) {
-        inventoryAdjustQuantity(input: $input) {
-          inventoryLevel {
+      mutation inventoryAdjustQuantities($input: InventoryAdjustQuantitiesInput!) {
+        inventoryAdjustQuantities(input: $input) {
+          inventoryAdjustmentGroup {
             id
-            available
+            reason
+            changes {
+              name
+              delta
+              quantityAfterChange
+            }
           }
           userErrors {
             field
             message
+            code
           }
         }
       }
     `
     const input = {
-      inventoryLevelId,
-      availableDelta: quantity,
+      reason: 'correction',
+      name: 'available',
+      changes: [
+        {
+          inventoryItemId,
+          locationId,
+          delta: quantity,
+        },
+      ],
     }
     return this.graphql(mutation, { input })
   }
@@ -1001,9 +1000,10 @@ export class ShopifyClient {
     return this.graphql(query, variables)
   }
   async createFulfillment(params) {
+    // Use fulfillmentCreate (fulfillmentCreateV2 is deprecated in API 2025-07+)
     const mutation = `
       mutation createFulfillment($fulfillment: FulfillmentV2Input!) {
-        fulfillmentCreateV2(fulfillment: $fulfillment) {
+        fulfillmentCreate(fulfillment: $fulfillment) {
           fulfillment {
             id
             status
@@ -1576,25 +1576,110 @@ export class ShopifyClient {
     `
     return this.graphql(query, { first: params.limit || 10 })
   }
-  // Price rules operations
+  // Price rules operations (migrated from deprecated priceRules to discountNodes)
   async getPriceRules(params) {
+    // Using discountNodes instead of deprecated priceRules query
     const query = `
       query getPriceRules($first: Int!, $after: String) {
-        priceRules(first: $first, after: $after) {
+        discountNodes(first: $first, after: $after) {
           edges {
             cursor
             node {
               id
-              title
-              status
-              startsAt
-              endsAt
-              usageLimit
-              allocationMethod
-              valueType
-              value
-              targetType
-              targetSelection
+              discount {
+                ... on DiscountCodeBasic {
+                  __typename
+                  title
+                  status
+                  startsAt
+                  endsAt
+                  usageLimit
+                  asyncUsageCount
+                  combinesWith {
+                    orderDiscounts
+                    productDiscounts
+                    shippingDiscounts
+                  }
+                  customerGets {
+                    value {
+                      ... on DiscountPercentage {
+                        percentage
+                      }
+                      ... on DiscountAmount {
+                        amount {
+                          amount
+                          currencyCode
+                        }
+                      }
+                    }
+                    items {
+                      ... on AllDiscountItems {
+                        allItems
+                      }
+                    }
+                  }
+                }
+                ... on DiscountCodeBxgy {
+                  __typename
+                  title
+                  status
+                  startsAt
+                  endsAt
+                  usageLimit
+                  asyncUsageCount
+                }
+                ... on DiscountCodeFreeShipping {
+                  __typename
+                  title
+                  status
+                  startsAt
+                  endsAt
+                  usageLimit
+                  asyncUsageCount
+                }
+                ... on DiscountAutomaticBasic {
+                  __typename
+                  title
+                  status
+                  startsAt
+                  endsAt
+                  asyncUsageCount
+                  combinesWith {
+                    orderDiscounts
+                    productDiscounts
+                    shippingDiscounts
+                  }
+                  customerGets {
+                    value {
+                      ... on DiscountPercentage {
+                        percentage
+                      }
+                      ... on DiscountAmount {
+                        amount {
+                          amount
+                          currencyCode
+                        }
+                      }
+                    }
+                  }
+                }
+                ... on DiscountAutomaticBxgy {
+                  __typename
+                  title
+                  status
+                  startsAt
+                  endsAt
+                  asyncUsageCount
+                }
+                ... on DiscountAutomaticFreeShipping {
+                  __typename
+                  title
+                  status
+                  startsAt
+                  endsAt
+                  asyncUsageCount
+                }
+              }
             }
           }
           pageInfo {
