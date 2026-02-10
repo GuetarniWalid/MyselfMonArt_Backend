@@ -20,7 +20,7 @@ class ShopifyCostRateLimiter {
     this.restoreRate = restoreRate
     this.availableCost = maxCost
     this.lastRefill = Date.now()
-    console.log(`[RateLimiter] Initialized with ${maxCost} max cost, ${restoreRate} points/second`)
+    // Initialization is silent — warnings/errors are still logged
   }
 
   public static getInstance(): ShopifyCostRateLimiter {
@@ -104,9 +104,6 @@ class ShopifyCostRateLimiter {
       }
 
       this.availableCost -= estimatedCost
-      console.log(
-        `[RateLimiter] Reserved ${estimatedCost} points. Available: ${this.availableCost.toFixed(1)}/${this.maxCost} (${this.pendingRequests} pending)`
-      )
     } finally {
       this.pendingRequests--
     }
@@ -140,9 +137,7 @@ class ShopifyCostRateLimiter {
       )
     }
 
-    console.log(
-      `[RateLimiter] Actual cost: ${actualCost}, Available: ${this.availableCost.toFixed(1)}/${this.maxCost}`
-    )
+    // Routine cost tracking is silent — only warnings/errors are logged
   }
 
   // Update bucket size dynamically from Shopify responses
@@ -302,8 +297,6 @@ export default class Authentication {
             )
           }
 
-          console.log(`Making GraphQL request to: ${this.urlGraphQL}`)
-
           const response = await fetch(this.urlGraphQL, {
             method: 'POST',
             headers: {
@@ -331,10 +324,6 @@ export default class Authentication {
           // Check throttle status from Shopify
           const throttleStatus = responseBody.extensions?.cost?.throttleStatus
           if (throttleStatus && typeof throttleStatus.currentlyAvailable === 'number') {
-            console.log(
-              `[Authentication] Shopify bucket: ${throttleStatus.currentlyAvailable}/${throttleStatus.maximumAvailable || 'unknown'} (restore: ${throttleStatus.restoreRate || 'unknown'}/s)`
-            )
-
             // Dynamically adjust our bucket size to match Shopify's actual bucket
             if (typeof throttleStatus.maximumAvailable === 'number') {
               this.costLimiter.updateMaxCost(throttleStatus.maximumAvailable)

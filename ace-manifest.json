@@ -367,6 +367,47 @@
         }
       ]
     },
+    "test:product_translations": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/TestProductTranslations",
+      "commandName": "test:product_translations",
+      "description": "Test product translations with a limited number of products",
+      "args": [
+        {
+          "type": "string",
+          "propertyName": "locale",
+          "name": "locale",
+          "required": false,
+          "description": "Target language code (en, es, de)"
+        }
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "region",
+          "propertyName": "region",
+          "type": "string",
+          "description": "Region code (e.g., UK for en-UK)"
+        },
+        {
+          "name": "dry-run",
+          "propertyName": "dryRun",
+          "type": "boolean",
+          "description": "Dry run - show what would be translated without actually translating",
+          "alias": "d"
+        },
+        {
+          "name": "limit",
+          "propertyName": "limit",
+          "type": "number",
+          "description": "Limit number of products to translate (default: 10)",
+          "alias": "l"
+        }
+      ]
+    },
     "test:task": {
       "settings": {
         "loadApp": true,

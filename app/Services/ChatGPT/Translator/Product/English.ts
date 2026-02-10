@@ -5,8 +5,30 @@ export default class English {
 
   public translateOptionValue(optionValue: string) {
     const values = optionValue.split('/')
-    const translatedValues = values.map((value) => this.translateByType(value))
+    const translatedValues = values.map((value) => this.translateByType(this.normalize(value)))
     return translatedValues.join('/')
+  }
+
+  public isKnownValue(optionValue: string): boolean {
+    const values = optionValue.split('/')
+    return values.every((value) => this.isKnownByType(this.normalize(value)))
+  }
+
+  private normalize(value: string): string {
+    // Normalize Unicode multiplication sign (×) to letter x for consistent matching
+    return value.replace(/×/g, 'x')
+  }
+
+  private isKnownByType(value: string): boolean {
+    return (
+      typeof this.translateIfIsOfTypeLength(value) === 'object' ||
+      typeof this.translateIfIsOfTypeMaterial(value) === 'object' ||
+      typeof this.translateIfIsOfTypeFixation(value) === 'object' ||
+      typeof this.translateIfIsOfTypeChassis(value) === 'object' ||
+      typeof this.translateIfIsOfTypeBorder(value) === 'object' ||
+      typeof this.translateIfIsOfTypeCoating(value) === 'object' ||
+      typeof this.translateIfIsOfTypeFrame(value) === 'object'
+    )
   }
 
   private translateByType(value: string) {
@@ -43,7 +65,7 @@ export default class English {
   private translateIfIsOfTypeLength(value: string) {
     // Only return untranslated for UK if value matches 'N cm' or 'NxM cm'
     const singleNumberPattern = /^\d+\s*cm$/
-    const doubleNumberPattern = /^\d+\s*x\s*\d+\s*cm$/
+    const doubleNumberPattern = /^\d+\s*[x×]\s*\d+\s*cm$/
 
     if (
       this.region === 'UK' &&
@@ -139,7 +161,7 @@ export default class English {
 
   public translateSizeInText(text: string): string {
     // Regular expression to match both single number (2 cm) and double number (30x40 cm) patterns
-    const sizePattern = /(\d+)(?:\s*x\s*(\d+))?\s*cm/gi
+    const sizePattern = /(\d+)(?:\s*[x×]\s*(\d+))?\s*cm/gi
 
     return text.replace(sizePattern, (match) => {
       // Extract numbers

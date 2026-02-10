@@ -2,6 +2,7 @@ import type { ProductToTranslate, ProductWithOutdatedTranslations } from 'Types/
 import type { LanguageCode, MetaobjectTranslation, RegionCode } from 'Types/Translation'
 import DefaultPullDataModeler from '../PullDataModeler'
 import Utils from '../Utils'
+import English from 'App/Services/ChatGPT/Translator/Product/English'
 
 export default class PullDataModeler extends DefaultPullDataModeler {
   private utils: Utils
@@ -36,7 +37,9 @@ export default class PullDataModeler extends DefaultPullDataModeler {
 
         const productWithOnlyKeyToTranslate = this.getProductWithOnlyKeyToTranslate(
           product.node,
-          isAltMediaOutdated
+          isAltMediaOutdated,
+          locale,
+          region
         )
         if (productWithOnlyKeyToTranslate) {
           productToTranslate.push(productWithOnlyKeyToTranslate)
@@ -150,7 +153,9 @@ export default class PullDataModeler extends DefaultPullDataModeler {
 
   public getProductWithOnlyKeyToTranslate(
     product: ProductWithOutdatedTranslations,
-    isAltMediaOutdated: boolean
+    isAltMediaOutdated: boolean,
+    locale?: LanguageCode,
+    region?: RegionCode
   ) {
     const { translations, ...productWithoutTranslations } = product
 
@@ -173,7 +178,11 @@ export default class PullDataModeler extends DefaultPullDataModeler {
     })
 
     const processedOptions = product.options.map((option) => {
-      const processedOption = this.deleteUpToDateOptionValuesFromOption({ ...option })
+      const processedOption = this.deleteUpToDateOptionValuesFromOption(
+        { ...option },
+        locale,
+        region
+      )
 
       const { translations: optionTranslations, ...optionWithoutTranslations } = processedOption
       optionTranslations.forEach((translation) => {
@@ -210,9 +219,12 @@ export default class PullDataModeler extends DefaultPullDataModeler {
   }
 
   private deleteUpToDateOptionValuesFromOption(
-    option: ProductWithOutdatedTranslations['options'][number]
+    option: ProductWithOutdatedTranslations['options'][number],
+    locale?: LanguageCode,
+    region?: RegionCode
   ) {
     const optionValues = option.optionValues
+    const translator = locale === 'en' ? new English(region) : null
 
     const optionValuesCleaned = optionValues.map((optionValue) => {
       const { translations, ...optionValueWithoutTranslations } = optionValue
@@ -222,6 +234,20 @@ export default class PullDataModeler extends DefaultPullDataModeler {
           delete optionValueWithoutTranslations[key]
         }
       })
+
+      // Skip option values where the dictionary translation equals the source
+      // (e.g., "Poster" → "Poster", "Aluminium" → "Aluminium")
+      // These would be rejected by Shopify with "Value cannot match original content"
+      if (
+        translator &&
+        optionValueWithoutTranslations.name &&
+        translator.isKnownValue(optionValueWithoutTranslations.name) &&
+        translator.translateOptionValue(optionValueWithoutTranslations.name) ===
+          optionValueWithoutTranslations.name
+      ) {
+        delete (optionValueWithoutTranslations as { [key: string]: any }).name
+      }
+
       return optionValueWithoutTranslations
     })
 

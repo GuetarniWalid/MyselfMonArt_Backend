@@ -9,6 +9,7 @@ export default class ProductTranslator {
   private targetLanguage: LanguageCode
   private targetRegion?: RegionCode
   private payload: Partial<ProductToTranslate>
+  private unknownOptionValues: { optionIndex: number; valueIndex: number; name: string }[] = []
 
   constructor(
     payload: Partial<ProductToTranslate>,
@@ -52,10 +53,36 @@ export default class ProductTranslator {
   }
 
   public prepareTranslationRequest() {
+    this.computeUnknownOptionValues()
     return {
       responseFormat: this.getTranslationResponseFormat(),
       payloadFormatted: this.getPayloadFormattedForTranslation(),
       systemPrompt: this.getTranslationSystemPrompt(),
+    }
+  }
+
+  private computeUnknownOptionValues() {
+    this.unknownOptionValues = []
+    const languageHandler = this.getLanguageHandler()
+    if (!languageHandler || !this.payload.options) return
+
+    this.payload.options.forEach((option, optionIndex) => {
+      option.optionValues?.forEach((optionValue, valueIndex) => {
+        if (optionValue.name && !languageHandler.isKnownValue(optionValue.name)) {
+          this.unknownOptionValues.push({
+            optionIndex,
+            valueIndex,
+            name: optionValue.name,
+          })
+        }
+      })
+    })
+
+    if (this.unknownOptionValues.length > 0) {
+      console.log(
+        `🔍 Found ${this.unknownOptionValues.length} unknown option value(s) to translate via ChatGPT:`,
+        this.unknownOptionValues.map((v) => v.name)
+      )
     }
   }
 
@@ -91,6 +118,9 @@ export default class ProductTranslator {
     }
     if (this.payload.options?.[2]?.name) {
       schema.option3Name = z.string()
+    }
+    if (this.unknownOptionValues.length > 0) {
+      schema.optionValuesTranslated = z.array(z.string())
     }
 
     return z.object(schema)
@@ -129,6 +159,9 @@ export default class ProductTranslator {
     if (this.payload.options?.[2]?.name) {
       payload.option3Name = this.payload.options[2].name
     }
+    if (this.unknownOptionValues.length > 0) {
+      payload.optionValuesToTranslate = this.unknownOptionValues.map((v) => v.name)
+    }
 
     return payload
   }
@@ -136,10 +169,16 @@ export default class ProductTranslator {
   private getTranslationSystemPrompt() {
     const language = this.getLanguageFromISOCode()
 
-    return `You are a professional translation model specializing in e-commerce product data. Your task is to translate product data accurately while maintaining the tone, context, and formatting. 
-When translating, prioritize SEO optimization by using the most commonly searched keywords and phrases in ${language}, rather than direct word-for-word translation. 
-Ensure all fields, including title, description, SEO metadata, and media alt text, are optimized for search engines in ${language} while maintaining a natural, user-friendly tone. 
+    let prompt = `You are a professional translation model specializing in e-commerce product data. Your task is to translate product data accurately while maintaining the tone, context, and formatting.
+When translating, prioritize SEO optimization by using the most commonly searched keywords and phrases in ${language}, rather than direct word-for-word translation.
+Ensure all fields, including title, description, SEO metadata, and media alt text, are optimized for search engines in ${language} while maintaining a natural, user-friendly tone.
 For the descriptionHtml field, preserve all HTML tags while translating its content. Use your knowledge of linguistic and cultural nuances to produce a high-quality translation that aligns with local search behaviors and preferences`
+
+    if (this.unknownOptionValues.length > 0) {
+      prompt += `\n\nThe optionValuesToTranslate field contains product option values (materials, finishes, borders, frames, etc.) that need translation from French to ${language}. Translate each value concisely for e-commerce dropdown menus. Return the translations in the same order in optionValuesTranslated. If a value is already in ${language}, you MUST still provide a natural ${language} translation or equivalent — do not return the exact same text as the original.`
+    }
+
+    return prompt
   }
 
   public formatTranslationResponse({
@@ -184,10 +223,24 @@ For the descriptionHtml field, preserve all HTML tags while translating its cont
       const optionFormatted = {
         id: option.id,
         optionValues:
-          option.optionValues?.map((optionValue) => ({
-            id: optionValue.id,
-            name: this.translateOptionValueByLanguage(optionValue.name),
-          })) || [],
+          option.optionValues?.map((optionValue, valueIndex) => {
+            // Check if this value was translated by ChatGPT (unknown to dictionary)
+            const unknownEntry = this.unknownOptionValues.find(
+              (uv) => uv.optionIndex === index && uv.valueIndex === valueIndex
+            )
+            if (unknownEntry && response.optionValuesTranslated) {
+              const unknownIndex = this.unknownOptionValues.indexOf(unknownEntry)
+              return {
+                id: optionValue.id,
+                name: response.optionValuesTranslated[unknownIndex],
+              }
+            }
+            // Known value - translate locally via dictionary
+            return {
+              id: optionValue.id,
+              name: this.translateOptionValueByLanguage(optionValue.name),
+            }
+          }) || [],
       } as { id: string; optionValues: { id: string; name: string }[] } & Partial<
         ProductToTranslate['options'][number]
       >

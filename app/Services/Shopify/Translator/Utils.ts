@@ -16,6 +16,13 @@ export default class Utils {
     translationsInputs: TranslationInput[],
     region?: RegionCode
   ): void {
+    if (data.newValue === data.oldValue) {
+      console.log(
+        `⏭️ Skipping translation for key "${data.key}" - translated value matches original: "${data.newValue}"`
+      )
+      return
+    }
+
     const translationEntry = {
       key: data.key,
       locale: data.isoCode,

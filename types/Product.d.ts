@@ -122,6 +122,8 @@ export interface ProductToTranslateFormatted {
   option1Name: string
   option2Name: string
   option3Name?: string
+  optionValuesToTranslate?: string[]
+  optionValuesTranslated?: string[]
 }
 
 export interface Product {
