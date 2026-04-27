@@ -112,6 +112,13 @@ export default class Translator extends Authentication {
         ],
         response_format: zodResponseFormat(responseFormat, 'translation'),
       })
+      console.info(
+        JSON.stringify({
+          msg: 'openai_translate_call',
+          model: Env.get('OPENAI_MODEL'),
+          usage: completion.usage,
+        })
+      )
       const response = completion.choices[0]
 
       if (response.finish_reason === 'length') {
