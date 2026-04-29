@@ -33,6 +33,7 @@ export default class TranslateMetaobjects extends BaseTask {
       .getOutdatedTranslations(locale, region)
     console.log('🚀 ~ metaobjects to translate length:', metaobjectsToTranslate.length)
     const chatGPT = new ChatGPT()
+    let localeNotSupportedByShop = false
 
     for (const metaobject of metaobjectsToTranslate) {
       console.log('============================')
@@ -54,6 +55,20 @@ export default class TranslateMetaobjects extends BaseTask {
       }
 
       const metaobjectTranslated = await chatGPT.translate(metaobject, 'metaobject', locale, region)
+
+      // Pre-Shopify check: if the model returned a translation equal to the source
+      // (typical when content is already in the target language, e.g. "Bronze" → "Bronze"),
+      // Utils.createTranslationEntry would silently drop it and Shopify would never get notified,
+      // so the metaobject would stay outdated forever. Cache it here.
+      const translatedValue = (metaobjectTranslated as { field?: { jsonValue?: unknown } })?.field
+        ?.jsonValue
+      if (translatedValue !== undefined && translatedValue === sourceContent) {
+        await skipCache.markFailed(cacheKey, sourceContent, 'Translation equals source content')
+        console.log('🧊 Cached as skip — translation equals source, no Shopify call needed')
+        console.log('============================')
+        continue
+      }
+
       const responses = await shopify.translator('metaobject').updateTranslation({
         resourceToTranslate: metaobject,
         resourceTranslated: metaobjectTranslated,
@@ -63,28 +78,49 @@ export default class TranslateMetaobjects extends BaseTask {
       let cachedThisRound = false
       for (const response of responses) {
         const userErrors = response.translationsRegister.userErrors
-        if (userErrors.length > 0) {
-          console.log('🚨 Error => ', userErrors)
-          const looksLikeValueMatch = userErrors.some(
-            (e: { message?: string }) =>
-              typeof e.message === 'string' &&
-              e.message.toLowerCase().includes('value cannot match original content')
-          )
-          if (looksLikeValueMatch && !cachedThisRound) {
-            await skipCache.markFailed(
-              cacheKey,
-              sourceContent,
-              userErrors[0]?.message ?? 'Value cannot match original content'
-            )
-            cachedThisRound = true
-            console.log('🧊 Cached as skip — will not retry until source changes')
-          }
-        } else {
+        if (userErrors.length === 0) {
           console.log('✅ Translation updated')
+          continue
+        }
+        console.log('🚨 Error => ', userErrors)
+
+        const messages = userErrors
+          .map((e: { message?: string }) => (typeof e.message === 'string' ? e.message : ''))
+          .join(' | ')
+          .toLowerCase()
+
+        const isValueMatch = messages.includes('value cannot match original content')
+        const isInvalidLocale = messages.includes('locale is not a valid locale for the shop')
+
+        if ((isValueMatch || isInvalidLocale) && !cachedThisRound) {
+          await skipCache.markFailed(cacheKey, sourceContent, userErrors[0]?.message ?? 'rejected')
+          cachedThisRound = true
+          console.log('🧊 Cached as skip — will not retry until source changes')
+        }
+
+        // The shop hasn't enabled this locale at all. Every following item in this loop
+        // will hit the same error: bail out of the whole locale instead of burning ~480
+        // gpt-5 calls for nothing.
+        if (isInvalidLocale) {
+          localeNotSupportedByShop = true
+          console.log(
+            `⛔ Locale "${locale}${region ? `-${region}` : ''}" is not enabled on this Shopify shop. ` +
+              `Stopping the rest of this run for that locale. Enable it in Shopify Admin > Settings > Languages, ` +
+              `or remove the corresponding translateTo() call from TranslateMetaobjects.handle().`
+          )
+          break
         }
       }
       console.log('============================')
+      if (localeNotSupportedByShop) break
     }
-    console.log(`✅ Metaobjects translations updated to ${locale}${region ? `-${region}` : ''}`)
+
+    if (localeNotSupportedByShop) {
+      console.log(
+        `⏹️  Skipped remaining metaobjects for ${locale}${region ? `-${region}` : ''} (locale not supported by shop)`
+      )
+    } else {
+      console.log(`✅ Metaobjects translations updated to ${locale}${region ? `-${region}` : ''}`)
+    }
   }
 }
