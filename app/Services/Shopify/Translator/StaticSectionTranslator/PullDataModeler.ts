@@ -17,8 +17,13 @@ export default class PullDataModeler extends DefaultPullDataModeler {
       )
       const isTranslationOutdated = this.isTranslationOutdated(isTranslationExists, translation)
       const isTranslationMedia = this.isTranslationMedia(content)
+      const hasNonEmptySource = typeof content.value === 'string' && content.value.trim() !== ''
 
-      if ((!isTranslationExists || isTranslationOutdated) && !isTranslationMedia) {
+      if (
+        (!isTranslationExists || isTranslationOutdated) &&
+        !isTranslationMedia &&
+        hasNonEmptySource
+      ) {
         translatableContent.push({
           id: themeId,
           key: content.key,
