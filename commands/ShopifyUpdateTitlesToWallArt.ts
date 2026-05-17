@@ -31,13 +31,15 @@ export default class ShopifyUpdateTitlesToWallArt extends BaseCommand {
       const seo = new SEO()
       const result = await seo.updateToWallArtTerminology(product)
 
+      // ⚠️ handle (URL slug) NON modifié intentionnellement.
+      // Changer le handle d'un produit existant casse les liens externes, les bookmarks Google
+      // et reset l'autorité SEO accumulée par cette URL. On garde le handle d'origine.
       const newValuesFormattedForShopify: ProductUpdate = {
         title: result.title,
         seo: {
           title: result.metaTitle,
           description: product.seo.description,
         },
-        handle: this.getUrlHandleAccordingTitle(result.title),
       }
 
       const updatedProductId = await shopify.product.update(
@@ -71,25 +73,5 @@ export default class ShopifyUpdateTitlesToWallArt extends BaseCommand {
 
   private getPaintingProducts(products: Product[]) {
     return products.filter((product) => product.artworkTypeMetafield?.value === 'painting')
-  }
-
-  private getUrlHandleAccordingTitle(title: string) {
-    // First, normalize the string to decompose special characters
-    const normalized = title
-      .normalize('NFD')
-      // Remove diacritics (accents)
-      .replace(/[\u0300-\u036f]/g, '')
-      // Convert to lowercase
-      .toLowerCase()
-      // Replace spaces with hyphens
-      .replace(/ /g, '-')
-      // Remove any non-alphanumeric characters (except hyphens)
-      .replace(/[^a-z0-9-]/g, '')
-      // Replace multiple consecutive hyphens with a single hyphen
-      .replace(/-+/g, '-')
-      // Remove hyphens from start and end
-      .replace(/^-+|-+$/g, '')
-
-    return normalized
   }
 }
