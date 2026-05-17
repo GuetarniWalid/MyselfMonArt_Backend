@@ -55,173 +55,164 @@ export default class UpdateToWallArtTerminology {
     const metaTitle = this.getRandomWallArtMetaTitleReplacement()
 
     return `CONTEXTE
-Je possède une boutique e-commerce spécialisée dans les tableaux décoratifs et l'art mural : MyselfMonArt.
-J'ai récemment arrêté de vendre des posters, des cadres en aluminium et des supports en plexiglass.
-Désormais, je ne vends QUE des tableaux sur toile.
-Tous les titres de produits doivent refléter cette nouvelle orientation et ne plus mentionner "poster", "affiche", "aluminium", "plexiglass" ou "plexi".
+Je possède une boutique e-commerce spécialisée dans les tableaux décoratifs sur toile : MyselfMonArt.
+Mon catalogue ne contient QUE des tableaux sur toile (les posters, cadres aluminium et plexiglass ont été retirés depuis longtemps — ce n'est pas l'objet de cette tâche).
+
+PROBLÈME ACTUEL :
+Beaucoup de titres et méta-titres existants commencent par des mots qui ne contiennent PAS le mot-clé "Tableau" — par exemple "Art mural", "Œuvre murale", "Création artistique", "Cadre moderne", "Décor mural", "Peinture murale", "Cadeau personnalisé". Ces openers font perdre toute la valeur SEO sur Google : les acheteurs tapent "tableau X" (jamais "art mural X" ou "œuvre murale X"). Conséquence : ces fiches sont invisibles dans les SERP.
 
 OBJECTIF
-Mettre à jour les titres et méta-titres pour :
-1. Remplacer toute référence à "poster", "affiche", "aluminium", "plexiglass" par une terminologie appropriée pour les tableaux
-2. Utiliser une approche mixte combinant la terminologie "peinture/tableau" ET "art mural/décoration murale"
-3. Conserver l'essence, le thème et le style évocateur du produit
-4. Maintenir la différenciation SEO entre le titre et le méta-titre
-5. Garder un langage naturel, fluide et orienté client
-6. Si le titre est déjà optimisé, ignorer toutes les étapes precedentes et suivante et ne pas le modifier
+Migrer ces openers vers "Tableau" ou "Toile" pour récupérer la visibilité Google.
+1. Remplacer tout opener qui ne contient PAS "Tableau" ou "Toile" par un opener légitime
+2. Conserver le sujet, la référence iconique (Frida Kahlo, Petit Prince, etc.) et l'essence émotionnelle du produit
+3. Différencier les produits similaires via le DESCRIPTEUR (la partie après le tiret), JAMAIS via le mot d'ouverture
+4. Garder un langage naturel, fluide et orienté client
+5. Si le titre est DÉJÀ optimisé (commence par "Tableau" ou "Toile" + sujet), ne pas le modifier
 
 
 PARTIE 1 : TITRE OPTIMISÉ
 OBJECTIF :
-Remplacer la terminologie obsolète tout en conservant un titre percutant et évocateur qui capte l'attention.
+Remplacer la terminologie obsolète tout en conservant un titre percutant et évocateur qui capte l'attention ET le mot-clé "tableau" (le plus tapé sur Google).
 
 RÈGLES POUR LE TITRE
-● Le mot fixe (${title}) est invariable et représente l'art mural / les tableaux décoratifs
-● Ne JAMAIS utiliser : "poster", "affiche", "aluminium", "plexiglass", "plexi"
-● Conserver le mot-clé principal et l'essence du produit (thème, émotion, sujet)
-● Compléter de manière immersive et émotionnelle
-● Ne pas dépasser 55 caractères pour garantir lisibilité et impact SEO
+● Le mot fixe (${title}) DOIT être en première position du titre (jamais au milieu, jamais à la fin)
+● Le mot fixe contient toujours "Tableau" ou "Toile"
+● Conserver le sujet principal / la référence iconique (Frida Kahlo, Le Petit Prince, Femme africaine, Calligraphie arabe, etc.) juste après le mot fixe
+● Compléter de manière immersive et émotionnelle via un descripteur après le sujet
+● Ne pas dépasser 55 caractères
 ● Utiliser un langage fluide, naturel et inspirant
 
 FORMAT DU TITRE
-${title} (Mot fixe) + Mot-clé principal du produit + Complément évocateur (max 55 caractères)
+${title} (mot fixe, toujours en premier) + Sujet/Référence principale + Descripteur évocateur (max 55 caractères)
 
 EXEMPLES DE TRANSFORMATION:
-AVANT: Poster mural - L'élégance mystique d'une geisha
-APRÈS: Tableau sur toile – L'élégance mystique d'une geisha
+AVANT: Art mural - Prince rêveur, évasion céleste
+APRÈS: Tableau Le Petit Prince - Poésie étoilée
 
-AVANT: Affiche aluminium - Vagues déchaînées, énergie brute
-APRÈS: Art mural – L'énergie brute des vagues déchaînées
+AVANT: Œuvre murale Calligraphie arabe – Harmonie spirituelle
+APRÈS: Tableau Calligraphie arabe - Harmonie spirituelle
 
-AVANT: Cadre plexiglass - Lion rugissant majestueux
-APRÈS: Toile décorative – L'aura indomptable du lion rugissant
+AVANT: Cadre moderne CR7 - Énergie urbaine colorée
+APRÈS: Tableau Ronaldo - Énergie urbaine colorée
+
+AVANT: Décor mural Touareg - Méditation au désert
+APRÈS: Tableau Touareg - Méditation au désert
+
+AVANT: Création artistique Tête de mort colorée
+APRÈS: Tableau Crâne mexicain - Couleurs vibrantes pop art
+
+AVANT: Cadeau Personnalisé Foot Coloré
+APRÈS: Tableau personnalisé Football - Prénom et numéro joueur
+
+AVANT: Peinture murale Femme berbère - Éclat authentique
+APRÈS: Tableau Femme berbère - Éclat authentique du Maroc
 
 
-PARTIE 2 : MÉTA-TITRE OPTIMISÉ
+PARTIE 2 : MÉTA-TITRE OPTIMISÉ (CRITIQUE POUR LE SEO)
 OBJECTIF :
-Créer un méta-titre différencié du titre, en évitant la répétition des mêmes mots-clés, tout en reflétant l'orientation art mural.
+Créer un méta-titre qui contient le mot-clé exact "Tableau" en première position. C'est le 1er signal vu par Google et les utilisateurs en SERP.
 
 RÈGLES POUR LE MÉTA-TITRE
-● Le mot fixe (${metaTitle}) est invariable
-● Ne JAMAIS utiliser : "poster", "affiche", "aluminium", "plexiglass", "plexi"
-● Utiliser un synonyme ou une reformulation du mot-clé du titre pour éviter la répétition
-● Apporter une information complémentaire (bénéfice, émotion, caractéristique)
-● Ne pas dépasser 60 caractères pour un affichage optimal sur Google
+● Le mot fixe (${metaTitle}) DOIT être "${metaTitle}" et placé en TOUTE PREMIÈRE position
+● Structure : ${metaTitle} + Sujet/Référence principale + " - " + Descripteur court + " | MyselfMonArt"
+● Le méta-titre PEUT (et doit souvent) reprendre la racine du titre (le sujet/référence). On évite la cannibalization en différenciant via le DESCRIPTEUR, pas en cachant le mot-clé.
+● Ne JAMAIS commencer par "Art mural", "Œuvre murale", "Création artistique", "Cadre", "Cadre moderne", "Peinture murale", "Décor mural", "Décoration murale", "Cadeau personnalisé"
+● Apporter un descripteur émotionnel court (3-5 mots)
+● MAX 60 caractères TOTAL (incluant " | MyselfMonArt" = ~16 chars → reste ~44 chars pour le contenu)
+● Se termine TOUJOURS par " | MyselfMonArt" (séparateur PIPE, pas tiret)
 ● Utiliser un langage fluide, naturel et engageant
-● Finir par le nom de marque MyselfMonArt
 
 FORMAT DU MÉTA-TITRE
-${metaTitle} (Mot fixe) + Synonyme ou variation du mot-clé + Information complémentaire - MyselfMonArt (max 60 caractères)
+${metaTitle} [Sujet/Référence principale] - [Descripteur court] | MyselfMonArt (max 60 caractères)
 
 EXEMPLES DE TRANSFORMATION:
-AVANT: Affiche murale - Portrait geisha japonaise - MyselfMonArt
-APRÈS: Œuvre murale - Portrait geisha japonaise raffiné - MyselfMonArt
+AVANT: Art mural - Prince rêveur, évasion céleste - MyselfMonArt
+APRÈS: Tableau Le Petit Prince - Poésie étoilée | MyselfMonArt
 
-AVANT: Poster mural – Chef-d'œuvre aux teintes éclatantes - MyselfMonArt
-APRÈS: Peinture murale – Un tableau aux couleurs vibrantes - MyselfMonArt
+AVANT: Œuvre murale Calligraphie arabe - Harmonie spirituelle - MyselfMonArt
+APRÈS: Tableau Calligraphie arabe spirituelle | MyselfMonArt
 
-AVANT: Cadre aluminium – Bambou zen apaisant - MyselfMonArt
-APRÈS: Toile design – Décor bambou pour ambiance relaxante - MyselfMonArt
+AVANT: Cadre moderne CR7 - Énergie urbaine colorée - MyselfMonArt
+APRÈS: Tableau Ronaldo - Énergie urbaine | MyselfMonArt
+
+AVANT: Décor mural - Portrait urbain coloré - MyselfMonArt
+APRÈS: Tableau Pop art - Portrait urbain coloré | MyselfMonArt
+
+AVANT: Création artistique Shiba drôle pour WC - MyselfMonArt
+APRÈS: Tableau Shiba - Humour pour WC | MyselfMonArt
+
+AVANT: Cadeau Personnalisé Foot - Poster Prénom et Numéro Joueur - MyselfMonArt
+APRÈS: Tableau Football personnalisé - Prénom et numéro | MyselfMonArt
 
 
 RÉSUMÉ DES CHANGEMENTS
 
-TERMINOLOGIE À REMPLACER:
-❌ Poster, Affiche → ✅ Tableau, Toile, Art mural, Peinture murale
-❌ Aluminium, Plexiglass, Plexi → ✅ Toile, Cadre (bois), Décoration murale
-❌ Support rigide → ✅ Toile tendue, Canvas
+OPENERS À REMPLACER (perte SEO du mot-clé "tableau") :
+❌ Art mural, Œuvre murale, Création artistique → ✅ Tableau / Toile
+❌ Cadre, Cadre moderne, Cadre décoratif, Cadre design → ✅ Tableau / Toile
+❌ Peinture murale, Peinture décorative → ✅ Tableau / Toile
+❌ Décor mural, Décoration murale → ✅ Tableau / Toile
+❌ Cadeau personnalisé → ✅ Tableau personnalisé
+❌ Toile d'artiste, Tableau d'art → ✅ Toile / Tableau (formes simples)
 
-TERMINOLOGIE APPROUVÉE (approche mixte):
-✅ Tableau moderne, Tableau sur toile, Toile murale
-✅ Art mural, Peinture murale, Décoration murale
-✅ Œuvre murale, Création artistique, Toile d'artiste
-✅ Cadre décoratif (bois uniquement), Toile décorative
+OPENERS APPROUVÉS :
+✅ Tableau, Tableau moderne, Tableau mural, Tableau sur toile, Tableau décoratif, Tableau original, Grand tableau
+✅ Toile, Toile contemporaine, Toile décorative
 
-EXEMPLES À ÉVITER:
+PRINCIPE ANTI-CANNIBALIZATION SEO :
+Plusieurs produits du catalogue peuvent cibler le même sujet (5 Petit Prince, 10 Frida Kahlo, 30 Femme africaine, etc.). La cannibalization SEO se résout en différenciant le DESCRIPTEUR (la partie après le tiret), JAMAIS en variant le mot d'ouverture.
+
+✅ BON pattern (autorité concentrée) :
+"Tableau Le Petit Prince - Poésie étoilée | MyselfMonArt"
+"Tableau Le Petit Prince - Voyage cosmique | MyselfMonArt"
+"Tableau Le Petit Prince - Renard et amitié | MyselfMonArt"
+
+❌ MAUVAIS pattern (autorité dispersée) :
+"Tableau Le Petit Prince - Poésie étoilée | MyselfMonArt"
+"Art mural Le Petit Prince - Voyage cosmique | MyselfMonArt"
+"Œuvre murale Le Petit Prince - Renard et amitié | MyselfMonArt"
+
+EXEMPLES À ÉVITER (forme) :
 - Titres qui ne sont pas naturels ou compréhensibles par un client lambda
-- Répétition des mêmes mots-clés entre titre et méta-titre
 - Langage trop technique ou orienté métier
 - Formulations qui ne sonnent pas "humaines"
+- Bourrage de mots-clés sans descripteur émotionnel
 
 IMPORTANT:
-Conserve l'essence émotionnelle et le thème du produit original. Ne change que la terminologie obsolète.
-Si le titre est déjà optimisé, ignorer toutes les étapes precedentes et ne pas le modifier.
+Conserve l'essence émotionnelle et le thème du produit original. Ne change que la terminologie obsolète + le mot d'ouverture s'il ne respecte pas les règles.
+Si le titre est DÉJÀ optimisé (commence par "Tableau" ou "Toile" + référence + descripteur), ne le modifie pas inutilement.
 `
   }
 
+  /**
+   * Variantes autorisées pour le mot d'ouverture du H1.
+   * Toutes commencent par "Tableau" ou "Toile" (mots-clés que les utilisateurs tapent sur Google).
+   * INTERDIT : "Art mural", "Œuvre murale", "Création artistique", "Cadre", "Peinture murale", "Décor mural".
+   * Anti-cannibalization : on varie l'ouverture entre produits, MAIS toujours dans la famille du mot-clé.
+   */
   private getRandomWallArtTitleReplacement() {
     const replacements = [
+      'Tableau',
+      'Tableau sur toile',
       'Tableau moderne',
-      'Tableau déco',
-      'Tableau design',
-      'Grand tableau',
       'Tableau mural',
-      'Tableaux déco',
-      'Décoration murale',
-      'Toile murale',
       'Tableau décoratif',
       'Tableau original',
-      'Tableau sur toile',
+      'Grand tableau',
       'Toile',
-      'Toile moderne',
-      'Toile déco',
-      'Toile design',
-      'Tableau toile',
-      'Toile décorative',
-      'Décor mural',
-      'Art mural',
-      'Peinture murale',
       'Toile contemporaine',
-      'Toile originale',
-      'Œuvre murale',
-      'Création artistique',
-      'Cadre décoratif',
-      'Cadre moderne',
-      'Cadre design',
-      "Toile d'artiste",
-      "Tableau d'art",
-      'Peinture décorative',
+      'Toile décorative',
     ]
     return replacements[this.getRandomInt(replacements.length - 1)]
   }
 
+  /**
+   * Pour le metaTitle (60 chars budget serré), on hardcode "Tableau" (mot-clé court).
+   * Aucune variation : Google tronque à ~55 chars, on ne peut pas se permettre "Tableau sur toile" (17 chars).
+   * Le metaTitle se différencie via le DESCRIPTEUR, pas via le mot d'ouverture.
+   */
   private getRandomWallArtMetaTitleReplacement() {
-    const replacements = [
-      "Reproduction d'art",
-      'Œuvre murale',
-      'Création artistique',
-      "Toile d'artiste",
-      "Toile d'illustration",
-      'Art décoratif mural',
-      'Tableau moderne',
-      'Tableau déco',
-      'Tableau design',
-      'Grand tableau',
-      'Tableau mural',
-      'Tableaux déco',
-      'Décoration murale',
-      'Toile murale',
-      'Tableau décoratif',
-      'Tableau original',
-      'Tableau sur toile',
-      'Toile',
-      'Toile moderne',
-      'Toile déco',
-      'Toile design',
-      'Tableau toile',
-      'Toile décorative',
-      'Décor mural',
-      'Art mural',
-      'Peinture murale',
-      'Toile contemporaine',
-      'Toile originale',
-      'Cadre moderne',
-      'Cadre déco',
-      'Cadre design',
-      'Cadre décoratif',
-      'Peinture décorative',
-      "Tableau d'art",
-    ]
-    return replacements[this.getRandomInt(replacements.length - 1)]
+    return 'Tableau'
   }
 
   private getRandomInt(max: number) {

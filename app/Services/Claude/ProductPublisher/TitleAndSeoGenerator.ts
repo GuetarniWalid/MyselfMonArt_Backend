@@ -19,7 +19,9 @@ export default class TitleAndSeoGenerator {
       title: z.string().describe('H1 product title with SEO keywords'),
       metaTitle: z
         .string()
-        .describe('Meta title ending with " - MyselfMonArt" (target 60 chars max)'),
+        .describe(
+          'Meta title starting with "Tableau " (or "Poster "/"Tapisserie ") and ending with " | MyselfMonArt" (pipe separator). Target 60 chars max total.'
+        ),
       metaDescription: z
         .string()
         .min(140, 'Meta description must be at least 140 characters')
@@ -37,6 +39,10 @@ export default class TitleAndSeoGenerator {
 
     const productTypeKeyword =
       productType === 'painting' ? 'tableau' : productType === 'poster' ? 'affiche' : 'tapisserie'
+
+    // Mot-clé court capitalisé utilisé en ouverture stricte du metaTitle (60 chars budget)
+    const metaTitleKeyword =
+      productType === 'painting' ? 'Tableau' : productType === 'poster' ? 'Poster' : 'Tapisserie'
 
     return `
 <role>
@@ -136,11 +142,26 @@ export default class TitleAndSeoGenerator {
     
     <rules>
       – Entre 6 et 12 mots
-      – DOIT contenir "${productTypeKeyword}" (mais pas forcément au début)
+      – COMMENCE OBLIGATOIREMENT par le mot d'ouverture (voir <opening_word> ci-dessous)
       – Lisible à voix haute sans sonner robotique
       – Descriptif : on doit visualiser l'œuvre
-      – RÉFÉRENCE ICONIQUE : si reconnaissable, elle DOIT apparaître
+      – RÉFÉRENCE ICONIQUE : si reconnaissable, elle DOIT apparaître juste après le mot d'ouverture
     </rules>
+
+    <opening_word>
+      Le H1 doit COMMENCER par un des mots d'ouverture autorisés. JAMAIS d'autre chose.
+
+      Pour ${productType} (=${productTypeFr}), ouvertures autorisées :
+      ${
+        productType === 'painting'
+          ? '"Tableau sur toile", "Tableau", "Tableau moderne", "Tableau mural", "Tableau décoratif", "Tableau original", "Toile", "Toile contemporaine", "Toile moderne", "Toile décorative", "Grand tableau"'
+          : productType === 'poster'
+            ? '"Poster & affiche", "Poster", "Poster mural", "Affiche moderne", "Affiche murale"'
+            : '"Tapisserie", "Tapisserie murale", "Tapisserie décorative"'
+      }
+
+      INTERDIT comme premier mot : "Art mural", "Œuvre murale", "Création artistique", "Décor mural", "Peinture murale", "Cadre", "Cadre moderne", "Cadre décoratif", "Cadeau personnalisé", "Magnifique", "Superbe", ou tout autre opener qui ne contient pas le mot-clé "${productTypeKeyword}".
+    </opening_word>
 
     <iconic_reference_rule>
       AVANT de rédiger le titre, vérifie si l'œuvre fait référence à :
@@ -151,35 +172,30 @@ export default class TitleAndSeoGenerator {
       
       Si OUI → La référence apparaît OBLIGATOIREMENT dans le titre
       
-      Exemples :
-      ✅ "${productTypeFr} Blanche-Neige street art moderne"
-      ✅ "${productTypeFr} Chevrolet Bel Air vintage noir et blanc"
-      ✅ "${productTypeFr} La Joconde revisitée pop art"
-      
-      ❌ "${productTypeFr} femme robe jaune style urbain" (si c'est Blanche-Neige)
-      ❌ "${productTypeFr} voiture américaine années 50" (si c'est une Chevrolet reconnaissable)
+      Exemples (format : [Opening] [Référence] - [Descripteur]) :
+      ✅ "${productTypeFr} Blanche-Neige - Street art moderne et coloré"
+      ✅ "${productTypeFr} Chevrolet Bel Air - Vintage noir et blanc"
+      ✅ "${productTypeFr} La Joconde - Pop art revisité"
+
+      ❌ "${productTypeFr} femme robe jaune style urbain" (si c'est Blanche-Neige, la référence iconique manque)
+      ❌ "${productTypeFr} voiture américaine années 50" (si c'est une Chevrolet Bel Air reconnaissable)
     </iconic_reference_rule>
 
-    <formulas>
-      Choisis la formule la plus NATURELLE selon l'œuvre (pas toujours la même) :
-      
-      FORMULE A — Sujet en vedette :
-      "[Sujet] en [style/technique] — ${productTypeFr} [ambiance/lieu]"
-      Ex: "Lion majestueux en noir et blanc — ${productTypeFr} moderne"
-      
-      FORMULE B — Ambiance en vedette :
-      "${productTypeFr} [ambiance] : [sujet] [détail visuel]"
-      Ex: "${productTypeFr} apaisant : bouquet de pivoines baigné de lumière"
-      
-      FORMULE C — Référence en vedette :
-      "[Référence] — ${productTypeFr} [style] [attribut]"
-      Ex: "Chevrolet Bel Air — ${productTypeFr} vintage noir et blanc"
-      Ex: "Blanche-Neige — ${productTypeFr} street art coloré"
-      
-      FORMULE D — Directe et descriptive :
-      "${productTypeFr} [sujet] [couleurs/style] [contexte]"
-      Ex: "${productTypeFr} cerisier japonais rose et doré pour salon"
-    </formulas>
+    <formula>
+      STRUCTURE UNIQUE :
+      "[Mot d'ouverture] [Sujet/Référence principale] - [Descripteur évocateur en français]"
+
+      Le sujet/référence vient TOUJOURS juste après le mot d'ouverture. Le descripteur (long-tail) est ce qui différencie les produits similaires entre eux.
+
+      ✅ EXEMPLES OPTIMISÉS :
+      "Tableau sur toile Le Petit Prince - Poésie étoilée et renard"
+      "Tableau sur toile Frida Kahlo - Nature éclatante et fleurs"
+      "Toile contemporaine Femme africaine - Pluie multicolore"
+      "Tableau mural Cheval abstrait - Mouvement et liberté"
+      "Tableau sur toile Chevrolet Bel Air - Vintage noir et blanc"
+      "Toile décorative Blanche-Neige - Street art rebelle coloré"
+      "Tableau sur toile Lion majestueux - Aura graphique noire et blanche"
+    </formula>
 
     <quality_test>
       Avant de valider, vérifie :
@@ -190,32 +206,39 @@ export default class TitleAndSeoGenerator {
     </quality_test>
 
     <bad_examples>
-      ❌ "${productTypeFr} lion noir blanc graphique moderne salon" (liste de mots-clés)
-      ❌ "${productTypeFr} qualité premium décoration murale élégante" (vide, pas descriptif)
-      ❌ "Magnifique ${productTypeFr} de lion très beau" (fluff words)
-      ❌ "${productTypeFr} femme élégante vintage" (si c'est Audrey Hepburn reconnaissable)
+      ❌ "Art mural - Lion noir et blanc" (commence par "Art mural" → INTERDIT, perte du mot-clé "${productTypeKeyword}")
+      ❌ "Œuvre murale Frida Kahlo nature" (opener interdit "Œuvre murale")
+      ❌ "Cadre moderne CR7 - Énergie urbaine" (commence par "Cadre" → INTERDIT)
+      ❌ "${productTypeFr} lion noir blanc graphique moderne salon" (bourrage de mots-clés sans descripteur émotionnel)
+      ❌ "Magnifique ${productTypeFr} de lion très beau" (fluff words sans valeur descriptive)
+      ❌ "${productTypeFr} femme élégante vintage" (si c'est Audrey Hepburn, la référence iconique manque)
     </bad_examples>
   </field>
 
   <field name="metaTitle" type="balise title">
-    <purpose>Titre affiché dans les résultats Google</purpose>
-    
+    <purpose>Titre affiché dans les résultats Google. CRITIQUE pour le SEO — c'est le 1er signal vu par les utilisateurs ET par Google.</purpose>
+
     <rules>
-      – MAX 60 caractères TOTAL (incluant " - MyselfMonArt")
-      – Se termine TOUJOURS par " - MyselfMonArt"
-      – Variation concise du H1, pas une copie
+      – COMMENCE OBLIGATOIREMENT par "${metaTitleKeyword} " (mot-clé court capitalisé, JAMAIS la forme longue "${productTypeFr}")
+      – Structure : "${metaTitleKeyword} [Sujet/Référence] - [Descripteur très court] | MyselfMonArt"
+      – MAX 60 caractères TOTAL (incluant " | MyselfMonArt" = 16 chars, il reste ~44 chars pour le contenu)
+      – Se termine TOUJOURS par " | MyselfMonArt" (séparateur PIPE, pas tiret)
       – Capitaliser les mots importants
-      – Mot-clé "${productTypeKeyword}" présent
-      – Si référence iconique → elle doit apparaître
+      – Si référence iconique → elle apparaît juste après "${metaTitleKeyword} "
+      – Variation concise du H1, pas une copie exacte
     </rules>
 
     <examples>
-      ✅ "${productTypeFr} Lion Noir et Blanc - MyselfMonArt" (52 chars)
-      ✅ "Chevrolet Bel Air ${productTypeFr} Vintage - MyselfMonArt" (55 chars)
-      ✅ "Blanche-Neige Street Art ${productTypeFr} - MyselfMonArt" (53 chars)
-      
-      ❌ "${productTypeFr} lion noir et blanc style graphique moderne pour salon - MyselfMonArt" (trop long, coupé par Google)
-      ❌ "${productTypeFr} voiture vintage - MyselfMonArt" (si c'est une Chevrolet reconnaissable)
+      ✅ "${metaTitleKeyword} Le Petit Prince - Poésie étoilée | MyselfMonArt" (~55 chars)
+      ✅ "${metaTitleKeyword} Frida Kahlo - Nature éclatante | MyselfMonArt" (~53 chars)
+      ✅ "${metaTitleKeyword} Femme africaine multicolore | MyselfMonArt" (~52 chars)
+      ✅ "${metaTitleKeyword} Chevrolet Bel Air vintage | MyselfMonArt" (~50 chars)
+      ✅ "${metaTitleKeyword} Blanche-Neige street art | MyselfMonArt" (~50 chars)
+
+      ❌ "${productTypeFr} Le Petit Prince poésie étoilée - MyselfMonArt" (commence par "${productTypeFr}" qui mange trop de chars — utiliser juste "${metaTitleKeyword} ")
+      ❌ "Art mural - Lion noir et blanc - MyselfMonArt" (commence par "Art mural" → INTERDIT, perte du mot-clé)
+      ❌ "Petit Prince - ${metaTitleKeyword} poésie - MyselfMonArt" (sujet avant "${metaTitleKeyword}" → sous-optimal pour Google)
+      ❌ "${metaTitleKeyword} Le Petit Prince - Poésie étoilée - MyselfMonArt" (séparateur tiret au lieu de pipe à la fin → utiliser " | MyselfMonArt")
     </examples>
   </field>
 
@@ -246,6 +269,24 @@ export default class TitleAndSeoGenerator {
 
 </output_fields>
 
+<anti_cannibalisation>
+  RÈGLE CRUCIALE applicable au H1 et au metaTitle.
+
+  Plusieurs produits du catalogue ciblent souvent le même sujet (ex: 5 produits "Petit Prince", 10 produits "Frida Kahlo", 30+ produits "Femme africaine"). Pour éviter la cannibalization SEO, différencier UNIQUEMENT via le DESCRIPTEUR (le segment après le tiret), JAMAIS via le mot d'ouverture.
+
+  ✅ BON (différenciation long-tail, autorité concentrée) :
+  - "${metaTitleKeyword} Le Petit Prince - Poésie étoilée | MyselfMonArt"
+  - "${metaTitleKeyword} Le Petit Prince - Voyage cosmique | MyselfMonArt"
+  - "${metaTitleKeyword} Le Petit Prince - Renard et amitié | MyselfMonArt"
+  → Tous ciblent "${productTypeKeyword} le petit prince" comme racine. Google les comprend comme variantes du même produit. Autorité SEO concentrée. Pas de cannibalization.
+
+  ❌ MAUVAIS (variation du mot d'ouverture, autorité dispersée) :
+  - "${metaTitleKeyword} Le Petit Prince - Poésie étoilée | MyselfMonArt"
+  - "Art mural Le Petit Prince - Voyage cosmique | MyselfMonArt"
+  - "Œuvre murale Le Petit Prince - Renard et amitié | MyselfMonArt"
+  → Disperse l'autorité SEO sur 3 mots-clés différents ("art mural", "œuvre murale", "${productTypeKeyword}"). Aucun ne ranke bien. ANTI-PATTERN à PROSCRIRE.
+</anti_cannibalisation>
+
 <process>
   1. Lis la description HTML et identifie :
      - RÉFÉRENCE ICONIQUE (personnage, marque, lieu, œuvre célèbre) — EN PREMIER
@@ -257,10 +298,11 @@ export default class TitleAndSeoGenerator {
   2. Génère le shortTitle (ça clarifie l'essence de l'œuvre)
      → Si référence iconique : elle DOIT apparaître
   
-  3. Construis le H1 en choisissant la formule la plus naturelle
-     → Si référence iconique : utiliser la FORMULE C de préférence
-  
-  4. Dérive le metaTitle (version courte du H1, max 60 chars avec suffixe)
+  3. Construis le H1 selon la <formula> unique : "[Mot d'ouverture autorisé] [Sujet/Référence] - [Descripteur évocateur]"
+     → Le mot d'ouverture vient de <opening_word>
+     → Si référence iconique : elle apparaît juste après le mot d'ouverture
+
+  4. Dérive le metaTitle : COMMENCE OBLIGATOIREMENT par "${metaTitleKeyword} ", puis sujet/référence + descripteur court + " | MyselfMonArt". Max 60 chars total.
   
   5. Rédige la metaDescription (développe le H1 avec bénéfice, 140-155 chars)
   
@@ -274,8 +316,8 @@ export default class TitleAndSeoGenerator {
   Retourne un objet JSON avec cette structure exacte :
   {
     "shortTitle": "string (2-3 mots, concret)",
-    "title": "string (H1 naturel, 6-12 mots)",
-    "metaTitle": "string (max 60 chars, termine par ' - MyselfMonArt')",
+    "title": "string (H1 naturel, 6-12 mots, commence par ouverture autorisée)",
+    "metaTitle": "string (max 60 chars, commence par '${metaTitleKeyword} ', termine par ' | MyselfMonArt')",
     "metaDescription": "string (140-155 chars)"
   }
 </output_format>`
