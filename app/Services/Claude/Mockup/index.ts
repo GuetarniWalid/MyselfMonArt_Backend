@@ -2,6 +2,7 @@ import Authentication from '../Authentication'
 import MockupAltGenerator from '../ProductPublisher/MockupAltGenerator'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import Env from '@ioc:Adonis/Core/Env'
+import { toSlug } from 'App/Utils/Slug'
 import type { MockupMetadata } from 'Types/ProductPublisher'
 
 export default class Mockup extends Authentication {
@@ -12,23 +13,7 @@ export default class Mockup extends Authentication {
    *   "toile--abstraite__colorée" → "toile-abstraite-coloree"
    */
   private sanitizeFilename(filename: string): string {
-    return (
-      filename
-        // Normalize unicode to decompose accented characters (é → e + ́)
-        .normalize('NFD')
-        // Remove diacritics/accents (the combining characters)
-        .replace(/[\u0300-\u036f]/g, '')
-        // Convert to lowercase
-        .toLowerCase()
-        // Replace spaces, underscores, and other separators with hyphens
-        .replace(/[\s_]+/g, '-')
-        // Remove any character that's not a-z, 0-9, or hyphen
-        .replace(/[^a-z0-9-]/g, '')
-        // Replace multiple consecutive hyphens with single hyphen
-        .replace(/-+/g, '-')
-        // Remove leading/trailing hyphens
-        .replace(/^-+|-+$/g, '')
-    )
+    return toSlug(filename)
   }
 
   /**

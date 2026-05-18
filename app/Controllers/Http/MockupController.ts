@@ -10,6 +10,7 @@ import MockupQueue from 'App/Services/MockupQueue'
 import ClaudeMockup from 'App/Services/Claude/Mockup'
 import VideoCompressor from 'App/Services/Video/VideoCompressor'
 import VideoStorage from 'App/Services/VideoStorage'
+import { toSlug } from 'App/Utils/Slug'
 
 export default class MockupController {
   private queue = MockupQueue.getInstance()
@@ -1322,23 +1323,7 @@ export default class MockupController {
    * @returns Sanitized filename (lowercase, hyphens only)
    */
   private sanitizeFilename(filename: string): string {
-    return (
-      filename
-        // Normalize unicode to decompose accented characters (é → e + ́)
-        .normalize('NFD')
-        // Remove diacritics/accents (the combining characters)
-        .replace(/[\u0300-\u036f]/g, '')
-        // Convert to lowercase
-        .toLowerCase()
-        // Replace spaces, underscores, and other separators with hyphens
-        .replace(/[\s_]+/g, '-')
-        // Remove any character that's not a-z, 0-9, or hyphen
-        .replace(/[^a-z0-9-]/g, '')
-        // Replace multiple consecutive hyphens with single hyphen
-        .replace(/-+/g, '-')
-        // Remove leading/trailing hyphens
-        .replace(/^-+|-+$/g, '')
-    )
+    return toSlug(filename)
   }
 
   /**
