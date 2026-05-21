@@ -12,8 +12,16 @@ export default class PinPayloadGenerator {
   public getResponseFormat() {
     return z.object({
       title: z.string().max(100).describe('Pin title, max 100 characters'),
-      description: z.string().max(500).describe('Pin description, max 500 characters, no hashtags'),
-      alt_text: z.string().max(125).describe('Alt text, max 125 characters'),
+      description: z
+        .string()
+        .max(800)
+        .describe(
+          'Pin description, target 500 chars, hard ceiling 800 (Pinterest API limit), no hashtags'
+        ),
+      alt_text: z
+        .string()
+        .max(500)
+        .describe('Alt text, target 125 chars, hard ceiling 500 (Pinterest API limit)'),
     })
   }
 
