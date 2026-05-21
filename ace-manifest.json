@@ -84,6 +84,31 @@
       "aliases": [],
       "flags": []
     },
+    "pinterest:test_publish_one": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/PinterestTestPublishOne",
+      "commandName": "pinterest:test_publish_one",
+      "description": "Dry-run: build the pin payload for one product (or auto-select) without publishing.",
+      "args": [],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "product",
+          "propertyName": "product",
+          "type": "string",
+          "description": "Shopify product ID (numeric or gid://). Defaults to next eligible product."
+        },
+        {
+          "name": "create-boards",
+          "propertyName": "createBoards",
+          "type": "boolean",
+          "description": "Also auto-create missing Pinterest boards before building the payload."
+        }
+      ]
+    },
     "shopify:remove-glb-files": {
       "settings": {
         "loadApp": true,
@@ -212,18 +237,6 @@
       "commandPath": "./commands/ShopifyGetWebhookSubscriptions",
       "commandName": "shopify:get_webhook_subscriptions",
       "description": "Get all webhook subscriptions for the current shop",
-      "args": [],
-      "aliases": [],
-      "flags": []
-    },
-    "shopify:prevent_painting_titles_cannibalization": {
-      "settings": {
-        "loadApp": true,
-        "stayAlive": false
-      },
-      "commandPath": "./commands/ShopifyPreventPaintingTitlesCannibalization",
-      "commandName": "shopify:prevent_painting_titles_cannibalization",
-      "description": "Prevent painting titles cannibalization",
       "args": [],
       "aliases": [],
       "flags": []
