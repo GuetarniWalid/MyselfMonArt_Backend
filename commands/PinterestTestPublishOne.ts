@@ -6,7 +6,7 @@ import Shopify from 'App/Services/Shopify'
 export default class PinterestTestPublishOne extends BaseCommand {
   public static commandName = 'pinterest:test_publish_one'
   public static description =
-    'Dry-run: build the pin payload for one product (or auto-select) without publishing.'
+    'Dry-run: mirror the cron (auto-create missing boards, build the pin payload) without posting the pin.'
 
   public static settings = {
     loadApp: true,
@@ -19,9 +19,10 @@ export default class PinterestTestPublishOne extends BaseCommand {
   public product: string
 
   @flags.boolean({
-    description: 'Also auto-create missing Pinterest boards before building the payload.',
+    description:
+      'Skip auto-creation of missing boards (matching-only test, no Pinterest API write).',
   })
-  public createBoards: boolean
+  public skipCreateBoards: boolean
 
   public async run() {
     const shopify = new Shopify()
@@ -33,9 +34,11 @@ export default class PinterestTestPublishOne extends BaseCommand {
     const pinterest = new Pinterest(products, collections)
     await pinterest.initialize()
 
-    if (this.createBoards) {
-      this.logger.info('Auto-creating missing boards...')
+    if (!this.skipCreateBoards) {
+      this.logger.info('Auto-creating missing boards (mirroring cron behavior)...')
       await pinterest.autoCreateMissingBoards()
+    } else {
+      this.logger.info('Skipping auto-creation (--skip-create-boards).')
     }
 
     const { product, board } = this.product
@@ -63,7 +66,7 @@ export default class PinterestTestPublishOne extends BaseCommand {
     const matching = matcher.getMatchingBoards(product, pinterest.getBoards())
     if (matching.length === 0) {
       throw new Error(
-        `Product ${product.title} has no matching board (mother_collection=${matcher.getMotherCollectionTitle(product) ?? 'none'}, artworkType=${matcher.getArtworkType(product) ?? 'none'})`
+        `Product ${product.title} has no matching board (mother_collection=${matcher.getMotherCollectionTitle(product) ?? 'none'}, artworkType=${matcher.getArtworkType(product) ?? 'none'}). With --skip-create-boards, only existing boards are considered — re-run without the flag to auto-create.`
       )
     }
     return { product, board: matching[0] }

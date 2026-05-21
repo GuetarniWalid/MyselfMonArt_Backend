@@ -91,7 +91,7 @@
       },
       "commandPath": "./commands/PinterestTestPublishOne",
       "commandName": "pinterest:test_publish_one",
-      "description": "Dry-run: build the pin payload for one product (or auto-select) without publishing.",
+      "description": "Dry-run: mirror the cron (auto-create missing boards, build the pin payload) without posting the pin.",
       "args": [],
       "aliases": [],
       "flags": [
@@ -102,10 +102,10 @@
           "description": "Shopify product ID (numeric or gid://). Defaults to next eligible product."
         },
         {
-          "name": "create-boards",
-          "propertyName": "createBoards",
+          "name": "skip-create-boards",
+          "propertyName": "skipCreateBoards",
           "type": "boolean",
-          "description": "Also auto-create missing Pinterest boards before building the payload."
+          "description": "Skip auto-creation of missing boards (matching-only test, no Pinterest API write)."
         }
       ]
     },
