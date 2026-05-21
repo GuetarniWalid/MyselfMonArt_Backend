@@ -58,16 +58,20 @@ export default class PinFormatter {
     return { publicUrl, imageAlt: image.alt }
   }
 
+  private static readonly IMAGE_PRIORITY = [2, 3, 1, 0]
+
   private getImage(images: ShopifyProduct['media']['nodes']) {
     if (!Array.isArray(images) || images.length === 0) {
       throw new Error('No image found')
     }
     const imageList = images.filter((image) => image.mediaContentType === 'IMAGE')
-    const image = imageList[2]
-    if (!image || !image.image || !image.image.url) {
-      throw new Error('No neutral mockup at index 2 — product not publishable to Pinterest')
+    for (const index of PinFormatter.IMAGE_PRIORITY) {
+      const candidate = imageList[index]
+      if (candidate?.image?.url) return candidate
     }
-    return image
+    throw new Error(
+      'No usable image at indices [2, 3, 1, 0] — product not publishable to Pinterest'
+    )
   }
 
   private async downloadImage(imageUrl: string): Promise<Buffer> {

@@ -24,9 +24,11 @@ export default class PublicationSelector {
     return { product: leastPublishedProduct, board: nextAvailableBoard }
   }
 
+  private static readonly IMAGE_PRIORITY = [2, 3, 1, 0]
+
   private getEligibleProducts(): ShopifyProduct[] {
     return this.shopifyProducts.filter((product) => {
-      if (!this.hasNeutralMockup(product)) return false
+      if (!this.hasPublishableImage(product)) return false
       const matchingBoards = this.matcher.getMatchingBoards(product, this.boards)
       if (matchingBoards.length === 0) return false
       const usedBoardIds = new Set(this.getProductPins(product.id).map((pin) => pin.board_id))
@@ -34,9 +36,9 @@ export default class PublicationSelector {
     })
   }
 
-  private hasNeutralMockup(product: ShopifyProduct): boolean {
+  private hasPublishableImage(product: ShopifyProduct): boolean {
     const images = (product.media?.nodes || []).filter((m) => m.mediaContentType === 'IMAGE')
-    return Boolean(images[2]?.image?.url)
+    return PublicationSelector.IMAGE_PRIORITY.some((i) => Boolean(images[i]?.image?.url))
   }
 
   private getProductPins(productId: string): PinterestPin[] {
