@@ -18,13 +18,16 @@ export default class PublishPinterestPin extends BaseTask {
       logTaskBoundary(true, 'Publish Pinterest Pin')
 
       const shopify = new Shopify()
-      const products = await shopify.product.getAll()
+      const [products, collections] = await Promise.all([
+        shopify.product.getAll(),
+        shopify.collection.getAll(),
+      ])
 
-      const pinterest = new Pinterest(products)
+      const pinterest = new Pinterest(products, collections)
       await pinterest.initialize()
 
-      await pinterest.newProductHandler.processNewProducts()
-      await pinterest.updateProductHandler.refreshBoardRecommendations()
+      await pinterest.autoCreateMissingBoards()
+
       const { product, board } = await pinterest.publicationSelector.selectNextProductToPublish()
 
       const pinPayload = await pinterest.pinFormatter.buildPinPayload(product, board)
@@ -36,7 +39,7 @@ export default class PublishPinterestPin extends BaseTask {
       console.log('============================')
       console.log('✅ Pinterest Pin published')
     } catch (error) {
-      console.log('❌ Pinterest Pin no published')
+      console.log('❌ Pinterest Pin not published:', error?.message || error)
     } finally {
       logTaskBoundary(false, 'Publish Pinterest Pin')
     }
