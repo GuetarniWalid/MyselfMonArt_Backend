@@ -13,7 +13,7 @@ export default class PinFormatter {
     process.env.NODE_ENV === 'test' ? '' : process.env.APP_URL || 'http://localhost:3333'
 
   public async buildPinPayload(shopifyProduct: ShopifyProduct, board: Board): Promise<PinPayload> {
-    const { publicUrl, imageAlt } = await this.processAndUploadImage(shopifyProduct, board)
+    const { publicUrl, imageAlt } = await this.processAndUploadImage(shopifyProduct)
     const pinterest = new Pinterest()
     const productType = this.getProductTypeFr(shopifyProduct)
     const pinPayload = await pinterest.generatePinPayload(
@@ -49,13 +49,12 @@ export default class PinFormatter {
     }
   }
 
-  private async processAndUploadImage(shopifyProduct: ShopifyProduct, board: Board) {
+  private async processAndUploadImage(shopifyProduct: ShopifyProduct) {
     const image = this.getImage(shopifyProduct.media.nodes)
     const imageUrl = image.image!.url
     const imageBuffer = await this.downloadImage(imageUrl)
     const croppedBuffer = await this.cropImage(imageBuffer)
-    const styledBuffer = await this.addBorder(croppedBuffer, board)
-    const publicUrl = await this.saveImageLocally(styledBuffer)
+    const publicUrl = await this.saveImageLocally(croppedBuffer)
     return { publicUrl, imageAlt: image.alt }
   }
 
@@ -64,13 +63,9 @@ export default class PinFormatter {
       throw new Error('No image found')
     }
     const imageList = images.filter((image) => image.mediaContentType === 'IMAGE')
-    if (imageList.length === 0) {
-      throw new Error('No valid image found')
-    }
-
-    const image = imageList[2] || imageList[0]
-    if (!image.image || !image.image.url) {
-      throw new Error('Image object or image URL is undefined')
+    const image = imageList[2]
+    if (!image || !image.image || !image.image.url) {
+      throw new Error('No neutral mockup at index 2 — product not publishable to Pinterest')
     }
     return image
   }
@@ -84,73 +79,8 @@ export default class PinFormatter {
 
   private async cropImage(imageBuffer: Buffer): Promise<Buffer> {
     const image = sharp(imageBuffer)
-    const croppedImage = await image.resize(1000, 1500, { fit: 'cover' }).toBuffer()
+    const croppedImage = await image.resize(1000, 1500, { fit: 'cover' }).png().toBuffer()
     return croppedImage
-  }
-
-  private async addBorder(imageBuffer: Buffer, board: Board): Promise<Buffer> {
-    const borderColor = this.chooseBorderColor(board)
-    const offset = 50
-    const strokeWidth = 15
-
-    // Load image from buffer
-    const image = sharp(imageBuffer)
-    const { width, height } = await image.metadata()
-
-    if (!width || !height) {
-      throw new Error('Invalid image dimensions')
-    }
-
-    const svg = `
-    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-      <rect x="${offset}" y="${offset}"
-            width="${width - 2 * offset}"
-            height="${height - 2 * offset}"
-            fill="none"
-            stroke="rgba(${borderColor.r}, ${borderColor.g}, ${borderColor.b}, ${borderColor.alpha})"
-            stroke-width="${strokeWidth}"
-            vector-effect="non-scaling-stroke"/>
-    </svg>`
-
-    const overlay = Buffer.from(svg)
-
-    const outputBuffer = await image
-      .composite([{ input: overlay, blend: 'over' }])
-      .png()
-      .toBuffer()
-
-    return outputBuffer
-  }
-
-  private chooseBorderColor(board: Board): {
-    r: number
-    g: number
-    b: number
-    alpha: number
-  } {
-    const defaultColor = { r: 0, g: 0, b: 0, alpha: 0 }
-    if (!board.description) {
-      return defaultColor
-    }
-
-    const colorPattern = /Ref:\s*(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?/i
-    const match = board.description.match(colorPattern)
-
-    if (!match) {
-      return defaultColor
-    }
-
-    const r = Number(match[1])
-    const g = Number(match[2])
-    const b = Number(match[3])
-    const a = match[4] !== undefined ? Number(match[4]) : 100
-
-    return {
-      r,
-      g,
-      b,
-      alpha: a / 100,
-    }
   }
 
   private async saveImageLocally(imageBuffer: Buffer): Promise<string> {
