@@ -1,5 +1,6 @@
 import Authentication from '../Authentication'
 import PinPayloadGenerator from './PinPayloadGenerator'
+import BoardDescriptionGenerator from './BoardDescriptionGenerator'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import Env from '@ioc:Adonis/Core/Env'
 
@@ -51,6 +52,51 @@ export default class Pinterest extends Authentication {
       }
 
       return responseFormat.parse(toolUse.input)
+    })
+  }
+
+  public async generateBoardDescription(
+    collectionTitle: string,
+    collectionDescriptionHtml: string | null
+  ): Promise<string> {
+    return this.retryOperation(async () => {
+      const generator = new BoardDescriptionGenerator()
+      const { responseFormat, systemPrompt, payload } = generator.prepareRequest(
+        collectionTitle,
+        collectionDescriptionHtml
+      )
+      const jsonSchema: any = zodToJsonSchema(responseFormat, 'board_description')
+
+      if (!jsonSchema.type) {
+        jsonSchema.type = 'object'
+      }
+
+      const response = await this.anthropic.messages.create({
+        model: Env.get('CLAUDE_MODEL'),
+        max_tokens: 1024,
+        tools: [
+          {
+            name: 'generate_board_description',
+            description: 'Generate a Pinterest board description (max 500 characters)',
+            input_schema: jsonSchema,
+          },
+        ],
+        tool_choice: { type: 'tool', name: 'generate_board_description' },
+        messages: [
+          {
+            role: 'user',
+            content: JSON.stringify(payload),
+          },
+        ],
+        system: systemPrompt,
+      })
+
+      const toolUse = response.content.find((block) => block.type === 'tool_use')
+      if (!toolUse || toolUse.type !== 'tool_use') {
+        throw new Error('Claude did not return board description')
+      }
+
+      return responseFormat.parse(toolUse.input).description
     })
   }
 
