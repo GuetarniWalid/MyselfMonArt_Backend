@@ -60,7 +60,9 @@ export default class PublicationSelector {
 
   private getLeastPublishedProduct(products: ShopifyProduct[]): ShopifyProduct {
     return [...products].sort((a, b) => {
-      return this.getProductPins(a.id).length - this.getProductPins(b.id).length
+      const pinDiff = this.getProductPins(a.id).length - this.getProductPins(b.id).length
+      if (pinDiff !== 0) return pinDiff
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     })[0]
   }
 

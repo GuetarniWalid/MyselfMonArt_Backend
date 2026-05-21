@@ -270,6 +270,7 @@ export default class Product extends Authentication {
                       description
                       handle
                       productType
+                      createdAt
                       hasOnlyDefaultVariant
                       media(first: 10, sortKey: POSITION) {
                         nodes {

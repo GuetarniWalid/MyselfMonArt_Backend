@@ -132,6 +132,7 @@ export interface Product {
   description: string
   handle: string
   productType: string
+  createdAt: string
   media: {
     nodes: {
       id: string
