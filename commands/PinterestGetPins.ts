@@ -15,12 +15,10 @@ export default class PinterestGetPins extends BaseCommand {
     await pinterest.initialize()
     const pins = await pinterest.fetcher.getAllPins()
     console.log(`Found ${pins.length} pins`)
-    const pinsWithBouddha = pins.filter(
-      (pin) =>
-        pin.title.toLowerCase().includes('bouddha') ||
-        pin.description.toLowerCase().includes('bouddha')
-    )
-    console.log(`Found ${pinsWithBouddha.length} pins with bouddha in the title`)
-    console.dir(pinsWithBouddha, { depth: null })
+    const latestPins = [...pins]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 10)
+    console.log('Latest 10 pins (most recent first):')
+    console.dir(latestPins, { depth: null })
   }
 }
