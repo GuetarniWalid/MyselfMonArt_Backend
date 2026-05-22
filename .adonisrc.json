@@ -40,6 +40,10 @@
     {
       "pattern": "resources/views/**/*.edge",
       "reloadServer": false
+    },
+    {
+      "pattern": "bootstrap-env.js",
+      "reloadServer": true
     }
   ],
   "aceProviders": [

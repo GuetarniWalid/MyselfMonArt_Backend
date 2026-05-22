@@ -11,3 +11,7 @@ copy-env.sh
 *.http
 .claude/
 photoshop-plugin/mockups/
+.env*
+.flaskenv*
+!.env.project
+!.env.vault

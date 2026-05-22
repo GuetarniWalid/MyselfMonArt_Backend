@@ -6,6 +6,21 @@
 - Only execute these commands when the user specifically asks you to do so
 - The user will manage server startup and testing on their own unless they request your help
 
+## Env loading (dotenv-vault)
+
+This project supports two ways of loading env vars at startup, handled by [bootstrap-env.js](bootstrap-env.js):
+
+- **Local dev:** keep your `.env` at the project root (gitignored). It's loaded natively by AdonisJS — nothing changes.
+- **Cloud sandbox / CI (no `.env` on disk):** set `DOTENV_KEY` in the environment. The bootstrap decrypts `.env.vault` and injects values into `process.env` before AdonisJS reads them.
+
+To refresh a local `.env` from the vault (requires `.env.me`):
+
+```
+npm run env:pull
+```
+
+Get your `.env.me` from a teammate or via `npx dotenv-vault@latest login`. If both `.env` and `DOTENV_KEY` are present, the local `.env` wins.
+
 ## Commit Message Format
 Follow conventional commits format: `type(scope): description`
 
