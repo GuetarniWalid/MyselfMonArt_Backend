@@ -48,11 +48,19 @@ export default class PinterestPoster extends Authentication {
   }
 
   private async sendPinToPinterest(pinPayload: PinPayload) {
-    const response = (await this.request({
-      method: 'POST',
-      url: '/pins',
-      data: pinPayload,
-    })) as PinterestPin
-    return response
+    try {
+      const response = (await this.request({
+        method: 'POST',
+        url: '/pins',
+        data: pinPayload,
+      })) as PinterestPin
+      return response
+    } catch (error) {
+      const status = error?.response?.status
+      const body = error?.response?.data
+      throw new Error(
+        `Pinterest POST /pins failed (status ${status}): ${JSON.stringify(body)} | payload board=${pinPayload.board_id} link=${pinPayload.link} image=${pinPayload.media_source.url}`
+      )
+    }
   }
 }
