@@ -8,8 +8,9 @@ export default class PinterestPinPayloadValidator {
     link: schema.string(),
     alt_text: schema.string(),
     media_source: schema.object().members({
-      url: schema.string(),
-      source_type: schema.enum(['image_url']),
+      source_type: schema.enum(['image_base64']),
+      content_type: schema.enum(['image/png', 'image/jpeg']),
+      data: schema.string(),
     }),
   })
 

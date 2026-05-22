@@ -2,11 +2,13 @@ import { BaseCommand, flags } from '@adonisjs/core/build/standalone'
 import Pinterest from 'App/Services/Pinterest'
 import BoardMatcher from 'App/Services/Pinterest/BoardMatcher'
 import Shopify from 'App/Services/Shopify'
+import fs from 'fs/promises'
+import path from 'path'
 
 export default class PinterestTestPublishOne extends BaseCommand {
   public static commandName = 'pinterest:test_publish_one'
   public static description =
-    'Dry-run: mirror the cron (auto-create missing boards, build the pin payload) without posting the pin.'
+    'Dry-run: mirror the cron (auto-create missing boards, build the pin payload) without posting the pin. Saves the cropped image locally for visual inspection.'
 
   public static settings = {
     loadApp: true,
@@ -50,10 +52,23 @@ export default class PinterestTestPublishOne extends BaseCommand {
     this.logger.info('Building pin payload (this may take a few seconds)...')
 
     const pinPayload = await pinterest.pinFormatter.buildPinPayload(product, board)
+
+    const previewPath = path.resolve('tmp', 'pinterest-dry-run.png')
+    await fs.mkdir(path.dirname(previewPath), { recursive: true })
+    await fs.writeFile(previewPath, Buffer.from(pinPayload.media_source.data, 'base64'))
+
+    const payloadForDisplay = {
+      ...pinPayload,
+      media_source: {
+        source_type: pinPayload.media_source.source_type,
+        content_type: pinPayload.media_source.content_type,
+        data: `<base64 ${pinPayload.media_source.data.length} chars>`,
+      },
+    }
     console.log('---')
-    console.dir(pinPayload, { depth: null })
+    console.dir(payloadForDisplay, { depth: null })
     console.log('---')
-    this.logger.info(`Image saved at: ${pinPayload.media_source.url}`)
+    this.logger.info(`Image preview saved at: ${previewPath}`)
     this.logger.info('Dry-run complete — pin NOT published. Review the image and payload above.')
   }
 

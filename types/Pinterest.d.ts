@@ -67,7 +67,8 @@ export interface PinPayload {
   link: string
   alt_text: string
   media_source: {
-    url: string
-    source_type: 'image_url'
+    source_type: 'image_base64'
+    content_type: 'image/png' | 'image/jpeg'
+    data: string
   }
 }

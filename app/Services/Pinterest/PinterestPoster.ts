@@ -59,7 +59,7 @@ export default class PinterestPoster extends Authentication {
       const status = error?.response?.status
       const body = error?.response?.data
       throw new Error(
-        `Pinterest POST /pins failed (status ${status}): ${JSON.stringify(body)} | payload board=${pinPayload.board_id} link=${pinPayload.link} image=${pinPayload.media_source.url}`
+        `Pinterest POST /pins failed (status ${status}): ${JSON.stringify(body)} | payload board=${pinPayload.board_id} link=${pinPayload.link} image_size_b64=${pinPayload.media_source.data.length}`
       )
     }
   }

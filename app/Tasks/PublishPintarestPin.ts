@@ -32,8 +32,6 @@ export default class PublishPinterestPin extends BaseTask {
       const pinPayload = await pinterest.pinFormatter.buildPinPayload(product, board)
       const pin = await pinterest.poster.publishPin(pinPayload)
 
-      await pinterest.pinFormatter.removeImage(pinPayload.media_source.url)
-
       console.log('🚀 ~ pin published:', pin)
       console.log('============================')
       console.log('✅ Pinterest Pin published')

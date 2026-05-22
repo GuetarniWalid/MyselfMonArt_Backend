@@ -1,19 +1,11 @@
 import type { Board, PinPayload } from 'Types/Pinterest'
 import type { Product as ShopifyProduct } from 'Types/Product'
 import sharp from 'sharp'
-import fs from 'fs/promises'
-import path from 'path'
-import { randomUUID } from 'crypto'
 import Pinterest from '../Claude/Pinterest'
 
 export default class PinFormatter {
-  private readonly UPLOAD_DIR = 'public/uploads'
-  private readonly PUBLIC_URL = '/uploads'
-  private readonly BASE_URL =
-    process.env.NODE_ENV === 'test' ? '' : process.env.APP_URL || 'http://localhost:3333'
-
   public async buildPinPayload(shopifyProduct: ShopifyProduct, board: Board): Promise<PinPayload> {
-    const { publicUrl, imageAlt } = await this.processAndUploadImage(shopifyProduct)
+    const { buffer, imageAlt } = await this.processImage(shopifyProduct)
     const pinterest = new Pinterest()
     const productType = this.getProductTypeFr(shopifyProduct)
     const pinPayload = await pinterest.generatePinPayload(
@@ -29,10 +21,16 @@ export default class PinFormatter {
       link: this.getProductLinkWithProductId(shopifyProduct),
       alt_text: pinPayload.alt_text || imageAlt,
       media_source: {
-        url: publicUrl,
-        source_type: 'image_url',
+        source_type: 'image_base64',
+        content_type: 'image/png',
+        data: buffer.toString('base64'),
       },
     }
+  }
+
+  public async getCroppedImageBuffer(shopifyProduct: ShopifyProduct): Promise<Buffer> {
+    const { buffer } = await this.processImage(shopifyProduct)
+    return buffer
   }
 
   private getProductTypeFr(shopifyProduct: ShopifyProduct): string {
@@ -49,13 +47,11 @@ export default class PinFormatter {
     }
   }
 
-  private async processAndUploadImage(shopifyProduct: ShopifyProduct) {
+  private async processImage(shopifyProduct: ShopifyProduct) {
     const image = this.getImage(shopifyProduct.media.nodes)
-    const imageUrl = image.image!.url
-    const imageBuffer = await this.downloadImage(imageUrl)
-    const croppedBuffer = await this.cropImage(imageBuffer)
-    const publicUrl = await this.saveImageLocally(croppedBuffer)
-    return { publicUrl, imageAlt: image.alt }
+    const imageBuffer = await this.downloadImage(image.image!.url)
+    const buffer = await this.cropImage(imageBuffer)
+    return { buffer, imageAlt: image.alt }
   }
 
   private static readonly IMAGE_PRIORITY = [2, 3, 1, 0]
@@ -83,40 +79,7 @@ export default class PinFormatter {
 
   private async cropImage(imageBuffer: Buffer): Promise<Buffer> {
     const image = sharp(imageBuffer)
-    const croppedImage = await image.resize(1000, 1500, { fit: 'cover' }).png().toBuffer()
-    return croppedImage
-  }
-
-  private async saveImageLocally(imageBuffer: Buffer): Promise<string> {
-    // Ensure upload directory exists
-    await fs.mkdir(this.UPLOAD_DIR, { recursive: true })
-
-    // Generate unique filename
-    const filename = `${randomUUID()}.png`
-    const filepath = path.join(this.UPLOAD_DIR, filename)
-
-    // Save the file
-    await fs.writeFile(filepath, imageBuffer)
-
-    // Return URL (relative in test, full in production)
-    return `${this.BASE_URL}${this.PUBLIC_URL}/${filename}`
-  }
-
-  public async removeImage(imageUrl: string): Promise<void> {
-    try {
-      // Extract filename from URL
-      const filename = path.basename(imageUrl)
-      const filepath = path.join(this.UPLOAD_DIR, filename)
-
-      // Check if file exists
-      await fs.access(filepath)
-
-      // Remove file
-      await fs.unlink(filepath)
-    } catch (error) {
-      // If file doesn't exist or can't be removed, log error but don't throw
-      console.error(`Failed to remove image ${imageUrl}:`, error)
-    }
+    return image.resize(1000, 1500, { fit: 'cover' }).png().toBuffer()
   }
 
   private getProductLinkWithProductId(shopifyProduct: ShopifyProduct): string {
