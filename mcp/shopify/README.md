@@ -10,6 +10,7 @@ This module provides 70+ tools for Shopify store management:
 - Customers & B2B
 - Analytics & Reporting
 - Marketing & Discounts
+- File & Media upload (Files library)
 
 ## Mode: Authless
 
@@ -71,6 +72,19 @@ Configure your Shopify app with these scopes:
 - `read_customers`
 - `read_inventory`, `write_inventory`
 - `read_analytics`, `read_reports`
+- `write_files` (required for `uploadFile` / `createFile` / `createStagedUpload`)
+
+## File upload
+
+Three tools for the Shopify Files library, mirroring the official GraphQL Admin API:
+
+| Tool | Level | Use case |
+|------|-------|----------|
+| `uploadFile` | High-level | Upload a base64 payload in one call. Runs `stagedUploadsCreate` → multipart POST → `fileCreate` internally. |
+| `createStagedUpload` | Low-level | Just create staged upload targets (`stagedUploadsCreate`). |
+| `createFile` | Low-level | Register a file in Shopify (`fileCreate`) from a public URL or a `resourceUrl` returned by `createStagedUpload`. |
+
+`uploadFile` expects raw base64 (no `data:` URI prefix). For images use `resource: "IMAGE"` so Shopify creates a `MediaImage` (CDN URL + dimensions); for PDFs and other binaries keep the default `FILE` (creates a `GenericFile`).
 
 ## Security Note
 

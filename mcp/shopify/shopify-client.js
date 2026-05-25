@@ -2115,5 +2115,153 @@ export class ShopifyClient {
     }
     return this.graphql(mutation, { input })
   }
+  // File / Media operations
+  // Maps a stagedUploadsCreate `resource` to the corresponding fileCreate `contentType`
+  resourceToContentType(resource) {
+    switch (resource) {
+      case 'IMAGE':
+      case 'PRODUCT_IMAGE':
+      case 'COLLECTION_IMAGE':
+      case 'SHOP_IMAGE':
+        return 'IMAGE'
+      case 'VIDEO':
+        return 'VIDEO'
+      case 'MODEL_3D':
+        return 'MODEL_3D'
+      case 'FILE':
+      default:
+        return 'FILE'
+    }
+  }
+  async stagedUploadsCreate(inputs) {
+    const mutation = `
+      mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+        stagedUploadsCreate(input: $input) {
+          stagedTargets {
+            url
+            resourceUrl
+            parameters {
+              name
+              value
+            }
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `
+    return this.graphql(mutation, { input: inputs })
+  }
+  async fileCreate(files) {
+    const mutation = `
+      mutation fileCreate($files: [FileCreateInput!]!) {
+        fileCreate(files: $files) {
+          files {
+            id
+            fileStatus
+            alt
+            createdAt
+            ... on MediaImage {
+              image {
+                url
+                width
+                height
+              }
+              mimeType
+            }
+            ... on GenericFile {
+              url
+              mimeType
+              originalFileSize
+            }
+            ... on Video {
+              originalSource {
+                url
+                mimeType
+                fileSize
+              }
+            }
+            ... on Model3d {
+              originalSource {
+                url
+                mimeType
+                filesize
+              }
+            }
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `
+    return this.graphql(mutation, { files })
+  }
+  // High-level helper: takes a base64 payload and performs the full
+  // stagedUploadsCreate -> multipart POST -> fileCreate flow.
+  async uploadFile(params) {
+    const filename = params.filename
+    const mimeType = params.mimeType
+    const resource = params.resource || 'FILE'
+    if (!filename || !mimeType || !params.data) {
+      throw new Error('uploadFile requires `filename`, `mimeType` and `data` (base64).')
+    }
+    const fileBuffer = Buffer.from(params.data, 'base64')
+    const fileSize = fileBuffer.length
+    // Step 1: create a staged upload target
+    const stagedResult = await this.stagedUploadsCreate([
+      {
+        filename,
+        mimeType,
+        resource,
+        httpMethod: 'POST',
+        fileSize: String(fileSize),
+      },
+    ])
+    const stagedPayload = stagedResult.data?.stagedUploadsCreate
+    if (stagedPayload?.userErrors?.length > 0) {
+      throw new Error(`stagedUploadsCreate errors: ${JSON.stringify(stagedPayload.userErrors)}`)
+    }
+    const target = stagedPayload?.stagedTargets?.[0]
+    if (!target) {
+      throw new Error('stagedUploadsCreate returned no staged target')
+    }
+    // Step 2: multipart POST to the staged URL.
+    // Per Shopify docs: parameters must precede the file field, file must be last.
+    const formData = new FormData()
+    for (const param of target.parameters) {
+      formData.append(param.name, param.value)
+    }
+    formData.append('file', new Blob([fileBuffer], { type: mimeType }), filename)
+    const uploadResponse = await fetch(target.url, {
+      method: 'POST',
+      body: formData,
+    })
+    if (!uploadResponse.ok) {
+      const text = await uploadResponse.text().catch(() => '')
+      throw new Error(
+        `Staged upload POST to ${target.url} failed: ${uploadResponse.status} ${uploadResponse.statusText} ${text}`
+      )
+    }
+    // Step 3: register the staged file in Shopify
+    const contentType = this.resourceToContentType(resource)
+    const fileInput = {
+      originalSource: target.resourceUrl,
+      contentType,
+      filename,
+    }
+    if (params.alt) fileInput.alt = params.alt
+    if (params.duplicateResolutionMode)
+      fileInput.duplicateResolutionMode = params.duplicateResolutionMode
+    const fileResult = await this.fileCreate([fileInput])
+    return {
+      stagedTarget: target,
+      ...fileResult,
+    }
+  }
 }
 //# sourceMappingURL=shopify-client.js.map

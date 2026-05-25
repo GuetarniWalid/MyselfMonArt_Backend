@@ -2189,6 +2189,200 @@ function registerTools(server, shopifyClient) {
       }
     }
   )
+  // File / Media Tools
+  server.tool(
+    'createStagedUpload',
+    'Create one or more staged upload targets (low-level). Returns the URL, resourceUrl and form parameters required to POST the file to Shopify storage. Most callers should use `uploadFile` instead.',
+    {
+      uploads: z
+        .array(
+          z.object({
+            filename: z.string(),
+            mimeType: z.string().describe('e.g., "image/jpeg", "image/png", "application/pdf"'),
+            resource: z
+              .enum([
+                'FILE',
+                'IMAGE',
+                'VIDEO',
+                'MODEL_3D',
+                'PRODUCT_IMAGE',
+                'COLLECTION_IMAGE',
+                'SHOP_IMAGE',
+                'URL_REDIRECT_IMPORT',
+              ])
+              .default('FILE'),
+            httpMethod: z.enum(['POST', 'PUT']).optional().default('POST'),
+            fileSize: z
+              .string()
+              .optional()
+              .describe('Required for VIDEO and MODEL_3D resources. Size in bytes as a string.'),
+          })
+        )
+        .describe('One or more staged upload definitions'),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.stagedUploadsCreate(args.uploads)
+        const payload = result.data.stagedUploadsCreate
+        if (payload.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error creating staged upload: ${JSON.stringify(payload.userErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(payload.stagedTargets, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error creating staged upload: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'createFile',
+    'Register one or more files in Shopify (low-level fileCreate). `originalSource` may be a publicly accessible URL OR a `resourceUrl` returned by `createStagedUpload`. Most callers should use `uploadFile` to upload from base64 data.',
+    {
+      files: z
+        .array(
+          z.object({
+            originalSource: z
+              .string()
+              .describe('Public URL or resourceUrl from a previous createStagedUpload call'),
+            contentType: z
+              .enum(['FILE', 'IMAGE', 'VIDEO', 'EXTERNAL_VIDEO', 'MODEL_3D'])
+              .default('FILE'),
+            alt: z.string().max(512).optional().describe('Accessibility text (max 512 chars)'),
+            filename: z.string().optional(),
+            duplicateResolutionMode: z.enum(['APPEND_UUID', 'RAISE_ERROR', 'REPLACE']).optional(),
+          })
+        )
+        .describe('One or more files to create'),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.fileCreate(args.files)
+        const payload = result.data.fileCreate
+        if (payload.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error creating file: ${JSON.stringify(payload.userErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(payload.files, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error creating file: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'uploadFile',
+    'Upload a file from base64 data to the Shopify Files library. Runs the full flow: stagedUploadsCreate -> multipart POST to Shopify storage -> fileCreate. Returns the created file with its CDN URL.',
+    {
+      filename: z.string().describe('Filename including extension, e.g., "photo.jpg"'),
+      mimeType: z
+        .string()
+        .describe('e.g., "image/jpeg", "image/png", "application/pdf", "video/mp4"'),
+      data: z.string().describe('File content encoded as a base64 string (no data: URI prefix)'),
+      resource: z
+        .enum([
+          'FILE',
+          'IMAGE',
+          'VIDEO',
+          'MODEL_3D',
+          'PRODUCT_IMAGE',
+          'COLLECTION_IMAGE',
+          'SHOP_IMAGE',
+        ])
+        .optional()
+        .default('FILE')
+        .describe('Staged upload resource type. Defaults to FILE; use IMAGE for general images.'),
+      alt: z.string().max(512).optional().describe('Accessibility text (max 512 chars)'),
+      duplicateResolutionMode: z
+        .enum(['APPEND_UUID', 'RAISE_ERROR', 'REPLACE'])
+        .optional()
+        .describe('How Shopify should resolve filename conflicts'),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.uploadFile(args)
+        const payload = result.data.fileCreate
+        if (payload.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error uploading file: ${JSON.stringify(payload.userErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  files: payload.files,
+                  stagedTarget: result.stagedTarget,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error uploading file: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
 }
 // Register resources
 function registerResources(server, shopifyClient) {
