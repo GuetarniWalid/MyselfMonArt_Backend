@@ -4,13 +4,17 @@ import Mail from '@ioc:Adonis/Addons/Mail'
 import axios, { AxiosInstance } from 'axios'
 import { DateTime } from 'luxon'
 
-// Meta Graph API version. Stable enough that we pin it here; bump when needed.
+// Instagram Graph API base URL (Instagram Login flow).
+// Unlike Facebook Login for Business — which routed everything through
+// graph.facebook.com and required a Page Access Token derivation — Instagram
+// Login lets us talk directly to graph.instagram.com with the user's IG
+// access token. Simpler, less hops, and the only flow that still exposes
+// `instagram_business_content_publish` as of 2026.
 const GRAPH_API_VERSION = 'v23.0'
-const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_API_VERSION}`
+const GRAPH_BASE_URL = `https://graph.instagram.com/${GRAPH_API_VERSION}`
 
 export default class Authentication {
   private tokenName = 'instagram'
-  private clientId = Env.get('INSTAGRAM_APP_ID')
   private clientSecret = Env.get('INSTAGRAM_APP_SECRET')
   private cachedInstagramUserId: string | null = null
   protected client: AxiosInstance
@@ -22,33 +26,22 @@ export default class Authentication {
   }
 
   /**
-   * Returns the Instagram Business Account ID linked to the authorized
-   * Facebook Page. Lazily fetched on first call and cached on the instance.
-   * The IG user ID is what Meta calls "ig-user-id" in the Content Publishing
-   * API — the target of POST /{ig-user-id}/media and /media_publish.
+   * Returns the Instagram Business Account ID for the authorized account.
+   * Lazily fetched via GET /me and cached on the instance.
    */
   public async getInstagramUserId(): Promise<string> {
     if (this.cachedInstagramUserId) return this.cachedInstagramUserId
 
-    const data = await this.request<{
-      data: Array<{
-        id: string
-        name: string
-        instagram_business_account?: { id: string }
-      }>
-    }>({
+    const data = await this.request<{ id: string; username?: string }>({
       method: 'GET',
-      url: '/me/accounts',
-      params: { fields: 'name,instagram_business_account' },
+      url: '/me',
+      params: { fields: 'id,username' },
     })
 
-    const pageWithIG = data.data?.find((p) => p.instagram_business_account?.id)
-    if (!pageWithIG) {
-      throw new Error(
-        'No Facebook Page has a linked Instagram Business account. Check the IG <-> Page link in Meta Business Suite.'
-      )
+    if (!data.id) {
+      throw new Error('GET /me did not return an Instagram user id')
     }
-    this.cachedInstagramUserId = pageWithIG.instagram_business_account!.id
+    this.cachedInstagramUserId = data.id
     return this.cachedInstagramUserId
   }
 
@@ -60,23 +53,19 @@ export default class Authentication {
 
   private async setupAuth() {
     const accessToken = await this.getValidAccessToken()
-    // Meta passes the token via query string (`access_token=...`) by convention.
-    // Always inject as a query param so callers do not have to worry about it.
     this.client.defaults.params = { access_token: accessToken }
   }
 
   private async getValidAccessToken(): Promise<string> {
     const tokenModel = await Token.query().where('name', this.tokenName).first()
 
-    if (!tokenModel || !tokenModel.accessToken || !tokenModel.refreshToken) {
+    if (!tokenModel || !tokenModel.accessToken) {
       const errorMessage = 'Instagram token not found. Please perform authorization.'
       await this.sendEmail(errorMessage)
       throw new Error(errorMessage)
     }
 
-    // The Page Access Token (stored in accessToken) is typically non-expiring as
-    // long as the underlying long-lived user token is still valid. We refresh
-    // pre-emptively when the user token (expiresAt) is within 5 days of expiring.
+    // Refresh pre-emptively when the token is within 5 days of expiring.
     if (tokenModel.expiresAt && tokenModel.expiresAt > DateTime.now().plus({ days: 5 })) {
       return tokenModel.accessToken
     }
@@ -86,29 +75,25 @@ export default class Authentication {
 
   private async refreshAccessToken(tokenModel: Token): Promise<string> {
     try {
-      // Step 1: extend the long-lived user token.
-      const { data: exchangeData } = await axios.get(`${GRAPH_BASE_URL}/oauth/access_token`, {
+      // Instagram refresh: hit graph.instagram.com/refresh_access_token with
+      // the current long-lived token. This extends the token's lifetime for
+      // another ~60 days but does NOT issue a different token value —
+      // accessToken and refreshToken stay synced.
+      const { data } = await axios.get('https://graph.instagram.com/refresh_access_token', {
         params: {
-          grant_type: 'fb_exchange_token',
-          client_id: this.clientId,
-          client_secret: this.clientSecret,
-          fb_exchange_token: tokenModel.refreshToken,
+          grant_type: 'ig_refresh_token',
+          access_token: tokenModel.refreshToken ?? tokenModel.accessToken,
         },
       })
-      const newUserToken: string = exchangeData.access_token
-      const expiresIn: number = exchangeData.expires_in ?? 60 * 24 * 3600
+      const newToken: string = data.access_token
+      const expiresIn: number = data.expires_in ?? 60 * 24 * 3600
 
-      // Step 2: re-derive the Page Access Token from the new user token. Page
-      // tokens derived from long-lived user tokens are themselves long-lived
-      // (effectively non-expiring while the user remains a page admin).
-      const newPageToken = await this.derivePageAccessToken(newUserToken)
-
-      tokenModel.accessToken = newPageToken
-      tokenModel.refreshToken = newUserToken
+      tokenModel.accessToken = newToken
+      tokenModel.refreshToken = newToken
       tokenModel.expiresAt = DateTime.now().plus({ seconds: expiresIn })
       await tokenModel.save()
 
-      return newPageToken
+      return newToken
     } catch (error) {
       console.error('Instagram token refresh failed:', {
         status: error.response?.status,
@@ -120,36 +105,18 @@ export default class Authentication {
     }
   }
 
-  /**
-   * Given a long-lived user access token, find the Page that the IG Business
-   * account is linked to and return its Page Access Token.
-   *
-   * The IG Content Publishing API is called against the IG user ID but
-   * authenticated with the Page Access Token of the FB Page linked to that IG
-   * account — not the user token directly.
-   */
-  public async derivePageAccessToken(userAccessToken: string): Promise<string> {
-    const { data } = await axios.get(`${GRAPH_BASE_URL}/me/accounts`, {
-      params: { access_token: userAccessToken },
-    })
-    const pages: Array<{ id: string; name: string; access_token: string }> = data.data ?? []
-    if (pages.length === 0) {
-      throw new Error(
-        'No Facebook Pages returned by /me/accounts — the authorizing user is not an admin of any Page'
-      )
-    }
-    // We expect exactly one Page (MyselfMonArt). If there are several, the
-    // first is taken; the OAuth controller is responsible for surfacing the
-    // ambiguity to the user when it happens.
-    return pages[0].access_token
-  }
-
   public async isRefreshTokenValid(): Promise<boolean> {
     const tokenModel = await Token.query()
       .where('name', this.tokenName)
       .whereNotNull('refreshToken')
       .first()
     return !!tokenModel
+  }
+
+  // Kept for compatibility/silence the type checker if anything else still
+  // references the secret; the controller reads it directly from env.
+  protected get _clientSecret(): string {
+    return this.clientSecret
   }
 
   private async sendEmail(error: any) {

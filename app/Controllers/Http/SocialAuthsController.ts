@@ -3,18 +3,13 @@ import User from 'App/Models/User'
 import { OAuth2Client } from 'google-auth-library'
 import Env from '@ioc:Adonis/Core/Env'
 import Token from 'App/Models/Token'
-import InstagramAuthentication from 'App/Services/Instagram/Authentication'
 import axios from 'axios'
 import { DateTime } from 'luxon'
 
-const META_GRAPH_API_VERSION = 'v23.0'
-const INSTAGRAM_SCOPES = [
-  'instagram_basic',
-  'instagram_content_publish',
-  'instagram_shopping_tag_products',
-  'pages_show_list',
-  'pages_read_engagement',
-]
+// Instagram Login flow (the modern Meta way for IG Business accounts).
+// Replaces the legacy Facebook Login for Business + Page Access Token flow,
+// which Meta has retired for IG content publishing.
+const INSTAGRAM_SCOPES = ['instagram_business_basic', 'instagram_business_content_publish']
 
 export default class SocialAuthsController {
   public async index({ ally, auth, response }: HttpContextContract) {
@@ -167,7 +162,7 @@ export default class SocialAuthsController {
     const clientId = Env.get('INSTAGRAM_APP_ID')
 
     const url =
-      `https://www.facebook.com/${META_GRAPH_API_VERSION}/dialog/oauth?` +
+      `https://www.instagram.com/oauth/authorize?` +
       `client_id=${encodeURIComponent(clientId)}` +
       `&redirect_uri=${encodeURIComponent(redirectUri)}` +
       `&response_type=code` +
@@ -187,37 +182,42 @@ export default class SocialAuthsController {
       const redirectUri = `${Env.get('APP_URL')}/login/instagram/callback`
       const clientId = Env.get('INSTAGRAM_APP_ID')
       const clientSecret = Env.get('INSTAGRAM_APP_SECRET')
-      const graphBaseUrl = `https://graph.facebook.com/${META_GRAPH_API_VERSION}`
 
-      // Step 1: exchange the authorization code for a short-lived user token.
-      const { data: shortLivedData } = await axios.get(`${graphBaseUrl}/oauth/access_token`, {
-        params: {
-          client_id: clientId,
-          client_secret: clientSecret,
-          redirect_uri: redirectUri,
-          code,
-        },
-      })
+      // Step 1: exchange the authorization code for a short-lived IG token.
+      // Note: Instagram Login uses api.instagram.com (not graph.facebook.com),
+      // form-urlencoded POST, and returns user_id alongside the token.
+      const codeExchangeParams = new URLSearchParams()
+      codeExchangeParams.append('client_id', clientId)
+      codeExchangeParams.append('client_secret', clientSecret)
+      codeExchangeParams.append('grant_type', 'authorization_code')
+      codeExchangeParams.append('redirect_uri', redirectUri)
+      codeExchangeParams.append('code', code as string)
+
+      const { data: shortLivedData } = await axios.post(
+        'https://api.instagram.com/oauth/access_token',
+        codeExchangeParams,
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+      )
       const shortLivedToken: string = shortLivedData.access_token
 
-      // Step 2: exchange it for a long-lived user token (~60 days).
-      const { data: longLivedData } = await axios.get(`${graphBaseUrl}/oauth/access_token`, {
+      // Step 2: exchange the short-lived token for a long-lived one (~60 days).
+      // From here on, all IG endpoints live on graph.instagram.com.
+      const { data: longLivedData } = await axios.get('https://graph.instagram.com/access_token', {
         params: {
-          grant_type: 'fb_exchange_token',
-          client_id: clientId,
+          grant_type: 'ig_exchange_token',
           client_secret: clientSecret,
-          fb_exchange_token: shortLivedToken,
+          access_token: shortLivedToken,
         },
       })
-      const longLivedUserToken: string = longLivedData.access_token
+      const longLivedToken: string = longLivedData.access_token
       const expiresIn: number = longLivedData.expires_in ?? 60 * 24 * 3600
-
-      // Step 3: derive the Page Access Token (used for IG Content Publishing).
-      const instagramAuth = new InstagramAuthentication()
-      const pageAccessToken = await instagramAuth.derivePageAccessToken(longLivedUserToken)
 
       const user = await User.firstOrFail()
 
+      // Instagram Login returns a single token usable directly against the IG
+      // user's endpoints — no Page Access Token derivation needed. We store
+      // the same value in accessToken and refreshToken: the long-lived token
+      // is itself what we re-exchange to extend its lifetime.
       await Token.updateOrCreate(
         {
           name: 'instagram',
@@ -225,8 +225,8 @@ export default class SocialAuthsController {
         },
         {
           name: 'instagram',
-          accessToken: pageAccessToken,
-          refreshToken: longLivedUserToken,
+          accessToken: longLivedToken,
+          refreshToken: longLivedToken,
           expiresAt: DateTime.now().plus({ seconds: expiresIn }),
           userId: user.id,
         }
