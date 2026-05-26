@@ -1,6 +1,5 @@
 import { BaseTask } from 'adonis5-scheduler/build/src/Scheduler/Task'
-import Pinterest from 'App/Services/Pinterest'
-import Shopify from 'App/Services/Shopify'
+import DailyPublication from 'App/Services/DailyPublication'
 import { logTaskBoundary } from 'App/Utils/Logs'
 
 // Day-of-week (0=Sun..6=Sat) → publication hours in Europe/Paris.
@@ -40,7 +39,7 @@ function parisDayAndHour(): { day: number; hour: number } {
   return { day: PARIS_WEEKDAY[weekday], hour: hourRaw === 24 ? 0 : hourRaw }
 }
 
-export default class PublishPinterestPin extends BaseTask {
+export default class PublishDaily extends BaseTask {
   public static get schedule() {
     return '30 * * * *'
   }
@@ -54,31 +53,17 @@ export default class PublishPinterestPin extends BaseTask {
     if (!PUBLISH_HOURS_BY_DAY[day].includes(hour)) return
 
     try {
-      logTaskBoundary(true, 'Publish Pinterest Pin')
+      logTaskBoundary(true, 'Publish Daily (Pinterest + IG chain)')
 
-      const shopify = new Shopify()
-      const [products, collections] = await Promise.all([
-        shopify.product.getAll(),
-        shopify.collection.getAll(),
-      ])
+      const dailyPublication = new DailyPublication()
+      await dailyPublication.run()
 
-      const pinterest = new Pinterest(products, collections)
-      await pinterest.initialize()
-
-      await pinterest.autoCreateMissingBoards()
-
-      const { product, board } = await pinterest.publicationSelector.selectNextProductToPublish()
-
-      const pinPayload = await pinterest.pinFormatter.buildPinPayload(product, board)
-      const pin = await pinterest.poster.publishPin(pinPayload)
-
-      console.log('🚀 ~ pin published:', pin)
       console.log('============================')
-      console.log('✅ Pinterest Pin published')
+      console.log('✅ Daily publication tick done')
     } catch (error) {
-      console.log('❌ Pinterest Pin not published:', error?.message || error)
+      console.log('❌ Daily publication failed:', error?.message || error)
     } finally {
-      logTaskBoundary(false, 'Publish Pinterest Pin')
+      logTaskBoundary(false, 'Publish Daily (Pinterest + IG chain)')
     }
   }
 }
