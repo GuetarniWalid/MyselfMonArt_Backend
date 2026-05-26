@@ -55,6 +55,31 @@
         }
       ]
     },
+    "instagram:test_publish_one": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/InstagramTestPublishOne",
+      "commandName": "instagram:test_publish_one",
+      "description": "PUBLISH a real Instagram post end-to-end. Builds the payload (Claude caption + cropped image), uploads to Shopify Files, posts to IG, then deletes the temp file. Use --yes to confirm the publish.",
+      "args": [],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "product",
+          "propertyName": "product",
+          "type": "string",
+          "description": "Shopify product ID (numeric or gid://). If omitted, picks the most recently created product."
+        },
+        {
+          "name": "yes",
+          "propertyName": "yes",
+          "type": "boolean",
+          "description": "Confirm the publish. Without this flag, the command prints the payload and exits without posting."
+        }
+      ]
+    },
     "migrate:artwork-type": {
       "settings": {
         "loadApp": true,

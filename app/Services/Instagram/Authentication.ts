@@ -12,12 +12,44 @@ export default class Authentication {
   private tokenName = 'instagram'
   private clientId = Env.get('INSTAGRAM_APP_ID')
   private clientSecret = Env.get('INSTAGRAM_APP_SECRET')
+  private cachedInstagramUserId: string | null = null
   protected client: AxiosInstance
 
   constructor() {
     this.client = axios.create({
       baseURL: GRAPH_BASE_URL,
     })
+  }
+
+  /**
+   * Returns the Instagram Business Account ID linked to the authorized
+   * Facebook Page. Lazily fetched on first call and cached on the instance.
+   * The IG user ID is what Meta calls "ig-user-id" in the Content Publishing
+   * API — the target of POST /{ig-user-id}/media and /media_publish.
+   */
+  public async getInstagramUserId(): Promise<string> {
+    if (this.cachedInstagramUserId) return this.cachedInstagramUserId
+
+    const data = await this.request<{
+      data: Array<{
+        id: string
+        name: string
+        instagram_business_account?: { id: string }
+      }>
+    }>({
+      method: 'GET',
+      url: '/me/accounts',
+      params: { fields: 'name,instagram_business_account' },
+    })
+
+    const pageWithIG = data.data?.find((p) => p.instagram_business_account?.id)
+    if (!pageWithIG) {
+      throw new Error(
+        'No Facebook Page has a linked Instagram Business account. Check the IG <-> Page link in Meta Business Suite.'
+      )
+    }
+    this.cachedInstagramUserId = pageWithIG.instagram_business_account!.id
+    return this.cachedInstagramUserId
   }
 
   protected async request<T>(config: any): Promise<T> {
