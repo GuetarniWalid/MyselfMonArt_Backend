@@ -824,6 +824,78 @@ export class ShopifyClient {
     `
     return this.graphql(query)
   }
+  // Publication (sales channel) operations
+  async getPublications(params = {}) {
+    const query = `
+      query getPublications($first: Int!, $after: String) {
+        publications(first: $first, after: $after) {
+          edges {
+            cursor
+            node {
+              id
+              name
+              supportsFuturePublishing
+              autoPublish
+              app {
+                id
+                title
+                handle
+              }
+            }
+          }
+          pageInfo {
+            hasNextPage
+            hasPreviousPage
+            endCursor
+            startCursor
+          }
+        }
+      }
+    `
+    const variables = {
+      first: this.validatePositiveInt(params.limit, 'limit', 50),
+      after: params.cursor || null,
+    }
+    return this.graphql(query, variables)
+  }
+  async getProductPublications(productId, params = {}) {
+    const query = `
+      query getProductPublications($id: ID!, $first: Int!, $onlyPublished: Boolean) {
+        product(id: $id) {
+          id
+          title
+          handle
+          resourcePublicationsV2(first: $first, onlyPublished: $onlyPublished) {
+            edges {
+              node {
+                publication {
+                  id
+                  name
+                  app {
+                    id
+                    title
+                    handle
+                  }
+                }
+                publishDate
+                isPublished
+              }
+            }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+          }
+        }
+      }
+    `
+    const variables = {
+      id: productId,
+      first: this.validatePositiveInt(params.limit, 'limit', 50),
+      onlyPublished: params.onlyPublished ?? false,
+    }
+    return this.graphql(query, variables)
+  }
   // Analytics operations
   async getShopAnalytics() {
     const query = `

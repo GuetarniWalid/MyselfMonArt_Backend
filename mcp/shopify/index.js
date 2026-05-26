@@ -619,6 +619,111 @@ function registerTools(server, shopifyClient) {
       }
     }
   })
+  // Publication (sales channel) Tools
+  server.tool(
+    'listPublications',
+    'List all sales channels (publications) installed on the store. Use this to verify which channels (e.g., "Facebook & Instagram", "Online Store", "Pinterest") are connected, including the underlying Meta/Shopify app for each.',
+    {
+      limit: z.number().optional().default(50),
+      cursor: z.string().optional(),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.getPublications(args)
+        const publications = result.data.publications.edges.map((edge) => edge.node)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  publications,
+                  pageInfo: result.data.publications.pageInfo,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error fetching publications: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'getProductPublications',
+    'List the sales channels (publications) a specific product is published on. Useful to verify that a product is synced to Facebook & Instagram, Pinterest, or any other channel.',
+    {
+      productId: z.string().describe('The product ID (e.g., gid://shopify/Product/123)'),
+      limit: z.number().optional().default(50),
+      onlyPublished: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe('If true, only return channels where the product is currently published'),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.getProductPublications(args.productId, {
+          limit: args.limit,
+          onlyPublished: args.onlyPublished,
+        })
+        if (!result.data.product) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Product not found: ${args.productId}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        const publications = result.data.product.resourcePublicationsV2.edges.map(
+          (edge) => edge.node
+        )
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  product: {
+                    id: result.data.product.id,
+                    title: result.data.product.title,
+                    handle: result.data.product.handle,
+                  },
+                  publications,
+                  pageInfo: result.data.product.resourcePublicationsV2.pageInfo,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error fetching product publications: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
   // Analytics Tools
   server.tool('getShopInfo', 'Get shop information and analytics', async () => {
     try {
