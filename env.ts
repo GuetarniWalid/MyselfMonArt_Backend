@@ -59,6 +59,8 @@ export default Env.rules({
   SHOPIFY_CLIENT_SECRET: Env.schema.string(),
   PINTEREST_CLIENT_ID: Env.schema.string(),
   PINTEREST_CLIENT_SECRET: Env.schema.string(),
+  INSTAGRAM_APP_ID: Env.schema.string(),
+  INSTAGRAM_APP_SECRET: Env.schema.string(),
   BACKEND_URL: Env.schema.string(),
   CHROME_EXTENSION_ID: Env.schema.string(),
 })

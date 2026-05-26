@@ -53,6 +53,8 @@ Route.group(() => {
   Route.get('/callback', 'SocialAuthsController.index')
   Route.get('/pinterest', 'SocialAuthsController.redirectToPinterest')
   Route.get('/pinterest/callback', 'SocialAuthsController.handlePinterestCallback')
+  Route.get('/instagram', 'SocialAuthsController.redirectToInstagram')
+  Route.get('/instagram/callback', 'SocialAuthsController.handleInstagramCallback')
 }).prefix('/login')
 
 Route.group(() => {
