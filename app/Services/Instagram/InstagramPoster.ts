@@ -38,6 +38,10 @@ export default class InstagramPoster extends Authentication {
     try {
       const igUserId = await this.getInstagramUserId()
       const container = await this.createMediaContainer(igUserId, imageUrl, payload.caption)
+      // Meta needs a few seconds to ingest the image and mark the container
+      // FINISHED. Publishing before that returns "Media ID is not available"
+      // (error_subcode 2207027). Poll until ready before publishing.
+      await this.waitForContainerReady(container.id)
       const published = await this.publishMediaContainer(igUserId, container.id)
       return { mediaId: published.id }
     } finally {
@@ -73,6 +77,35 @@ export default class InstagramPoster extends Authentication {
         `Instagram POST /media failed (status ${status}): ${JSON.stringify(body)} | image_url=${imageUrl}`
       )
     }
+  }
+
+  private async waitForContainerReady(
+    creationId: string,
+    maxRetries: number = 20,
+    delayMs: number = 2000
+  ): Promise<void> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const status = await this.request<{ status_code: string; id: string }>({
+        method: 'GET',
+        url: `/${creationId}`,
+        params: { fields: 'status_code' },
+      })
+
+      if (status.status_code === 'FINISHED') return
+      if (status.status_code === 'ERROR') {
+        throw new Error(`Instagram container ${creationId} ended in ERROR state`)
+      }
+      if (status.status_code === 'EXPIRED') {
+        throw new Error(`Instagram container ${creationId} expired before publish`)
+      }
+      // Otherwise status is IN_PROGRESS — keep polling.
+      if (attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+      }
+    }
+    throw new Error(
+      `Instagram container ${creationId} not ready after ${maxRetries} attempts (${(maxRetries * delayMs) / 1000}s)`
+    )
   }
 
   private async publishMediaContainer(
