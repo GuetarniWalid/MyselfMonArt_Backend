@@ -2,6 +2,7 @@ import { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
 import crypto from 'crypto'
 import Env from '@ioc:Adonis/Core/Env'
 import InboxMessage, { InboxChannel } from 'App/Models/InboxMessage'
+import InboxProcessor from 'App/Services/InboxProcessor'
 
 // Meta webhook payload structure.
 //
@@ -106,11 +107,17 @@ export default class MessageInboxController {
 
     response.status(200).send({ ok: true })
 
-    // Fire-and-forget: trigger async processing for each new message.
-    // Wired in Phase 1 — kept as a log so we can see the inbox filling up.
+    // Fire-and-forget: kick the processor for each new message. We never
+    // await — the webhook must ACK Meta within 20s, but Claude tool-use can
+    // run for tens of seconds. The cron sweep is the safety net if Node
+    // dies mid-process.
     setImmediate(() => {
+      const processor = new InboxProcessor()
       for (const id of persisted) {
-        console.info(`📥 inbox_messages id=${id} queued (processor not wired yet — Phase 1)`)
+        console.info(`📥 inbox_messages id=${id} queued`)
+        processor.process(id).catch((err) => {
+          console.error(`❌ Async processing crashed for inbox=${id}:`, err?.message ?? err)
+        })
       }
     })
 
