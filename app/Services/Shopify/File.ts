@@ -218,9 +218,23 @@ export default class File extends Authentication {
       params.buffer.length
     )
     await this.uploadBufferToStagedTarget(staged, params.buffer, params.mimeType, params.filename)
-    const fileId = await this.create(staged.resourceUrl, params.alt ?? 'Image')
+    // Inline the fileCreate call rather than going through create() — the
+    // latter calls waitForProcessing() which deliberately short-circuits in
+    // NODE_ENV=development to protect the public-URL flow (Shopify can't
+    // fetch localhost URLs). Here the source is already on Shopify's own
+    // staging storage, so that guard is irrelevant.
+    const fileId = await this.createFromResourceUrl(staged.resourceUrl, params.alt ?? 'Image')
     const url = await this.pollForUrl(fileId, params.maxRetries ?? 15, params.delayMs ?? 2000)
     return { fileId, url }
+  }
+
+  private async createFromResourceUrl(resourceUrl: string, alt: string): Promise<string> {
+    const { query, variables } = this.getCreateQuery(resourceUrl, alt)
+    const response = await this.fetchGraphQL(query, variables)
+    if (response.fileCreate.userErrors?.length) {
+      throw new Error(response.fileCreate.userErrors[0].message)
+    }
+    return response.fileCreate.files[0].id
   }
 
   /**
