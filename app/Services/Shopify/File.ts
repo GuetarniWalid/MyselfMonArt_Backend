@@ -224,8 +224,24 @@ export default class File extends Authentication {
     // fetch localhost URLs). Here the source is already on Shopify's own
     // staging storage, so that guard is irrelevant.
     const fileId = await this.createFromResourceUrl(staged.resourceUrl, params.alt ?? 'Image')
-    const url = await this.pollForUrl(fileId, params.maxRetries ?? 15, params.delayMs ?? 2000)
-    return { fileId, url }
+    // Atomic upload: if polling fails (timeout, network error, interrupt),
+    // delete the file we just created so we don't leave an orphan in the
+    // Shopify Files library. Callers can rely on either getting back a
+    // valid {fileId, url} or an exception with nothing left to clean up.
+    try {
+      const url = await this.pollForUrl(fileId, params.maxRetries ?? 15, params.delayMs ?? 2000)
+      return { fileId, url }
+    } catch (pollError) {
+      try {
+        await this.delete([fileId])
+      } catch (deleteError) {
+        console.error(
+          `[Shopify Files] Orphan cleanup failed for ${fileId} after upload error:`,
+          deleteError?.message ?? deleteError
+        )
+      }
+      throw pollError
+    }
   }
 
   private async createFromResourceUrl(resourceUrl: string, alt: string): Promise<string> {
