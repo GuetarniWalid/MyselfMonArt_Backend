@@ -9,7 +9,12 @@ import { DateTime } from 'luxon'
 // Instagram Login flow (the modern Meta way for IG Business accounts).
 // Replaces the legacy Facebook Login for Business + Page Access Token flow,
 // which Meta has retired for IG content publishing.
-const INSTAGRAM_SCOPES = ['instagram_business_basic', 'instagram_business_content_publish']
+const INSTAGRAM_SCOPES = [
+  'instagram_business_basic',
+  'instagram_business_content_publish',
+  'instagram_business_manage_messages',
+  'instagram_business_manage_comments',
+]
 
 export default class SocialAuthsController {
   public async index({ ally, auth, response }: HttpContextContract) {
