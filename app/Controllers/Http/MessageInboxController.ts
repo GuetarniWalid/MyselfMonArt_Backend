@@ -3,7 +3,14 @@ import crypto from 'crypto'
 import Env from '@ioc:Adonis/Core/Env'
 import InboxMessage, { InboxChannel } from 'App/Models/InboxMessage'
 
-// Meta webhook payload structure (Instagram + Messenger share `entry[].messaging[]`).
+// Meta webhook payload structure.
+//
+// Two delivery shapes for the same logical event depending on the underlying
+// auth/product:
+//   - Messenger (Page-based, `object: "page"`): events under `entry[].messaging[]`.
+//   - Instagram Login (`object: "instagram"`): events under `entry[].changes[]`
+//     as `{ field: "messages", value: <same shape as messaging entry> }`.
+// We normalize both into MetaMessagingEvent below.
 interface MetaMessagingEvent {
   sender?: { id?: string }
   recipient?: { id?: string }
@@ -16,10 +23,16 @@ interface MetaMessagingEvent {
   }
 }
 
+interface MetaWebhookChange {
+  field?: string
+  value?: MetaMessagingEvent
+}
+
 interface MetaWebhookEntry {
   id?: string
   time?: number
   messaging?: MetaMessagingEvent[]
+  changes?: MetaWebhookChange[]
 }
 
 interface MetaWebhookPayload {
@@ -77,11 +90,18 @@ export default class MessageInboxController {
     }
 
     const persisted: number[] = []
-    for (const entry of payload.entry ?? []) {
-      for (const event of entry.messaging ?? []) {
-        const saved = await this.persistEvent(channel, event)
-        if (saved) persisted.push(saved)
-      }
+    const events = this.collectEvents(payload)
+
+    if (events.length === 0) {
+      console.info(
+        `ℹ️  Meta webhook received with no extractable events. object=${payload.object} ` +
+          `entries=${payload.entry?.length ?? 0} body=${rawBody.slice(0, 500)}`
+      )
+    }
+
+    for (const event of events) {
+      const saved = await this.persistEvent(channel, event)
+      if (saved) persisted.push(saved)
     }
 
     response.status(200).send({ ok: true })
@@ -95,6 +115,23 @@ export default class MessageInboxController {
     })
 
     return
+  }
+
+  /**
+   * Flatten the two possible delivery shapes into a single list of messaging
+   * events. Messenger uses `entry[].messaging[]`. Instagram Login uses
+   * `entry[].changes[]` where each change of `field: messages` has a `value`
+   * whose shape matches a messaging entry.
+   */
+  private collectEvents(payload: MetaWebhookPayload): MetaMessagingEvent[] {
+    const out: MetaMessagingEvent[] = []
+    for (const entry of payload.entry ?? []) {
+      for (const event of entry.messaging ?? []) out.push(event)
+      for (const change of entry.changes ?? []) {
+        if (change.field === 'messages' && change.value) out.push(change.value)
+      }
+    }
+    return out
   }
 
   /**
