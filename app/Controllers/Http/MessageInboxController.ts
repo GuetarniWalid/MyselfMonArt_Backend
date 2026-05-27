@@ -138,7 +138,9 @@ export default class MessageInboxController {
    * INSERT-OR-IGNORE on (channel, external_message_id). Skips:
    *   - echo messages (our own outgoing replies bouncing back)
    *   - events without a message id
-   *   - events older than 24h (outside Meta's reply window)
+   *
+   * The 24h Meta reply-window check lives in the Phase 1 processor, not here —
+   * we want a complete audit trail at the ingestion layer.
    */
   private async persistEvent(
     channel: InboxChannel,
@@ -151,14 +153,6 @@ export default class MessageInboxController {
     const externalMessageId = message.mid
     const externalUserId = event.sender?.id ?? null
     const externalThreadId = externalUserId
-
-    if (event.timestamp) {
-      const ageMs = Date.now() - event.timestamp
-      if (ageMs > 24 * 3600 * 1000) {
-        console.info(`⏭️  Skipping message ${externalMessageId} — older than 24h reply window`)
-        return null
-      }
-    }
 
     try {
       const existing = await InboxMessage.query()
