@@ -24,6 +24,9 @@ Route.get('/', 'DashboardController.index').middleware(['auth'])
 Route.post('/', 'WebhooksController.handle')
 Route.post('/webhooks', 'WebhooksController.handle')
 
+Route.get('/webhooks/meta', 'MessageInboxController.verify')
+Route.post('/webhooks/meta', 'MessageInboxController.receive')
+
 Route.group(() => {
   Route.get('/', () => 'test ok')
   Route.get('/websocket', async ({ view }) => {

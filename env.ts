@@ -61,6 +61,7 @@ export default Env.rules({
   PINTEREST_CLIENT_SECRET: Env.schema.string(),
   INSTAGRAM_APP_ID: Env.schema.string(),
   INSTAGRAM_APP_SECRET: Env.schema.string(),
+  META_VERIFY_TOKEN: Env.schema.string(),
   BACKEND_URL: Env.schema.string(),
   CHROME_EXTENSION_ID: Env.schema.string(),
 })
