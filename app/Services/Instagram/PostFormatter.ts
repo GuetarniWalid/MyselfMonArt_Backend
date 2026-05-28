@@ -1,11 +1,63 @@
-import type { InstagramPostPayload } from 'Types/Instagram'
+import type {
+  InstagramCarouselPayload,
+  InstagramPostPayload,
+  InstagramReelPayload,
+} from 'Types/Instagram'
 import type { Product as ShopifyProduct } from 'Types/Product'
 import sharp from 'sharp'
 import Instagram from '../Claude/Instagram'
+import FormatSelector from './FormatSelector'
 
 export default class PostFormatter {
   public async buildPostPayload(shopifyProduct: ShopifyProduct): Promise<InstagramPostPayload> {
     const { buffer, imageAlt } = await this.processImage(shopifyProduct)
+    const { caption, altText } = await this.generateText(shopifyProduct, imageAlt)
+
+    return {
+      caption,
+      altText,
+      imageBuffer: buffer,
+      shopifyProductId: shopifyProduct.id,
+      link: this.getProductLinkWithProductId(shopifyProduct),
+    }
+  }
+
+  public async buildCarouselPayload(
+    shopifyProduct: ShopifyProduct
+  ): Promise<InstagramCarouselPayload> {
+    const { buffers, firstAlt } = await this.processImagesForCarousel(
+      shopifyProduct,
+      PostFormatter.MAX_CAROUSEL_IMAGES
+    )
+    const { caption, altText } = await this.generateText(shopifyProduct, firstAlt)
+
+    return {
+      caption,
+      altText,
+      imageBuffers: buffers,
+      shopifyProductId: shopifyProduct.id,
+      link: this.getProductLinkWithProductId(shopifyProduct),
+    }
+  }
+
+  public async buildReelPayload(
+    shopifyProduct: ShopifyProduct,
+    videoUrl: string
+  ): Promise<InstagramReelPayload> {
+    const { caption } = await this.generateText(shopifyProduct)
+
+    return {
+      caption,
+      videoUrl,
+      shopifyProductId: shopifyProduct.id,
+      link: this.getProductLinkWithProductId(shopifyProduct),
+    }
+  }
+
+  private async generateText(
+    shopifyProduct: ShopifyProduct,
+    fallbackAlt: string = ''
+  ): Promise<{ caption: string; altText: string }> {
     const instagram = new Instagram()
     const productType = this.getProductTypeFr(shopifyProduct)
     const postContent = await instagram.generatePostPayload(
@@ -13,13 +65,9 @@ export default class PostFormatter {
       shopifyProduct.description,
       productType
     )
-
     return {
       caption: postContent.caption,
-      altText: postContent.alt_text || imageAlt,
-      imageBuffer: buffer,
-      shopifyProductId: shopifyProduct.id,
-      link: this.getProductLinkWithProductId(shopifyProduct),
+      altText: postContent.alt_text || fallbackAlt,
     }
   }
 
@@ -53,6 +101,10 @@ export default class PostFormatter {
   // the time, then 3, then 1, then 0 as a last resort.
   private static readonly IMAGE_PRIORITY = [2, 3, 1, 0]
 
+  // Cap carousel slides: enough to tell a story, few enough to keep processing
+  // fast and the carousel digestible (Meta hard-limit is 10).
+  private static readonly MAX_CAROUSEL_IMAGES = 5
+
   private getImage(images: ShopifyProduct['media']['nodes']) {
     if (!Array.isArray(images) || images.length === 0) {
       throw new Error('No image found')
@@ -65,6 +117,41 @@ export default class PostFormatter {
     throw new Error(
       'No usable image at indices [2, 3, 1, 0] — product not publishable to Instagram'
     )
+  }
+
+  // Usable images ordered priority-first ([2,3,1,0]) then by natural index,
+  // deduped — the source list for carousel slides.
+  private getUsableImages(images: ShopifyProduct['media']['nodes']) {
+    if (!Array.isArray(images)) return []
+    const imageList = images.filter((image) => image.mediaContentType === 'IMAGE')
+    const ordered: typeof imageList = []
+    const used = new Set<number>()
+    const pushIfUsable = (index: number) => {
+      const candidate = imageList[index]
+      if (candidate?.image?.url && !used.has(index)) {
+        ordered.push(candidate)
+        used.add(index)
+      }
+    }
+    PostFormatter.IMAGE_PRIORITY.forEach(pushIfUsable)
+    imageList.forEach((_, index) => pushIfUsable(index))
+    return ordered
+  }
+
+  private async processImagesForCarousel(
+    shopifyProduct: ShopifyProduct,
+    max: number
+  ): Promise<{ buffers: Buffer[]; firstAlt: string }> {
+    const usable = this.getUsableImages(shopifyProduct.media.nodes).slice(0, max)
+    if (usable.length < FormatSelector.MIN_CAROUSEL_IMAGES) {
+      throw new Error(
+        `Not enough usable images for a carousel (${usable.length} < ${FormatSelector.MIN_CAROUSEL_IMAGES})`
+      )
+    }
+    const buffers = await Promise.all(
+      usable.map(async (image) => this.cropImage(await this.downloadImage(image.image!.url)))
+    )
+    return { buffers, firstAlt: usable[0].alt }
   }
 
   private async downloadImage(imageUrl: string): Promise<Buffer> {

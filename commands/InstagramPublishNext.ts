@@ -1,5 +1,6 @@
 import { BaseCommand, flags } from '@adonisjs/core/build/standalone'
 import InstagramPublication from 'App/Services/InstagramPublication'
+import FormatSelector from 'App/Services/Instagram/FormatSelector'
 import PublicationSelector from 'App/Services/Instagram/PublicationSelector'
 import SocialPublication from 'App/Models/SocialPublication'
 import Shopify from 'App/Services/Shopify'
@@ -26,12 +27,28 @@ export default class InstagramPublishNext extends BaseCommand {
       return
     }
 
-    const product = await this.selectNext()
-    if (!product) {
+    const selected = await this.selectNext()
+    if (!selected) {
       this.logger.warning('[DRY-RUN] Nothing to publish — whole catalog already posted to IG.')
       return
     }
+    const { product, priorPostCount } = selected
+
+    const shopify = new Shopify()
+    const videoUrl = await shopify.metafield.getVideoUrl(product.id)
+    const usableImageCount = (product.media?.nodes || []).filter(
+      (node) => node.mediaContentType === 'IMAGE' && Boolean(node.image?.url)
+    ).length
+    const format = new FormatSelector().select({
+      priorPostCount,
+      hasVideo: Boolean(videoUrl),
+      usableImageCount,
+    })
+
     this.logger.info(`[DRY-RUN] Would publish: ${product.title} (${product.id})`)
+    this.logger.info(
+      `[DRY-RUN] Format: ${format}  (video=${Boolean(videoUrl)}, usableImages=${usableImageCount}, cyclePos=${priorPostCount})`
+    )
     this.logger.warning('Re-run with --yes to publish for real.')
   }
 
@@ -42,6 +59,8 @@ export default class InstagramPublishNext extends BaseCommand {
       .where('channel', 'instagram')
       .select('shopify_product_id')
     const postedIds = new Set(rows.map((row) => row.shopifyProductId))
-    return new PublicationSelector(products, postedIds).selectNextProductToPublish()
+    const product = new PublicationSelector(products, postedIds).selectNextProductToPublish()
+    if (!product) return null
+    return { product, priorPostCount: postedIds.size }
   }
 }
