@@ -310,6 +310,11 @@ export default class Product extends Authentication {
                         }
                       }
                       onlineStoreUrl
+                      collections(first: 30) {
+                        nodes {
+                          title
+                        }
+                      }
                       options(first: 3) {
                         id
                         name
@@ -363,34 +368,49 @@ export default class Product extends Authentication {
   }
 
   /**
-   * Returns published product GIDs ordered by real sales (Shopify
-   * BEST_SELLING sort key), best first. Used to rank conversational product
-   * recommendations. Fetches up to `max` products (default 1000) — anything
-   * beyond is unranked and sorts last.
+   * Aggregates real units sold per product from orders over the last
+   * `sinceDays` days. Returns a Map of product GID → total quantity sold.
+   * Used to rank conversational product recommendations by real sales
+   * (the Admin API `products` query has no BEST_SELLING sort key, so we
+   * compute it from order line items). Bounded by `maxPages` to cap cost.
    */
-  public async getBestSellerGids(max: number = 1000): Promise<string[]> {
-    const gids: string[] = []
+  public async getUnitsSoldByProduct(
+    sinceDays: number = 365,
+    maxPages: number = 40
+  ): Promise<Map<string, number>> {
+    const since = new Date(Date.now() - sinceDays * 86400000).toISOString().slice(0, 10)
+    const counts = new Map<string, number>()
     let cursor: string | null = null
     let hasNextPage = true
+    let pages = 0
 
-    while (hasNextPage && gids.length < max) {
-      const query = `query BestSellers($cursor: String) {
-        products(first: 250, after: $cursor, sortKey: BEST_SELLING, query: "published_status:published") {
-          edges { node { id } cursor }
+    while (hasNextPage && pages < maxPages) {
+      const query = `query OrdersSales($cursor: String) {
+        orders(first: 50, after: $cursor, sortKey: CREATED_AT, query: "created_at:>=${since}") {
+          edges {
+            node { lineItems(first: 50) { edges { node { quantity product { id } } } } }
+            cursor
+          }
           pageInfo { hasNextPage }
         }
       }`
-      const data = await this.fetchGraphQL(query, { cursor }, 50)
-      const edges = data.products.edges
-      edges.forEach((e: any) => gids.push(e.node.id))
-      hasNextPage = data.products.pageInfo.hasNextPage
+      const data = await this.fetchGraphQL(query, { cursor }, 100)
+      const edges = data.orders.edges
+      for (const e of edges) {
+        for (const li of e.node.lineItems.edges) {
+          const pid = li.node.product?.id
+          if (pid) counts.set(pid, (counts.get(pid) ?? 0) + (li.node.quantity ?? 0))
+        }
+      }
+      hasNextPage = data.orders.pageInfo.hasNextPage
+      pages++
       if (hasNextPage) {
         cursor = edges[edges.length - 1].cursor
-        await new Promise((resolve) => setTimeout(resolve, 100))
+        await new Promise((resolve) => setTimeout(resolve, 150))
       }
     }
 
-    return gids
+    return counts
   }
 
   public getModelCopier(product: ProductById | ShopifyProduct) {

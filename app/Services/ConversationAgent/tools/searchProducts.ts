@@ -7,26 +7,32 @@ interface Criteria {
   keyword?: string
 }
 
-function matchesTheme(p: IndexedProduct, t: string): boolean {
-  return p.themeLabels.some((l) => l.includes(t) || t.includes(l))
-}
-function matchesColor(p: IndexedProduct, c: string): boolean {
-  return p.colorLabels.some((l) => l.includes(c) || c.includes(l))
-}
-function matchesKeyword(p: IndexedProduct, k: string): boolean {
-  return (
-    p.titleNorm.includes(k) ||
-    normalize(p.productType).includes(k) ||
-    p.tagsNorm.includes(k) ||
-    p.descriptionNorm.includes(k)
-  )
+/**
+ * A criterion matches a product if it appears in any of its curated facets:
+ * collection titles (the merchant's taxonomy — "tableau zen", "tableau vert"),
+ * color/theme metaobject labels, tags, title, or product type. Description is
+ * intentionally excluded — it's prose and produces false positives on short
+ * terms (e.g. "vert" inside "ouvert"). Each facet is matched on word boundaries
+ * so "vert" doesn't match "ouvert" but does match "tableau vert".
+ */
+function facetMatch(p: IndexedProduct, term: string): boolean {
+  const re = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
+  const facets = [
+    ...p.collectionTitles,
+    ...p.colorLabels,
+    ...p.themeLabels,
+    p.tagsNorm,
+    p.titleNorm,
+    normalize(p.productType),
+  ]
+  return facets.some((f) => re.test(f))
 }
 
 function applyFilters(index: IndexedProduct[], c: Criteria): IndexedProduct[] {
   let pool = index
-  if (c.theme) pool = pool.filter((p) => matchesTheme(p, c.theme!))
-  if (c.color) pool = pool.filter((p) => matchesColor(p, c.color!))
-  if (c.keyword) pool = pool.filter((p) => matchesKeyword(p, c.keyword!))
+  if (c.theme) pool = pool.filter((p) => facetMatch(p, c.theme!))
+  if (c.color) pool = pool.filter((p) => facetMatch(p, c.color!))
+  if (c.keyword) pool = pool.filter((p) => facetMatch(p, c.keyword!))
   return pool
 }
 
@@ -107,7 +113,7 @@ const searchProducts: ToolHandler = {
       })
     }
 
-    pool = [...pool].sort((a, b) => a.bestSellerRank - b.bestSellerRank).slice(0, limit)
+    pool = [...pool].sort((a, b) => b.unitsSold - a.unitsSold).slice(0, limit)
 
     const products = pool.map((p) => {
       const card: ProductCard = {
@@ -121,8 +127,9 @@ const searchProducts: ToolHandler = {
         handle: p.handle,
         title: p.title,
         product_type: p.productType,
+        collections: p.collectionTitles,
         colors: p.colorLabels,
-        themes: p.themeLabels,
+        units_sold: p.unitsSold,
         has_image: !!card.imageUrl,
       }
     })

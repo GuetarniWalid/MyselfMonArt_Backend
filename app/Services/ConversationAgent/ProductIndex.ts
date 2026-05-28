@@ -7,11 +7,12 @@ export interface IndexedProduct {
   tagsNorm: string
   descriptionNorm: string
   titleNorm: string
-  colorLabels: string[] // normalized color labels (e.g. "jaune")
-  themeLabels: string[] // normalized theme labels (e.g. "zen")
+  colorLabels: string[] // normalized color metaobject labels (e.g. "vert")
+  themeLabels: string[] // normalized theme metaobject labels — subjects (e.g. "animaux")
+  collectionTitles: string[] // normalized collection titles — the merchant's curated taxonomy (e.g. "tableau zen", "tableau vert")
   imageUrl?: string
   url: string
-  bestSellerRank: number // lower = better seller; Infinity if unranked
+  unitsSold: number // real units sold over the sales window; higher = better seller
 }
 
 export function normalize(s: string): string {
@@ -57,14 +58,19 @@ function metafieldGids(p: any, key: string): string[] {
 
 /**
  * Cached, query-ready view of the catalog for conversational search.
- * Building it is expensive (full getAll + two metaobject fetches + a
- * best-seller pass), so we cache for CACHE_TTL and share across requests.
+ * Building it is expensive (full getAll + two metaobject fetches), so we cache
+ * for CACHE_TTL and share across requests. Real-sales counts have their own,
+ * longer cache since sales move slowly and the aggregation is the costliest part.
  */
 export default class ProductIndex {
   private static cache: IndexedProduct[] | null = null
   private static builtAt = 0
   private static readonly CACHE_TTL = 10 * 60 * 1000 // 10 min
   private static building: Promise<IndexedProduct[]> | null = null
+
+  private static salesCache: Map<string, number> | null = null
+  private static salesBuiltAt = 0
+  private static readonly SALES_TTL = 6 * 60 * 60 * 1000 // 6h
 
   public static async get(): Promise<IndexedProduct[]> {
     const fresh = ProductIndex.cache && Date.now() - ProductIndex.builtAt < ProductIndex.CACHE_TTL
@@ -78,14 +84,34 @@ export default class ProductIndex {
     return ProductIndex.building
   }
 
+  /**
+   * Real units-sold per product GID, cached for SALES_TTL. Resilient: if the
+   * orders aggregation fails, returns an empty map so the catalog still indexes
+   * and search keeps working (just unranked) instead of breaking entirely.
+   */
+  private static async getSales(): Promise<Map<string, number>> {
+    const fresh =
+      ProductIndex.salesCache && Date.now() - ProductIndex.salesBuiltAt < ProductIndex.SALES_TTL
+    if (fresh) return ProductIndex.salesCache!
+    try {
+      const counts = await new Shopify().product.getUnitsSoldByProduct()
+      ProductIndex.salesCache = counts
+      ProductIndex.salesBuiltAt = Date.now()
+      return counts
+    } catch (err: any) {
+      console.error('⚠️  ProductIndex sales aggregation failed, ranking unavailable:', err?.message)
+      return ProductIndex.salesCache ?? new Map()
+    }
+  }
+
   private static async build(): Promise<IndexedProduct[]> {
     const shopify = new Shopify()
 
-    const [products, colorMObjs, themeMObjs, bestSellerGids] = await Promise.all([
+    const [products, colorMObjs, themeMObjs, sales] = await Promise.all([
       shopify.product.getAll(false),
       shopify.metaobject.getAll('shopify--color-pattern'),
       shopify.metaobject.getAll('shopify--theme'),
-      shopify.product.getBestSellerGids(),
+      ProductIndex.getSales(),
     ])
 
     const labelByGid = new Map<string, string>()
@@ -96,9 +122,6 @@ export default class ProductIndex {
         mo.handle
       if (mo.id && label) labelByGid.set(mo.id, normalize(label))
     }
-
-    const rankByGid = new Map<string, number>()
-    bestSellerGids.forEach((gid, i) => rankByGid.set(gid, i))
 
     const index: IndexedProduct[] = (products as any[]).map((p) => {
       const colorLabels = metafieldGids(p, 'color-pattern')
@@ -117,9 +140,12 @@ export default class ProductIndex {
         descriptionNorm: normalize(stripHtml(p.description ?? '')),
         colorLabels,
         themeLabels,
+        collectionTitles: (p.collections?.nodes ?? [])
+          .map((c: any) => normalize(c.title ?? ''))
+          .filter(Boolean),
         imageUrl: thirdImageUrl(p),
         url: publicUrl(p),
-        bestSellerRank: rankByGid.get(p.id) ?? Number.POSITIVE_INFINITY,
+        unitsSold: sales.get(p.id) ?? 0,
       }
     })
 
@@ -127,7 +153,7 @@ export default class ProductIndex {
     ProductIndex.builtAt = Date.now()
     console.info(
       `🗂️  ProductIndex built: ${index.length} products, ` +
-        `${labelByGid.size} color/theme labels, ${bestSellerGids.length} ranked`
+        `${labelByGid.size} color/theme labels, ${sales.size} with sales data`
     )
     return index
   }
