@@ -101,9 +101,9 @@ export default class PostFormatter {
   // the time, then 3, then 1, then 0 as a last resort.
   private static readonly IMAGE_PRIORITY = [2, 3, 1, 0]
 
-  // Cap carousel slides: enough to tell a story, few enough to keep processing
-  // fast and the carousel digestible (Meta hard-limit is 10).
-  private static readonly MAX_CAROUSEL_IMAGES = 5
+  // Cap carousel slides at Meta's hard limit of 10. Slides are the product's
+  // images from index 2 onward — index 0 and 1 are never included.
+  private static readonly MAX_CAROUSEL_IMAGES = 10
 
   private getImage(images: ShopifyProduct['media']['nodes']) {
     if (!Array.isArray(images) || images.length === 0) {
@@ -119,39 +119,30 @@ export default class PostFormatter {
     )
   }
 
-  // Usable images ordered priority-first ([2,3,1,0]) then by natural index,
-  // deduped — the source list for carousel slides.
-  private getUsableImages(images: ShopifyProduct['media']['nodes']) {
+  // Carousel slides: every usable image from index 2 onward, in natural order.
+  // Index 0 and 1 (the first two product images) are intentionally excluded
+  // from carousels. Static so the orchestrator can count slides for the
+  // format-capability decision without duplicating the rule.
+  public static carouselSlideNodes(images: ShopifyProduct['media']['nodes']) {
     if (!Array.isArray(images)) return []
     const imageList = images.filter((image) => image.mediaContentType === 'IMAGE')
-    const ordered: typeof imageList = []
-    const used = new Set<number>()
-    const pushIfUsable = (index: number) => {
-      const candidate = imageList[index]
-      if (candidate?.image?.url && !used.has(index)) {
-        ordered.push(candidate)
-        used.add(index)
-      }
-    }
-    PostFormatter.IMAGE_PRIORITY.forEach(pushIfUsable)
-    imageList.forEach((_, index) => pushIfUsable(index))
-    return ordered
+    return imageList.slice(2).filter((image) => Boolean(image.image?.url))
   }
 
   private async processImagesForCarousel(
     shopifyProduct: ShopifyProduct,
     max: number
   ): Promise<{ buffers: Buffer[]; firstAlt: string }> {
-    const usable = this.getUsableImages(shopifyProduct.media.nodes).slice(0, max)
-    if (usable.length < FormatSelector.MIN_CAROUSEL_IMAGES) {
+    const slides = PostFormatter.carouselSlideNodes(shopifyProduct.media.nodes).slice(0, max)
+    if (slides.length < FormatSelector.MIN_CAROUSEL_IMAGES) {
       throw new Error(
-        `Not enough usable images for a carousel (${usable.length} < ${FormatSelector.MIN_CAROUSEL_IMAGES})`
+        `Not enough carousel images from index 2+ (${slides.length} < ${FormatSelector.MIN_CAROUSEL_IMAGES})`
       )
     }
     const buffers = await Promise.all(
-      usable.map(async (image) => this.cropImage(await this.downloadImage(image.image!.url)))
+      slides.map(async (image) => this.cropImage(await this.downloadImage(image.image!.url)))
     )
-    return { buffers, firstAlt: usable[0].alt }
+    return { buffers, firstAlt: slides[0].alt }
   }
 
   private async downloadImage(imageUrl: string): Promise<Buffer> {

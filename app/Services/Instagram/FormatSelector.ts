@@ -31,22 +31,25 @@ export default class FormatSelector {
   public static readonly MIN_CAROUSEL_IMAGES = 2
 
   /**
-   * @param priorPostCount  number of IG posts already published (drives the
-   *                         deterministic cycle position)
-   * @param hasVideo         the product has a public video URL (reel-capable)
-   * @param usableImageCount number of publishable images on the product
+   * @param priorPostCount    number of IG posts already published (drives the
+   *                          deterministic cycle position)
+   * @param hasVideo          the product has a public video URL (reel-capable)
+   * @param carouselSlideCount number of carousel-eligible images (index 2+; the
+   *                          first two product images are excluded from carousels)
    */
   public select(input: {
     priorPostCount: number
     hasVideo: boolean
-    usableImageCount: number
+    carouselSlideCount: number
   }): InstagramPostFormat {
-    const { priorPostCount, hasVideo, usableImageCount } = input
+    const { priorPostCount, hasVideo, carouselSlideCount } = input
 
     const can: Record<InstagramPostFormat, boolean> = {
       reel: hasVideo,
-      carousel: usableImageCount >= FormatSelector.MIN_CAROUSEL_IMAGES,
-      image: usableImageCount >= 1,
+      carousel: carouselSlideCount >= FormatSelector.MIN_CAROUSEL_IMAGES,
+      // A product only reaches here after PublicationSelector confirmed a
+      // publishable image, so a single-image post is always possible.
+      image: true,
     }
 
     const pattern = FormatSelector.PATTERN

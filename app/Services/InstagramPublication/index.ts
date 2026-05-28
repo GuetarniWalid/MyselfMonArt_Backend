@@ -3,6 +3,7 @@ import type { InstagramPostFormat } from 'Types/Instagram'
 import type { Product as ShopifyProduct } from 'Types/Product'
 import Instagram from 'App/Services/Instagram'
 import FormatSelector from 'App/Services/Instagram/FormatSelector'
+import PostFormatter from 'App/Services/Instagram/PostFormatter'
 import PublicationSelector from 'App/Services/Instagram/PublicationSelector'
 import Shopify from 'App/Services/Shopify'
 import SocialPublication from 'App/Models/SocialPublication'
@@ -45,7 +46,7 @@ export default class InstagramPublication {
       // in the format cycle.
       priorPostCount: alreadyPostedProductIds.size,
       hasVideo: Boolean(videoUrl),
-      usableImageCount: this.countUsableImages(product),
+      carouselSlideCount: PostFormatter.carouselSlideNodes(product.media?.nodes ?? []).length,
     })
 
     const { mediaId, usedFormat } = await this.publishInFormat(format, product, videoUrl)
@@ -95,12 +96,6 @@ export default class InstagramPublication {
       const { mediaId } = await instagram.poster.publishPost(payload)
       return { mediaId, usedFormat: 'image' }
     }
-  }
-
-  private countUsableImages(product: ShopifyProduct): number {
-    return (product.media?.nodes || []).filter(
-      (node) => node.mediaContentType === 'IMAGE' && Boolean(node.image?.url)
-    ).length
   }
 
   private async getAlreadyPostedProductIds(): Promise<Set<string>> {

@@ -1,6 +1,7 @@
 import { BaseCommand, flags } from '@adonisjs/core/build/standalone'
 import InstagramPublication from 'App/Services/InstagramPublication'
 import FormatSelector from 'App/Services/Instagram/FormatSelector'
+import PostFormatter from 'App/Services/Instagram/PostFormatter'
 import PublicationSelector from 'App/Services/Instagram/PublicationSelector'
 import SocialPublication from 'App/Models/SocialPublication'
 import Shopify from 'App/Services/Shopify'
@@ -36,18 +37,16 @@ export default class InstagramPublishNext extends BaseCommand {
 
     const shopify = new Shopify()
     const videoUrl = await shopify.metafield.getVideoUrl(product.id)
-    const usableImageCount = (product.media?.nodes || []).filter(
-      (node) => node.mediaContentType === 'IMAGE' && Boolean(node.image?.url)
-    ).length
+    const carouselSlideCount = PostFormatter.carouselSlideNodes(product.media?.nodes ?? []).length
     const format = new FormatSelector().select({
       priorPostCount,
       hasVideo: Boolean(videoUrl),
-      usableImageCount,
+      carouselSlideCount,
     })
 
     this.logger.info(`[DRY-RUN] Would publish: ${product.title} (${product.id})`)
     this.logger.info(
-      `[DRY-RUN] Format: ${format}  (video=${Boolean(videoUrl)}, usableImages=${usableImageCount}, cyclePos=${priorPostCount})`
+      `[DRY-RUN] Format: ${format}  (video=${Boolean(videoUrl)}, carouselSlides=${carouselSlideCount}, cyclePos=${priorPostCount})`
     )
     this.logger.warning('Re-run with --yes to publish for real.')
   }
