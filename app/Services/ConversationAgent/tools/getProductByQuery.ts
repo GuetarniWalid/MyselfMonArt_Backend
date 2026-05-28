@@ -13,12 +13,15 @@ function stripHtml(html: string): string {
     .trim()
 }
 
-function featuredImageUrl(p: any): string | undefined {
+function cardImageUrl(p: any): string | undefined {
   const nodes = p.media?.nodes ?? []
+  const imageUrls: string[] = []
   for (const n of nodes) {
-    if (n?.image?.url) return n.image.url as string
+    if (n?.image?.url) imageUrls.push(n.image.url as string)
   }
-  return undefined
+  // Use the SECOND image (index 1) for the card — typically the mockup/in-situ
+  // shot rather than the bare artwork. Fall back to the first if only one.
+  return imageUrls[1] ?? imageUrls[0]
 }
 
 function publicUrl(p: any): string {
@@ -91,7 +94,7 @@ const getProductByQuery: ToolHandler = {
       const card: ProductCard = {
         title: (p.title ?? '').slice(0, 80),
         subtitle: (p.productType || desc).slice(0, 80),
-        imageUrl: featuredImageUrl(p),
+        imageUrl: cardImageUrl(p),
         url: publicUrl(p),
       }
       context.scratch.productsByHandle.set(handle, card)
