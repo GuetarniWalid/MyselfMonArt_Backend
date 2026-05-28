@@ -41,11 +41,16 @@ export default class ConversationAgent extends Authentication {
     let tokensOut = 0
 
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+      // On the final allowed iteration, drop the tools so Claude is forced to
+      // produce a text answer instead of requesting yet another tool call.
+      // Guarantees we never return a null reply just because the model stayed
+      // in tool-use mode for too long.
+      const isFinalIteration = iteration === MAX_ITERATIONS - 1
       const response = await this.anthropic.messages.create({
         model: Env.get('CLAUDE_MODEL'),
         max_tokens: 2048,
         system: buildSystemPrompt(),
-        tools: toolDefinitions as any,
+        ...(isFinalIteration ? {} : { tools: toolDefinitions as any }),
         messages: messages as any,
       })
 

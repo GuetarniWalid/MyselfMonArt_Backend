@@ -71,11 +71,19 @@ export default class InboxProcessor {
       // Reload conversation to see if a tool escalated it
       await conversation.refresh()
 
-      if (result.replyText) {
+      // Always send something back. If the agent produced no text (e.g. it
+      // stayed in tool-use mode), fall back to a safe, on-brand message so the
+      // customer is never left without a reply.
+      const replyText =
+        result.replyText && result.replyText.trim().length > 0
+          ? result.replyText
+          : 'Merci pour ton message ✨ Je transmets ça à l’équipe et on revient vers toi très vite !'
+
+      {
         await ConversationMessage.create({
           conversationId: conversation.id,
           role: 'assistant',
-          content: result.replyText,
+          content: replyText,
           toolCalls: result.toolCalls,
           costCents: this.estimateCostCents(result.tokensIn, result.tokensOut),
         })
@@ -85,7 +93,7 @@ export default class InboxProcessor {
           const sendResult = await sender.send(
             inbox.channel as any,
             inbox.externalUserId!,
-            result.replyText
+            replyText
           )
           console.info(
             `📤 Replied to ${inbox.channel} user=${inbox.externalUserId} ` +
@@ -117,7 +125,7 @@ export default class InboxProcessor {
           console.error(`❌ Send reply failed for inbox=${inbox.id}:`, sendErr?.message)
           await this.finalize(inbox, 'failed', `send error: ${sendErr?.message}`)
           // best-effort escalation notice even when the reply failed to send
-          await this.notifyEscalationIfNeeded(conversation, result.replyText)
+          await this.notifyEscalationIfNeeded(conversation, replyText)
           return
         }
       }
