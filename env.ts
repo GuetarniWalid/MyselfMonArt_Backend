@@ -50,6 +50,8 @@ export default Env.rules({
   SMTP_PASSWORD: Env.schema.string(),
   MAIL_SENDER: Env.schema.string(),
   MAIL_RECIPIENT: Env.schema.string(),
+  RESEND_API_KEY: Env.schema.string.optional(),
+  RESEND_FROM: Env.schema.string.optional(),
   GOOGLE_API_KEY: Env.schema.string(),
   OPENAI_API_KEY: Env.schema.string(),
   OPENAI_MODEL: Env.schema.enum(['gpt-4o-2024-08-06', 'gpt-4o-mini-2024-07-18', 'gpt-5'] as const),

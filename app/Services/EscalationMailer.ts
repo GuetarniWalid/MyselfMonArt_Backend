@@ -1,5 +1,5 @@
 import Env from '@ioc:Adonis/Core/Env'
-import Mail from '@ioc:Adonis/Addons/Mail'
+import axios from 'axios'
 import type Conversation from 'App/Models/Conversation'
 import type ConversationMessage from 'App/Models/ConversationMessage'
 
@@ -7,6 +7,10 @@ const CHANNEL_LABEL: Record<string, string> = {
   instagram: 'Instagram DM',
   messenger: 'Facebook Messenger',
 }
+
+// DigitalOcean blocks outbound SMTP on the droplet, so we send transactional
+// mail over Resend's HTTPS API instead of @adonisjs/mail's SMTP transport.
+const RESEND_ENDPOINT = 'https://api.resend.com/emails'
 
 export default class EscalationMailer {
   /**
@@ -50,13 +54,22 @@ export default class EscalationMailer {
         : '(aucune réponse auto envoyée)',
     ].join('\n')
 
-    await Mail.send((message) => {
-      message
-        .to(Env.get('MAIL_RECIPIENT'))
-        .from(Env.get('MAIL_SENDER'))
-        .subject(`[SAV escalade ${channelLabel}] ${reason}`)
-        .text(body)
-    })
+    await axios.post(
+      RESEND_ENDPOINT,
+      {
+        from: Env.get('RESEND_FROM'),
+        to: [Env.get('MAIL_RECIPIENT')],
+        subject: `[SAV escalade ${channelLabel}] ${reason}`,
+        text: body,
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${Env.get('RESEND_API_KEY')}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000,
+      }
+    )
   }
 
   private buildInboxUrl(conversation: Conversation): string | null {
