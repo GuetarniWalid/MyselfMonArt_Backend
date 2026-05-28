@@ -15,8 +15,8 @@ interface CompressionResult {
 interface CompressionOptions {
   crf?: number // Constant Rate Factor (18-28, lower = better quality), default 23
   preset?: string // Encoding speed (ultrafast, fast, medium, slow), default 'medium'
-  maxWidth?: number // Max width for scaling, default 1920
-  maxHeight?: number // Max height for scaling, default 1080
+  maxWidth?: number // Explicit max-width override; default is orientation-aware
+  maxHeight?: number // Explicit max-height override; default is orientation-aware
   timeout?: number // Timeout in milliseconds, default 10 minutes
 }
 
@@ -40,8 +40,6 @@ export default class VideoCompressor {
     const {
       crf = this.DEFAULT_CRF,
       preset = this.DEFAULT_PRESET,
-      maxWidth = this.DEFAULT_MAX_WIDTH,
-      maxHeight = this.DEFAULT_MAX_HEIGHT,
       timeout = this.DEFAULT_TIMEOUT,
     } = options
 
@@ -63,6 +61,16 @@ export default class VideoCompressor {
     const dir = path.dirname(inputPath)
     const inputExt = path.extname(inputPath)
     const basename = path.basename(inputPath, inputExt)
+
+    // Orientation-aware cap: a vertical (9:16) source keeps 1080x1920 — it is no
+    // longer squeezed into a landscape box and downscaled — while landscape
+    // stays 1920x1080 and square becomes 1080x1080. Explicit maxWidth/maxHeight
+    // passed by the caller still take precedence.
+    const { maxWidth, maxHeight } = await this.resolveMaxDimensions(
+      inputPath,
+      options.maxWidth,
+      options.maxHeight
+    )
 
     // Always output as .mp4 for H.264 compatibility (even if input is .mov)
     const outputExt = '.mp4'
@@ -219,6 +227,67 @@ export default class VideoCompressor {
           })
         })
         .save(tempOutputPath)
+    })
+  }
+
+  /**
+   * Resolve the scaling box. Explicit caller dimensions win (escape hatch /
+   * backwards compatibility). Otherwise probe the source and pick a box that
+   * matches its orientation, so the longer edge caps at 1920 and the shorter at
+   * 1080 — keeping vertical 9:16 sources at full 1080x1920. Falls back to the
+   * historical landscape cap if ffprobe is unavailable.
+   */
+  private async resolveMaxDimensions(
+    inputPath: string,
+    explicitWidth?: number,
+    explicitHeight?: number
+  ): Promise<{ maxWidth: number; maxHeight: number }> {
+    if (explicitWidth && explicitHeight) {
+      return { maxWidth: explicitWidth, maxHeight: explicitHeight }
+    }
+
+    const dims = await this.probeVideoDimensions(inputPath)
+    if (!dims) {
+      return { maxWidth: this.DEFAULT_MAX_WIDTH, maxHeight: this.DEFAULT_MAX_HEIGHT }
+    }
+
+    const LONG_EDGE = 1920
+    const SHORT_EDGE = 1080
+    if (dims.height > dims.width) return { maxWidth: SHORT_EDGE, maxHeight: LONG_EDGE }
+    if (dims.width > dims.height) return { maxWidth: LONG_EDGE, maxHeight: SHORT_EDGE }
+    return { maxWidth: SHORT_EDGE, maxHeight: SHORT_EDGE }
+  }
+
+  /**
+   * Read the source's displayed video dimensions via ffprobe. Accounts for
+   * rotation metadata (a 90/270° rotation swaps the displayed orientation
+   * relative to the stored width/height). Returns null on any failure so the
+   * caller can fall back gracefully.
+   */
+  private async probeVideoDimensions(
+    inputPath: string
+  ): Promise<{ width: number; height: number } | null> {
+    return new Promise((resolve) => {
+      ffmpeg.ffprobe(inputPath, (err, metadata) => {
+        if (err) {
+          console.warn(`   ⚠️  ffprobe failed, using default cap: ${err.message}`)
+          resolve(null)
+          return
+        }
+        const stream = metadata.streams?.find((s) => s.codec_type === 'video')
+        if (!stream?.width || !stream?.height) {
+          resolve(null)
+          return
+        }
+        const rawRotation =
+          (stream as any).rotation ?? (stream.tags && (stream.tags as any).rotate) ?? 0
+        const swap = Math.abs(Number(rawRotation)) % 180 === 90
+        resolve(
+          swap
+            ? { width: stream.height, height: stream.width }
+            : { width: stream.width, height: stream.height }
+        )
+      })
     })
   }
 

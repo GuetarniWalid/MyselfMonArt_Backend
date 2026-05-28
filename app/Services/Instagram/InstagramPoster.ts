@@ -1,7 +1,9 @@
 import type {
+  InstagramCarouselPayload,
   InstagramMediaContainer,
   InstagramPostPayload,
   InstagramPublishedMedia,
+  InstagramReelPayload,
 } from 'Types/Instagram'
 import InstagramPostPayloadValidator from 'App/Validators/InstagramPostPayloadValidator'
 import { validator } from '@ioc:Adonis/Core/Validator'
@@ -37,7 +39,10 @@ export default class InstagramPoster extends Authentication {
 
     try {
       const igUserId = await this.getInstagramUserId()
-      const container = await this.createMediaContainer(igUserId, imageUrl, payload.caption)
+      const container = await this.createContainer(igUserId, {
+        image_url: imageUrl,
+        caption: payload.caption,
+      })
       // Meta needs a few seconds to ingest the image and mark the container
       // FINISHED. Publishing before that returns "Media ID is not available"
       // (error_subcode 2207027). Poll until ready before publishing.
@@ -56,26 +61,117 @@ export default class InstagramPoster extends Authentication {
     }
   }
 
-  private async createMediaContainer(
+  /**
+   * Publish a carousel (2–10 image slides).
+   *
+   * Flow: upload each slide to a public URL → create one carousel-item
+   * container per slide → bundle them into a parent CAROUSEL container →
+   * publish. All temp Shopify files are cleaned up in `finally`, regardless of
+   * outcome.
+   */
+  public async publishCarousel(payload: InstagramCarouselPayload): Promise<{ mediaId: string }> {
+    this.assertCaption(payload.caption)
+    if (payload.imageBuffers.length < 2) {
+      throw new Error(`Carousel needs at least 2 images (got ${payload.imageBuffers.length})`)
+    }
+
+    const shopify = new Shopify()
+    const uploadedFileIds: string[] = []
+    try {
+      const igUserId = await this.getInstagramUserId()
+
+      const childIds: string[] = []
+      for (let i = 0; i < payload.imageBuffers.length; i++) {
+        const { fileId, url } = await shopify.file.uploadFromBuffer({
+          buffer: payload.imageBuffers[i],
+          mimeType: 'image/jpeg',
+          filename: this.buildFilename(payload.shopifyProductId, `carousel-${i}`),
+          alt: payload.altText,
+        })
+        uploadedFileIds.push(fileId)
+
+        const item = await this.createContainer(igUserId, {
+          image_url: url,
+          is_carousel_item: true,
+        })
+        await this.waitForContainerReady(item.id)
+        childIds.push(item.id)
+      }
+
+      const parent = await this.createContainer(igUserId, {
+        media_type: 'CAROUSEL',
+        caption: payload.caption,
+        children: childIds.join(','),
+      })
+      await this.waitForContainerReady(parent.id)
+      const published = await this.publishMediaContainer(igUserId, parent.id)
+      return { mediaId: published.id }
+    } finally {
+      if (uploadedFileIds.length) {
+        try {
+          await shopify.file.delete(uploadedFileIds)
+        } catch (cleanupError) {
+          console.error(
+            `[Instagram] Failed to cleanup temp Shopify carousel files ${uploadedFileIds.join(', ')}:`,
+            cleanupError?.message ?? cleanupError
+          )
+        }
+      }
+    }
+  }
+
+  /**
+   * Publish a Reel from an already-hosted public video URL (the product's
+   * video metafield / DO Spaces CDN). No upload step is needed. `share_to_feed`
+   * also surfaces the reel in the main feed grid.
+   */
+  public async publishReel(payload: InstagramReelPayload): Promise<{ mediaId: string }> {
+    this.assertCaption(payload.caption)
+    if (!payload.videoUrl) {
+      throw new Error('Reel payload is missing videoUrl')
+    }
+
+    const igUserId = await this.getInstagramUserId()
+    const container = await this.createContainer(igUserId, {
+      media_type: 'REELS',
+      video_url: payload.videoUrl,
+      caption: payload.caption,
+      share_to_feed: true,
+    })
+    // Video ingestion is far slower than images — poll longer (up to ~3min)
+    // before publishing.
+    await this.waitForContainerReady(container.id, 60, 3000)
+    const published = await this.publishMediaContainer(igUserId, container.id)
+    return { mediaId: published.id }
+  }
+
+  private async createContainer(
     igUserId: string,
-    imageUrl: string,
-    caption: string
+    params: Record<string, any>
   ): Promise<InstagramMediaContainer> {
     try {
       return await this.request<InstagramMediaContainer>({
         method: 'POST',
         url: `/${igUserId}/media`,
-        params: {
-          image_url: imageUrl,
-          caption,
-        },
+        params,
       })
     } catch (error) {
       const status = error?.response?.status
       const body = error?.response?.data
+      // Omit the (long) caption from the error context, keep the useful bits.
+      const { caption, ...debugParams } = params
       throw new Error(
-        `Instagram POST /media failed (status ${status}): ${JSON.stringify(body)} | image_url=${imageUrl}`
+        `Instagram POST /media failed (status ${status}): ${JSON.stringify(body)} | params=${JSON.stringify(debugParams)}`
       )
+    }
+  }
+
+  private assertCaption(caption: string): void {
+    if (typeof caption !== 'string' || caption.length === 0) {
+      throw new Error('Instagram caption is missing or empty')
+    }
+    if (caption.length > 2200) {
+      throw new Error(`Instagram caption exceeds 2200 chars (${caption.length})`)
     }
   }
 
@@ -149,8 +245,9 @@ export default class InstagramPoster extends Authentication {
     }
   }
 
-  private buildFilename(shopifyProductId: string): string {
+  private buildFilename(shopifyProductId: string, suffix?: string): string {
     const numericId = shopifyProductId.replace('gid://shopify/Product/', '')
-    return `ig-post-${numericId}-${Date.now()}.jpg`
+    const tag = suffix ? `${suffix}-` : ''
+    return `ig-post-${numericId}-${tag}${Date.now()}.jpg`
   }
 }
