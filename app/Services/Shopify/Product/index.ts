@@ -362,6 +362,37 @@ export default class Product extends Authentication {
     return uniqueTags
   }
 
+  /**
+   * Returns published product GIDs ordered by real sales (Shopify
+   * BEST_SELLING sort key), best first. Used to rank conversational product
+   * recommendations. Fetches up to `max` products (default 1000) — anything
+   * beyond is unranked and sorts last.
+   */
+  public async getBestSellerGids(max: number = 1000): Promise<string[]> {
+    const gids: string[] = []
+    let cursor: string | null = null
+    let hasNextPage = true
+
+    while (hasNextPage && gids.length < max) {
+      const query = `query BestSellers($cursor: String) {
+        products(first: 250, after: $cursor, sortKey: BEST_SELLING, query: "published_status:published") {
+          edges { node { id } cursor }
+          pageInfo { hasNextPage }
+        }
+      }`
+      const data = await this.fetchGraphQL(query, { cursor }, 50)
+      const edges = data.products.edges
+      edges.forEach((e: any) => gids.push(e.node.id))
+      hasNextPage = data.products.pageInfo.hasNextPage
+      if (hasNextPage) {
+        cursor = edges[edges.length - 1].cursor
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+    }
+
+    return gids
+  }
+
   public getModelCopier(product: ProductById | ShopifyProduct) {
     const artworkType = product.artworkTypeMetafield?.value
     const isArtwork = artworkType === 'painting' || artworkType === 'poster'
