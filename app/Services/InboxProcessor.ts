@@ -12,6 +12,7 @@ const MAX_ATTEMPTS = 3
 const REPLY_WINDOW_HOURS = 24
 const HISTORY_LOAD = 24
 const MAIL_TIMEOUT_MS = 15000
+const MAX_REPLIES_PER_USER_24H = 5
 
 export default class InboxProcessor {
   private static cachedSelfIgId: string | null = null
@@ -48,6 +49,18 @@ export default class InboxProcessor {
       }
 
       const conversation = await this.getOrCreateConversation(inbox)
+
+      // Hard cap: at most MAX_REPLIES_PER_USER_24H auto-replies to the same
+      // conversation per rolling 24h. Protects against runaway Claude cost and
+      // spam loops. Over the cap we skip silently (no Claude call, no reply).
+      if (await this.isOverReplyCap(conversation.id)) {
+        await this.finalize(
+          inbox,
+          'skipped',
+          `rate limit: ${MAX_REPLIES_PER_USER_24H} replies/24h reached`
+        )
+        return
+      }
 
       // Persist the incoming user turn first so the history table is the
       // source of truth even if the agent crashes later.
@@ -181,6 +194,23 @@ export default class InboxProcessor {
       inbox.status = 'pending' // let the sweep cron retry later
     }
     await inbox.save()
+  }
+
+  /**
+   * True if we've already sent MAX_REPLIES_PER_USER_24H assistant replies in
+   * this conversation within the last rolling 24h. One conversation == one
+   * (channel, external_thread_id) == one user, so this is effectively a
+   * per-user daily reply cap.
+   */
+  private async isOverReplyCap(conversationId: number): Promise<boolean> {
+    const since = DateTime.now().minus({ hours: 24 })
+    const result = await Database.from('conversation_messages')
+      .where('conversation_id', conversationId)
+      .where('role', 'assistant')
+      .where('created_at', '>=', since.toSQL()!)
+      .count('* as total')
+    const total = Number((result[0] as any)?.total ?? 0)
+    return total >= MAX_REPLIES_PER_USER_24H
   }
 
   private extractText(inbox: InboxMessage): string | null {
