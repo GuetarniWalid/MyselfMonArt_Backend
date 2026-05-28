@@ -19,9 +19,9 @@ function cardImageUrl(p: any): string | undefined {
   for (const n of nodes) {
     if (n?.image?.url) imageUrls.push(n.image.url as string)
   }
-  // Use the SECOND image (index 1) for the card — typically the mockup/in-situ
-  // shot rather than the bare artwork. Fall back to the first if only one.
-  return imageUrls[1] ?? imageUrls[0]
+  // Use the THIRD image (index 2) for the card — the preferred in-situ shot.
+  // Fall back to earlier images when the product has fewer than three.
+  return imageUrls[2] ?? imageUrls[1] ?? imageUrls[0]
 }
 
 function publicUrl(p: any): string {
