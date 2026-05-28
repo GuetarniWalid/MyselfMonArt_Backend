@@ -53,7 +53,7 @@ export default class PublishDaily extends BaseTask {
     if (!PUBLISH_HOURS_BY_DAY[day].includes(hour)) return
 
     try {
-      logTaskBoundary(true, 'Publish Daily (Pinterest + IG chain)')
+      logTaskBoundary(true, 'Publish Daily (Pinterest)')
 
       const dailyPublication = new DailyPublication()
       await dailyPublication.run()
@@ -63,7 +63,7 @@ export default class PublishDaily extends BaseTask {
     } catch (error) {
       console.log('❌ Daily publication failed:', error?.message || error)
     } finally {
-      logTaskBoundary(false, 'Publish Daily (Pinterest + IG chain)')
+      logTaskBoundary(false, 'Publish Daily (Pinterest)')
     }
   }
 }

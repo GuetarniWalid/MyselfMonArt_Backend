@@ -1,10 +1,13 @@
-## Server and Test Command Policy
-**IMPORTANT:** Do NOT start servers or run test commands unless explicitly requested by the user.
+## Command Execution Policy
+Claude is pre-authorized to run build, typecheck, test, and tooling commands autonomously, without asking for confirmation. This explicitly includes:
 
-- NEVER automatically run `npm start`, `npm run dev`, `node server.js`, or any server startup commands
-- NEVER automatically run `npm test`, `npm run test`, or any testing commands
-- Only execute these commands when the user specifically asks you to do so
-- The user will manage server startup and testing on their own unless they request your help
+- `node ace ...` — any AdonisJS ace command (`generate:manifest`, `type-check`, `migration:run`, `build`, custom tasks, etc.)
+- `tsc --noEmit` and other typecheck / lint / build commands
+- `npm test` / `node ace test`
+
+Run these whenever they help validate or move the work forward — do not pause to ask.
+
+**Only caution:** do NOT start long-running *foreground* servers (`npm run dev`, `node ace serve`, `node server.js`) in a way that blocks the session. If a server is genuinely needed, start it in the background.
 
 ## Env loading (dotenv-vault)
 

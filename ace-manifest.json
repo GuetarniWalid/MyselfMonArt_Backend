@@ -36,6 +36,25 @@
       "aliases": [],
       "flags": []
     },
+    "instagram:publish_next": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/InstagramPublishNext",
+      "commandName": "instagram:publish_next",
+      "description": "Run the decoupled Instagram publication once: picks the most recent product not yet posted to the IG feed and publishes it. Without --yes, only prints which product would be posted.",
+      "args": [],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "yes",
+          "propertyName": "yes",
+          "type": "boolean",
+          "description": "Confirm the publish. Without it, prints the selected product and exits."
+        }
+      ]
+    },
     "instagram:test_payload_one": {
       "settings": {
         "loadApp": true,
