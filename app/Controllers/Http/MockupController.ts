@@ -1017,8 +1017,9 @@ export default class MockupController {
         const compressionResult = await videoCompressor.compressVideo(mockupFilePath, {
           crf: 23, // Good quality/size balance (18-28, lower = better quality)
           preset: 'medium', // Balanced encoding speed
-          maxWidth: 1920,
-          maxHeight: 1080,
+          // No explicit max dimensions: the compressor is orientation-aware and
+          // keeps vertical 9:16 sources at full 1080x1920 (landscape stays
+          // 1920x1080), so multi-platform vertical videos aren't downscaled.
           timeout: 10 * 60 * 1000, // 10 minutes max
         })
 
