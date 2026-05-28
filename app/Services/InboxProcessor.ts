@@ -91,6 +91,28 @@ export default class InboxProcessor {
             `📤 Replied to ${inbox.channel} user=${inbox.externalUserId} ` +
               `inbox=${inbox.id} msg=${sendResult.messageId ?? '?'}`
           )
+
+          // Follow the text with a product-card carousel when the agent chose
+          // to present products. Non-fatal: a card-send failure must not flip
+          // the inbox to 'failed' since the text reply already went out.
+          if (result.cards && result.cards.length > 0) {
+            try {
+              const cardResult = await sender.sendProductCards(
+                inbox.channel as any,
+                inbox.externalUserId!,
+                result.cards
+              )
+              console.info(
+                `🛍️  Sent ${result.cards.length} product card(s) to inbox=${inbox.id} ` +
+                  `msg=${cardResult.messageId ?? '?'}`
+              )
+            } catch (cardErr: any) {
+              console.error(
+                `⚠️  Product cards send failed for inbox=${inbox.id}:`,
+                cardErr?.message
+              )
+            }
+          }
         } catch (sendErr: any) {
           console.error(`❌ Send reply failed for inbox=${inbox.id}:`, sendErr?.message)
           await this.finalize(inbox, 'failed', `send error: ${sendErr?.message}`)

@@ -1,4 +1,5 @@
 import IgAuthentication from '../Instagram/Authentication'
+import type { ProductCard } from '../ConversationAgent/tools'
 
 export type ReplyChannel = 'instagram' | 'messenger'
 
@@ -52,5 +53,56 @@ export default class MetaReplySender extends IgAuthentication {
       messageId: data?.message_id ?? null,
       raw: data,
     }
+  }
+
+  /**
+   * Send product cards as a tappable carousel (Meta "generic template").
+   * Each card: image, title, subtitle, and a "Voir" web_url button that also
+   * fires on card tap (default_action). Instagram supports up to 10 elements.
+   * Cards missing an image are skipped — the template requires either an
+   * image or a non-empty subtitle, and a card with neither renders poorly.
+   */
+  public async sendProductCards(
+    channel: ReplyChannel,
+    recipientExternalId: string,
+    cards: ProductCard[]
+  ): Promise<SendResult> {
+    if (channel !== 'instagram') {
+      throw new Error(`Product cards not wired for channel: ${channel}`)
+    }
+
+    const elements = cards
+      .slice(0, 10)
+      .filter((c) => c.url)
+      .map((c) => {
+        const el: any = {
+          title: (c.title || 'Découvrir').slice(0, 80),
+          default_action: { type: 'web_url', url: c.url },
+          buttons: [{ type: 'web_url', url: c.url, title: 'Voir' }],
+        }
+        if (c.imageUrl) el.image_url = c.imageUrl
+        if (c.subtitle) el.subtitle = c.subtitle.slice(0, 80)
+        return el
+      })
+
+    if (elements.length === 0) {
+      return { messageId: null, raw: { skipped: 'no renderable cards' } }
+    }
+
+    const data = await this.request<any>({
+      method: 'POST',
+      url: '/me/messages',
+      data: {
+        recipient: { id: recipientExternalId },
+        message: {
+          attachment: {
+            type: 'template',
+            payload: { template_type: 'generic', elements },
+          },
+        },
+      },
+    })
+
+    return { messageId: data?.message_id ?? null, raw: data }
   }
 }

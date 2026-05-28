@@ -1,7 +1,7 @@
 import Env from '@ioc:Adonis/Core/Env'
 import Authentication from '../Claude/Authentication'
 import buildSystemPrompt from './prompts/system'
-import { toolDefinitions, toolRegistry, ToolHandler } from './tools'
+import { toolDefinitions, toolRegistry, ToolHandler, ProductCard, ToolScratch } from './tools'
 import type Conversation from 'App/Models/Conversation'
 import type ConversationMessage from 'App/Models/ConversationMessage'
 
@@ -9,6 +9,7 @@ interface AgentResult {
   replyText: string | null
   escalated: boolean
   toolCalls: Array<{ name: string; input: any; output: string }>
+  cards: ProductCard[]
   tokensIn: number
   tokensOut: number
 }
@@ -35,6 +36,7 @@ export default class ConversationAgent extends Authentication {
   ): Promise<AgentResult> {
     const messages: ClaudeMessage[] = this.buildHistory(history, incomingUserText)
     const toolCallsLog: AgentResult['toolCalls'] = []
+    const scratch: ToolScratch = { productsByHandle: new Map(), cardsToSend: [] }
     let tokensIn = 0
     let tokensOut = 0
 
@@ -58,6 +60,7 @@ export default class ConversationAgent extends Authentication {
           replyText: text,
           escalated: conversation.status === 'escalated',
           toolCalls: toolCallsLog,
+          cards: scratch.cardsToSend,
           tokensIn,
           tokensOut,
         }
@@ -75,7 +78,7 @@ export default class ConversationAgent extends Authentication {
           output = JSON.stringify({ error: `Unknown tool: ${block.name}` })
         } else {
           try {
-            output = await handler.execute(block.input, { conversation })
+            output = await handler.execute(block.input, { conversation, scratch })
           } catch (err: any) {
             output = JSON.stringify({ error: err?.message ?? 'tool execution failed' })
           }
@@ -96,6 +99,7 @@ export default class ConversationAgent extends Authentication {
       replyText: null,
       escalated: conversation.status === 'escalated',
       toolCalls: toolCallsLog,
+      cards: scratch.cardsToSend,
       tokensIn,
       tokensOut,
     }
