@@ -121,6 +121,7 @@ const searchProducts: ToolHandler = {
         subtitle: (p.productType || p.themeLabels.join(', ')).slice(0, 80),
         imageUrl: p.imageUrl,
         url: p.url,
+        unitsSold: p.unitsSold,
       }
       context.scratch.productsByHandle.set(p.handle, card)
       return {

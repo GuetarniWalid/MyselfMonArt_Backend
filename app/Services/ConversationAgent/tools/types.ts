@@ -5,6 +5,9 @@ export interface ProductCard {
   subtitle?: string
   imageUrl?: string
   url: string
+  // Real units sold — used to order the carousel best-seller-first regardless
+  // of the order the agent lists handles in.
+  unitsSold?: number
 }
 
 /**

@@ -39,6 +39,10 @@ const presentProducts: ToolHandler = {
       }
     }
 
+    // Always order the carousel best-seller-first (most sold leftmost),
+    // regardless of the order the agent passed the handles in.
+    scratch.cardsToSend.sort((a, b) => (b.unitsSold ?? 0) - (a.unitsSold ?? 0))
+
     if (found.length === 0) {
       return JSON.stringify({
         ok: false,
