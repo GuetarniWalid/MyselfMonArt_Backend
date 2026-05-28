@@ -11,6 +11,7 @@ import IgAuthentication from './Instagram/Authentication'
 const MAX_ATTEMPTS = 3
 const REPLY_WINDOW_HOURS = 24
 const HISTORY_LOAD = 24
+const MAIL_TIMEOUT_MS = 15000
 
 export default class InboxProcessor {
   private static cachedSelfIgId: string | null = null
@@ -93,20 +94,24 @@ export default class InboxProcessor {
         } catch (sendErr: any) {
           console.error(`❌ Send reply failed for inbox=${inbox.id}:`, sendErr?.message)
           await this.finalize(inbox, 'failed', `send error: ${sendErr?.message}`)
-          if (conversation.status === 'escalated') {
-            await this.notifyEscalation(conversation, result.replyText)
-          }
+          // best-effort escalation notice even when the reply failed to send
+          await this.notifyEscalationIfNeeded(conversation, result.replyText)
           return
         }
       }
 
-      if (conversation.status === 'escalated') {
-        await this.notifyEscalation(conversation, result.replyText)
-        await this.finalize(inbox, 'escalated', conversation.escalationReason ?? null)
-        return
-      }
+      // Finalize the inbox status NOW — immediately after a successful send.
+      // The escalation email is a non-critical side effect: it must never be
+      // able to block finalization or, worse, leave the row in 'processing'
+      // where the sweep cron would reprocess it and double-send the reply.
+      const terminalStatus = conversation.status === 'escalated' ? 'escalated' : 'replied'
+      await this.finalize(
+        inbox,
+        terminalStatus,
+        terminalStatus === 'escalated' ? conversation.escalationReason ?? null : null
+      )
 
-      await this.finalize(inbox, 'replied', null)
+      await this.notifyEscalationIfNeeded(conversation, result.replyText)
     } catch (err: any) {
       console.error(`❌ InboxProcessor failed for id=${inboxId}:`, err?.message ?? err)
       if (inbox) await this.handleFailure(inbox, err?.message ?? String(err))
@@ -202,19 +207,39 @@ export default class InboxProcessor {
     })
   }
 
-  private async notifyEscalation(
+  /**
+   * Fire the escalation email only when the conversation is escalated.
+   * Time-boxed and fully swallowed: a slow or unreachable SMTP server must
+   * never hang the worker or affect the already-finalized inbox row.
+   */
+  private async notifyEscalationIfNeeded(
     conversation: Conversation,
     finalReplyText: string | null
   ): Promise<void> {
+    if (conversation.status !== 'escalated') return
     try {
       const history = await ConversationMessage.query()
         .where('conversation_id', conversation.id)
         .orderBy('created_at', 'asc')
       const mailer = new EscalationMailer()
-      await mailer.send(conversation, history, finalReplyText)
+      await this.withTimeout(
+        mailer.send(conversation, history, finalReplyText),
+        MAIL_TIMEOUT_MS,
+        'escalation email'
+      )
+      console.info(`✉️  Escalation email sent for conversation=${conversation.id}`)
     } catch (err: any) {
       console.error(`❌ EscalationMailer failed for conversation=${conversation.id}:`, err?.message)
     }
+  }
+
+  private withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+    return Promise.race([
+      p,
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+      ),
+    ])
   }
 
   /**

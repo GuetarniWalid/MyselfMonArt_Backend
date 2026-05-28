@@ -46,6 +46,12 @@ export default mailConfig({
       driver: 'smtp',
       host: Env.get('SMTP_HOST'),
       port: Env.get('SMTP_PORT'),
+      // Fail fast instead of hanging forever when the SMTP host is
+      // unreachable from the container (no route / blocked port). Without
+      // these, a stalled TCP connect blocks the caller indefinitely.
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
       auth: {
         user: Env.get('SMTP_USERNAME'),
         pass: Env.get('SMTP_PASSWORD'),
