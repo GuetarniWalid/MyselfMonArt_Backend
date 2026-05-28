@@ -19,7 +19,7 @@ interface ClaudeMessage {
   content: any
 }
 
-const MAX_ITERATIONS = 5
+const MAX_ITERATIONS = 8
 const HISTORY_TURNS = 12 // last 12 stored messages = ~6 exchanges of context
 
 export default class ConversationAgent extends Authentication {
@@ -41,16 +41,18 @@ export default class ConversationAgent extends Authentication {
     let tokensOut = 0
 
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-      // On the final allowed iteration, drop the tools so Claude is forced to
-      // produce a text answer instead of requesting yet another tool call.
-      // Guarantees we never return a null reply just because the model stayed
-      // in tool-use mode for too long.
+      // On the final allowed iteration, force a text answer with
+      // tool_choice:none. We keep `tools` DEFINED (not omitted) because the
+      // message history already contains tool_use/tool_result blocks — omitting
+      // tools then makes the API return an empty response. tool_choice:none
+      // forbids new tool calls while keeping the schema valid.
       const isFinalIteration = iteration === MAX_ITERATIONS - 1
       const response = await this.anthropic.messages.create({
         model: Env.get('CLAUDE_MODEL'),
         max_tokens: 2048,
         system: buildSystemPrompt(),
-        ...(isFinalIteration ? {} : { tools: toolDefinitions as any }),
+        tools: toolDefinitions as any,
+        ...(isFinalIteration ? { tool_choice: { type: 'none' as const } } : {}),
         messages: messages as any,
       })
 

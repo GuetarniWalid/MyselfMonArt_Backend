@@ -32,7 +32,7 @@ const getProductByQuery: ToolHandler = {
   definition: {
     name: 'getProductByQuery',
     description:
-      "Recherche des produits de la boutique par mot-clé (titre, description, type, tags). Utilise ce tool dès qu'un client cherche une œuvre sur un sujet précis (chat, lion, japonais, salon, etc.). Retourne jusqu'à 5 produits avec titre, handle et extrait. Pour MONTRER ces produits au client, n'écris PAS les URLs dans ton texte — appelle plutôt le tool presentProducts avec les handles choisis.",
+      "Recherche des produits de la boutique par mot-clé (titre, description, type, tags). Utilise ce tool dès qu'un client cherche une œuvre sur un sujet précis (chat, lion, japonais, salon, etc.). Retourne jusqu'à 5 produits avec titre, handle et extrait. Pour MONTRER ces produits au client, n'écris PAS les URLs dans ton texte — appelle plutôt le tool presentProducts avec les handles choisis. IMPORTANT : pour une demande multi-critères (ex: 'zen, pastel, vert'), fais UNE SEULE recherche avec le terme le plus porteur (ex: 'zen'), puis choisis parmi les résultats — ne lance pas une recherche séparée par critère.",
     input_schema: {
       type: 'object',
       properties: {
