@@ -29,31 +29,21 @@ function addDays(start: DateTime, n: number, business: boolean): DateTime {
   return d
 }
 
-// Map the conversation language to a DPD tracking locale.
-const DPD_LOCALE: Record<string, string> = {
-  fr: 'fr_FR',
-  en: 'en_US',
-  de: 'de_DE',
-  es: 'es_ES',
-  it: 'it_IT',
-  nl: 'nl_NL',
-}
-
 /**
- * Build a deep tracking link that opens directly on the parcel, pre-filled,
- * in the customer's language. Shopify's stored tracking URL is a generic
- * landing page (no parcel number, default locale), so for DPD we construct the
- * proper deep-link. Other carriers keep their Shopify-provided URL.
+ * Build a deep tracking link that opens directly on the parcel, pre-filled.
+ * Shopify's stored URL is a generic landing page (no parcel number). For DPD
+ * we point at the French DPD trace site (trace.dpd.fr) — pre-filled and in
+ * French. NB: DPD organizes its trackers by national site, not by language, so
+ * there's no clean per-conversation-language link; French is the right default
+ * for this FR shop. Other carriers keep their Shopify-provided URL.
  */
 function buildTrackingUrl(
   company: string | null,
   number: string | null,
-  fallbackUrl: string | null,
-  lang: string
+  fallbackUrl: string | null
 ): string | null {
   if (company && /dpd/i.test(company) && number) {
-    const locale = DPD_LOCALE[lang] ?? DPD_LOCALE.en
-    return `https://tracking.dpd.de/status/${locale}/parcel/${encodeURIComponent(number)}`
+    return `https://www.dpd.fr/trace/${encodeURIComponent(number)}`
   }
   return fallbackUrl
 }
@@ -71,17 +61,11 @@ const getOrderStatus: ToolHandler = {
           type: 'string',
           description: 'Numéro de commande fourni (ex: "1801" ou "#1801").',
         },
-        lang: {
-          type: 'string',
-          description:
-            "Langue de la conversation (ISO 639-1 : fr, en, de, es, it, nl) pour un lien de suivi dans la langue du client. Mets la langue dans laquelle le client écrit ; en cas de doute, 'en'.",
-        },
       },
     },
   },
 
-  async execute(input: { email?: string; order_number?: string; lang?: string }): Promise<string> {
-    const lang = (input.lang ?? 'en').trim().toLowerCase().slice(0, 2)
+  async execute(input: { email?: string; order_number?: string }): Promise<string> {
     if (!input.email && !input.order_number) {
       return JSON.stringify({
         ok: false,
@@ -119,7 +103,7 @@ const getOrderStatus: ToolHandler = {
     // Localize + pre-fill the tracking links (DPD deep-link in the customer's language).
     const tracking = order.tracking.map((t) => ({
       ...t,
-      url: buildTrackingUrl(t.company, t.number, t.url, lang),
+      url: buildTrackingUrl(t.company, t.number, t.url),
     }))
 
     return JSON.stringify({
