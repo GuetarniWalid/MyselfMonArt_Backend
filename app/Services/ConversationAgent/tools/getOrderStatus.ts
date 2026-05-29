@@ -29,6 +29,35 @@ function addDays(start: DateTime, n: number, business: boolean): DateTime {
   return d
 }
 
+// Map the conversation language to a DPD tracking locale.
+const DPD_LOCALE: Record<string, string> = {
+  fr: 'fr_FR',
+  en: 'en_US',
+  de: 'de_DE',
+  es: 'es_ES',
+  it: 'it_IT',
+  nl: 'nl_NL',
+}
+
+/**
+ * Build a deep tracking link that opens directly on the parcel, pre-filled,
+ * in the customer's language. Shopify's stored tracking URL is a generic
+ * landing page (no parcel number, default locale), so for DPD we construct the
+ * proper deep-link. Other carriers keep their Shopify-provided URL.
+ */
+function buildTrackingUrl(
+  company: string | null,
+  number: string | null,
+  fallbackUrl: string | null,
+  lang: string
+): string | null {
+  if (company && /dpd/i.test(company) && number) {
+    const locale = DPD_LOCALE[lang] ?? DPD_LOCALE.en
+    return `https://tracking.dpd.de/status/${locale}/parcel/${encodeURIComponent(number)}`
+  }
+  return fallbackUrl
+}
+
 const getOrderStatus: ToolHandler = {
   definition: {
     name: 'getOrderStatus',
@@ -42,11 +71,17 @@ const getOrderStatus: ToolHandler = {
           type: 'string',
           description: 'Numéro de commande fourni (ex: "1801" ou "#1801").',
         },
+        lang: {
+          type: 'string',
+          description:
+            "Langue de la conversation (ISO 639-1 : fr, en, de, es, it, nl) pour un lien de suivi dans la langue du client. Mets la langue dans laquelle le client écrit ; en cas de doute, 'en'.",
+        },
       },
     },
   },
 
-  async execute(input: { email?: string; order_number?: string }): Promise<string> {
+  async execute(input: { email?: string; order_number?: string; lang?: string }): Promise<string> {
+    const lang = (input.lang ?? 'en').trim().toLowerCase().slice(0, 2)
     if (!input.email && !input.order_number) {
       return JSON.stringify({
         ok: false,
@@ -81,6 +116,12 @@ const getOrderStatus: ToolHandler = {
     const estimated = addDays(orderedAt, days, business)
     const isOverdue = DateTime.now() > estimated
 
+    // Localize + pre-fill the tracking links (DPD deep-link in the customer's language).
+    const tracking = order.tracking.map((t) => ({
+      ...t,
+      url: buildTrackingUrl(t.company, t.number, t.url, lang),
+    }))
+
     return JSON.stringify({
       found: true,
       order_number: order.name,
@@ -88,7 +129,7 @@ const getOrderStatus: ToolHandler = {
       fulfillment_status: order.fulfillmentStatus,
       payment_status: order.financialStatus,
       items: order.itemTitles,
-      tracking: order.tracking,
+      tracking,
       estimated_delivery_date: estimated.toISODate(),
       delay_used: `${days} jours ${business ? 'ouvrés' : 'calendaires'}`,
       is_overdue: isOverdue,
