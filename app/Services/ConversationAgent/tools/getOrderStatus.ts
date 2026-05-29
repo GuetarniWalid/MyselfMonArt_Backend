@@ -29,25 +29,6 @@ function addDays(start: DateTime, n: number, business: boolean): DateTime {
   return d
 }
 
-/**
- * Build a deep tracking link that opens directly on the parcel, pre-filled.
- * Shopify's stored URL is a generic landing page (no parcel number). For DPD
- * we point at the French DPD trace site (trace.dpd.fr) — pre-filled and in
- * French. NB: DPD organizes its trackers by national site, not by language, so
- * there's no clean per-conversation-language link; French is the right default
- * for this FR shop. Other carriers keep their Shopify-provided URL.
- */
-function buildTrackingUrl(
-  company: string | null,
-  number: string | null,
-  fallbackUrl: string | null
-): string | null {
-  if (company && /dpd/i.test(company) && number) {
-    return `https://www.dpd.fr/trace/${encodeURIComponent(number)}`
-  }
-  return fallbackUrl
-}
-
 const getOrderStatus: ToolHandler = {
   definition: {
     name: 'getOrderStatus',
@@ -100,11 +81,10 @@ const getOrderStatus: ToolHandler = {
     const estimated = addDays(orderedAt, days, business)
     const isOverdue = DateTime.now() > estimated
 
-    // Localize + pre-fill the tracking links (DPD deep-link in the customer's language).
-    const tracking = order.tracking.map((t) => ({
-      ...t,
-      url: buildTrackingUrl(t.company, t.number, t.url),
-    }))
+    // The follow link we give the customer is Shopify's own order status page:
+    // localized to the order's language, branded (shop domain), and it links to
+    // the REAL carrier tracking that Shopify resolved (no guessing carrier URLs).
+    const followUrl = order.statusPageUrl
 
     return JSON.stringify({
       found: true,
@@ -113,13 +93,14 @@ const getOrderStatus: ToolHandler = {
       fulfillment_status: order.fulfillmentStatus,
       payment_status: order.financialStatus,
       items: order.itemTitles,
-      tracking,
+      carrier: order.tracking[0]?.company ?? null,
+      follow_order_url: followUrl,
       estimated_delivery_date: estimated.toISODate(),
       delay_used: `${days} jours ${business ? 'ouvrés' : 'calendaires'}`,
       is_overdue: isOverdue,
       note: isOverdue
         ? "Date estimée DÉPASSÉE : excuses sincères + rappelle avec délicatesse que nos œuvres sont fabriquées SUR MESURE (pas en stock), ce qui fait leur valeur et peut allonger les délais ; dis que tu enquêtes et que l'équipe revient au plus vite ; appelle escalateToHuman (reason='commande_en_retard'). Ne promets pas de délai précis."
-        : "Donne un statut clair et rassurant + la date estimée. Si tracking présent, partage le transporteur + le lien. Ne révèle jamais l'adresse.",
+        : "Donne un statut clair et rassurant + la date estimée. Pour le suivi, partage follow_order_url (page de suivi de la commande, déjà dans la bonne langue, avec le lien transporteur). Ne révèle jamais l'adresse.",
     })
   },
 }

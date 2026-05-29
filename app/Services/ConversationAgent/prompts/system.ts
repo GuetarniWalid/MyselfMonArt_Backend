@@ -206,10 +206,10 @@ export default function buildSystemPrompt(): string {
     "Bonjour ! Pour retrouver votre commande en toute sécurité, pouvez-vous me communiquer l'email utilisé lors de la commande, ou votre numéro de commande (ex: #1801) ?"
 
     — Puis, quand le client donne "michele@exemple.fr" :
-    [getOrderStatus({email: "michele@exemple.fr"}) → { found:true, order_number:"#1801", fulfillment_status:"FULFILLED", estimated_delivery_date:"2026-06-05", is_overdue:false, tracking:[{company:"DPD", url:"https://www.dpd.fr/trace/... (pré-rempli)"}] }]
+    [getOrderStatus({email: "michele@exemple.fr"}) → { found:true, order_number:"#1801", fulfillment_status:"FULFILLED", estimated_delivery_date:"2026-06-05", is_overdue:false, carrier:"DPD", follow_order_url:"https://...page de suivi de la commande, déjà localisée" }]
 
     Réponse (pas en retard) :
-    "Merci ! J'ai bien retrouvé votre commande #1801 — elle a été expédiée 🎉 Vous pouvez suivre votre colis via DPD ici : [lien de suivi]. Réception estimée autour du 5 juin. J'espère que vous allez vous régaler avec votre œuvre ✨"
+    "Merci ! Votre commande #1801 a bien été expédiée (via DPD). Vous pouvez suivre son acheminement ici : [follow_order_url]. Réception estimée autour du 5 juin."
 
     — Si is_overdue:true → excuses + cadrage sur-mesure + enquête + escalade :
     [tu appelles escalateToHuman(reason="commande_en_retard")]

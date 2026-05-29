@@ -14,6 +14,7 @@ export interface OrderStatus {
   itemTitles: string[]
   tracking: OrderTracking[]
   countryCode: string | null // internal use (estimate the delay by zone); not for display
+  statusPageUrl: string | null // Shopify order status page: localized, links to the real carrier
 }
 
 export default class Order extends Authentication {
@@ -47,6 +48,7 @@ export default class Order extends Authentication {
           node {
             name
             createdAt
+            statusPageUrl
             displayFulfillmentStatus
             displayFinancialStatus
             shippingAddress { countryCodeV2 }
@@ -75,6 +77,7 @@ export default class Order extends Authentication {
       itemTitles: (node.lineItems?.edges ?? []).map((e: any) => e.node.title).filter(Boolean),
       tracking,
       countryCode: node.shippingAddress?.countryCodeV2 ?? null,
+      statusPageUrl: node.statusPageUrl ?? null,
     }
   }
 }
