@@ -12,7 +12,6 @@ const MAX_ATTEMPTS = 3
 const REPLY_WINDOW_HOURS = 24
 const HISTORY_LOAD = 24
 const MAIL_TIMEOUT_MS = 15000
-const MAX_REPLIES_PER_USER_24H = 5
 
 export default class InboxProcessor {
   private static cachedSelfIgId: string | null = null
@@ -50,10 +49,19 @@ export default class InboxProcessor {
 
       const conversation = await this.getOrCreateConversation(inbox)
 
+      // Flagged-spam conversations are a STICKY block: once the agent decided
+      // a thread is commercial solicitation / a bot / pointless, we stop
+      // engaging entirely — skip BEFORE any Claude call so it costs nothing.
+      if ((conversation.metadata as any)?.blocked === true) {
+        await this.finalize(inbox, 'skipped', 'blocked: flagged as spam/solicitation')
+        return
+      }
+
       // Escalation is evaluated PER MESSAGE, not as a sticky conversation flag.
       // Reset any prior escalation so a single past legal-threat message doesn't
       // keep marking every later (normal) message as escalated and re-emailing.
       // escalateToHuman will re-set 'escalated' only if THIS message warrants it.
+      // (We preserve metadata.blocked — only the escalation fields are cleared.)
       if (conversation.status === 'escalated') {
         conversation.status = 'active'
         conversation.escalatedAt = null
@@ -62,18 +70,6 @@ export default class InboxProcessor {
         delete (meta as any).escalation_summary
         conversation.metadata = meta
         await conversation.save()
-      }
-
-      // Hard cap: at most MAX_REPLIES_PER_USER_24H auto-replies to the same
-      // conversation per rolling 24h. Protects against runaway Claude cost and
-      // spam loops. Over the cap we skip silently (no Claude call, no reply).
-      if (await this.isOverReplyCap(conversation.id)) {
-        await this.finalize(
-          inbox,
-          'skipped',
-          `rate limit: ${MAX_REPLIES_PER_USER_24H} replies/24h reached`
-        )
-        return
       }
 
       // Persist the incoming user turn first so the history table is the
@@ -95,8 +91,18 @@ export default class InboxProcessor {
       // (the user turn we just inserted is excluded from the history slice;
       //  ConversationAgent.buildHistory will append it as the current user input)
 
-      // Reload conversation to see if a tool escalated it
+      // Reload conversation to see if a tool escalated or flagged it
       await conversation.refresh()
+
+      // If the agent flagged this conversation as spam/solicitation during the
+      // run, send NOTHING — we stop engaging. Future messages are skipped
+      // upfront by the blocked check above.
+      if ((conversation.metadata as any)?.blocked === true) {
+        const reason = (conversation.metadata as any)?.blocked_reason ?? 'spam'
+        await this.finalize(inbox, 'skipped', `flagged during run: ${reason}`)
+        console.info(`🚫 Flagged conversation=${conversation.id} (${reason}) — no reply sent`)
+        return
+      }
 
       // Always send something back. If the agent produced no text (e.g. it
       // stayed in tool-use mode), fall back to a safe, on-brand message so the
@@ -212,23 +218,6 @@ export default class InboxProcessor {
       inbox.status = 'pending' // let the sweep cron retry later
     }
     await inbox.save()
-  }
-
-  /**
-   * True if we've already sent MAX_REPLIES_PER_USER_24H assistant replies in
-   * this conversation within the last rolling 24h. One conversation == one
-   * (channel, external_thread_id) == one user, so this is effectively a
-   * per-user daily reply cap.
-   */
-  private async isOverReplyCap(conversationId: number): Promise<boolean> {
-    const since = DateTime.now().minus({ hours: 24 })
-    const result = await Database.from('conversation_messages')
-      .where('conversation_id', conversationId)
-      .where('role', 'assistant')
-      .where('created_at', '>=', since.toSQL()!)
-      .count('* as total')
-    const total = Number((result[0] as any)?.total ?? 0)
-    return total >= MAX_REPLIES_PER_USER_24H
   }
 
   private extractText(inbox: InboxMessage): string | null {

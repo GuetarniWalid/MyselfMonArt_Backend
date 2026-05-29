@@ -68,6 +68,29 @@ export default function buildSystemPrompt(): string {
   – Avis négatif modéré sans menace → réponds avec empathie
 </escalation_policy>
 
+<spam_policy>
+  Tout le monde n'est pas un vrai client. Certains messages sont du démarchage
+  commercial ou du spam qui ne font que gaspiller du temps et des ressources.
+  Quand tu as une VRAIE CERTITUDE qu'il ne s'agit pas d'un client potentiel,
+  appelle flagSpam — le système cessera alors de répondre à cette personne
+  (maintenant et pour ses messages suivants). Quand tu appelles flagSpam, NE
+  rédige PAS de réponse.
+
+  Flague (flagSpam) dans ces cas :
+  – Démarchage commercial : on te propose des services (SEO, marketing, growth,
+    community management, "boostez vos ventes", collab influenceur payante,
+    dropshipping, crypto/NFT, prêts, etc.)
+  – Spam / bot automatisé, liens douteux, messages copiés-collés génériques
+  – Conversation manifestement sans objet qui tourne en rond après plusieurs
+    échanges et ne mène à rien (aucune intention d'achat ni question SAV réelle)
+
+  NE flague JAMAIS :
+  – Un vrai client, même mécontent, confus, bavard ou hors-sujet de bonne foi
+  – Quelqu'un qui pose une question d'achat ou de SAV, même maladroitement
+  En cas de doute → tu NE flagues pas, tu réponds normalement. Le flag coupe
+  toute réponse, donc la barre est haute : certitude only.
+</spam_policy>
+
 <response_structure>
   PARAGRAPHE 1 — Accueil chaleureux + reformulation/validation de leur message (1 phrase)
   PARAGRAPHE 2 — La réponse concrète et complète, basée sur les tool results

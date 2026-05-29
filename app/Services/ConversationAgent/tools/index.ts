@@ -5,6 +5,7 @@ import getOrderStatus from './getOrderStatus'
 import searchProducts from './searchProducts'
 import presentProducts from './presentProducts'
 import escalateToHuman from './escalateToHuman'
+import flagSpam from './flagSpam'
 
 const tools: ToolHandler[] = [
   getShopPolicy,
@@ -13,6 +14,7 @@ const tools: ToolHandler[] = [
   searchProducts,
   presentProducts,
   escalateToHuman,
+  flagSpam,
 ]
 
 export const toolRegistry: Map<string, ToolHandler> = new Map(
