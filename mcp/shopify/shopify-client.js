@@ -781,7 +781,9 @@ export class ShopifyClient {
                 url
                 altText
               }
-              productsCount
+              productsCount {
+                count
+              }
               updatedAt
             }
           }
