@@ -1,3 +1,5 @@
+import Env from '@ioc:Adonis/Core/Env'
+import axios from 'axios'
 import IgAuthentication from '../Instagram/Authentication'
 import type { ProductCard } from '../ConversationAgent/tools'
 
@@ -8,14 +10,16 @@ export interface SendResult {
   raw: any
 }
 
+const GRAPH_VERSION = 'v23.0'
+const FB_GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`
+
 /**
  * Sends outbound DMs back to the user via the Meta Graph API.
  *
- * Instagram uses graph.instagram.com (per the new Instagram Login flow).
- * Messenger / Facebook Page uses graph.facebook.com with a Page Access Token —
- * not yet wired since the Page token storage / refresh pipeline is its own
- * mini-project. We surface a clear error so the inbox processor can mark the
- * message as 'failed' and surface it on the dashboard.
+ * Instagram uses graph.instagram.com with the IG access token (Instagram Login
+ * flow) — handled by the inherited IgAuthentication request().
+ * Messenger / Facebook Page uses graph.facebook.com with the Page Access Token
+ * (FACEBOOK_PAGE_ACCESS_TOKEN).
  */
 export default class MetaReplySender extends IgAuthentication {
   public async send(
@@ -27,51 +31,80 @@ export default class MetaReplySender extends IgAuthentication {
       return await this.sendInstagram(recipientExternalId, text)
     }
     if (channel === 'messenger') {
-      throw new Error(
-        'Messenger reply sending is not wired yet — Page Access Token storage to be implemented.'
-      )
+      return await this.sendMessenger(recipientExternalId, { text })
     }
     throw new Error(`Unsupported channel: ${channel}`)
   }
 
   /**
-   * IG DM send: POST /me/messages on graph.instagram.com with the IG token
-   * that has instagram_business_manage_messages scope. Returns the API
-   * response which includes a message_id we can later log.
-   */
-  private async sendInstagram(recipientId: string, text: string): Promise<SendResult> {
-    const data = await this.request<any>({
-      method: 'POST',
-      url: '/me/messages',
-      data: {
-        recipient: { id: recipientId },
-        message: { text },
-      },
-    })
-
-    return {
-      messageId: data?.message_id ?? null,
-      raw: data,
-    }
-  }
-
-  /**
-   * Send product cards as a tappable carousel (Meta "generic template").
-   * Each card: image, title, subtitle, and a "Voir" web_url button that also
-   * fires on card tap (default_action). Instagram supports up to 10 elements.
-   * Cards missing an image are skipped — the template requires either an
-   * image or a non-empty subtitle, and a card with neither renders poorly.
+   * Send product cards as a tappable carousel (Meta "generic template"):
+   * image, title, subtitle, and a "Voir" web_url button (also the card tap
+   * action). Up to 10 elements. Works on both IG and Messenger — only the
+   * transport differs.
    */
   public async sendProductCards(
     channel: ReplyChannel,
     recipientExternalId: string,
     cards: ProductCard[]
   ): Promise<SendResult> {
-    if (channel !== 'instagram') {
-      throw new Error(`Product cards not wired for channel: ${channel}`)
+    const elements = this.buildCardElements(cards)
+    if (elements.length === 0) {
+      return { messageId: null, raw: { skipped: 'no renderable cards' } }
     }
 
-    const elements = cards
+    const message = {
+      attachment: {
+        type: 'template',
+        payload: { template_type: 'generic', elements },
+      },
+    }
+
+    if (channel === 'instagram') {
+      const data = await this.request<any>({
+        method: 'POST',
+        url: '/me/messages',
+        data: { recipient: { id: recipientExternalId }, message },
+      })
+      return { messageId: data?.message_id ?? null, raw: data }
+    }
+    if (channel === 'messenger') {
+      return await this.sendMessenger(recipientExternalId, message)
+    }
+    throw new Error(`Unsupported channel: ${channel}`)
+  }
+
+  /**
+   * IG DM send: POST /me/messages on graph.instagram.com with the IG token
+   * that has instagram_business_manage_messages scope.
+   */
+  private async sendInstagram(recipientId: string, text: string): Promise<SendResult> {
+    const data = await this.request<any>({
+      method: 'POST',
+      url: '/me/messages',
+      data: { recipient: { id: recipientId }, message: { text } },
+    })
+    return { messageId: data?.message_id ?? null, raw: data }
+  }
+
+  /**
+   * Messenger send: POST /me/messages on graph.facebook.com with the Page
+   * Access Token. `message` is either { text } or an attachment payload.
+   */
+  private async sendMessenger(recipientId: string, message: any): Promise<SendResult> {
+    const token = Env.get('FACEBOOK_PAGE_ACCESS_TOKEN')
+    if (!token) {
+      throw new Error('FACEBOOK_PAGE_ACCESS_TOKEN is not set — cannot send Messenger reply')
+    }
+    const { data } = await axios.post(
+      `${FB_GRAPH}/me/messages`,
+      { recipient: { id: recipientId }, messaging_type: 'RESPONSE', message },
+      { params: { access_token: token }, timeout: 15000 }
+    )
+    return { messageId: data?.message_id ?? null, raw: data }
+  }
+
+  private buildCardElements(cards: ProductCard[]): any[] {
+    return cards
       .slice(0, 10)
       .filter((c) => c.url)
       .map((c) => {
@@ -84,25 +117,5 @@ export default class MetaReplySender extends IgAuthentication {
         if (c.subtitle) el.subtitle = c.subtitle.slice(0, 80)
         return el
       })
-
-    if (elements.length === 0) {
-      return { messageId: null, raw: { skipped: 'no renderable cards' } }
-    }
-
-    const data = await this.request<any>({
-      method: 'POST',
-      url: '/me/messages',
-      data: {
-        recipient: { id: recipientExternalId },
-        message: {
-          attachment: {
-            type: 'template',
-            payload: { template_type: 'generic', elements },
-          },
-        },
-      },
-    })
-
-    return { messageId: data?.message_id ?? null, raw: data }
   }
 }
