@@ -16,9 +16,19 @@ export interface ProductCard {
  * promote into cardsToSend, which the InboxProcessor renders as an Instagram
  * carousel after the text reply.
  */
+export interface CtaButton {
+  title: string
+  subtitle?: string
+  url: string
+  buttonLabel: string
+}
+
 export interface ToolScratch {
   productsByHandle: Map<string, ProductCard>
   cardsToSend: ProductCard[]
+  // A single call-to-action card with a button (e.g. "Suivre ma commande"),
+  // sent after the text reply so we never paste a long ugly URL in the DM.
+  cta?: CtaButton
 }
 
 export interface ToolContext {

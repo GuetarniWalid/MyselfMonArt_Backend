@@ -1,7 +1,7 @@
 import Env from '@ioc:Adonis/Core/Env'
 import axios from 'axios'
 import IgAuthentication from '../Instagram/Authentication'
-import type { ProductCard } from '../ConversationAgent/tools'
+import type { ProductCard, CtaButton } from '../ConversationAgent/tools'
 
 export type ReplyChannel = 'instagram' | 'messenger'
 
@@ -57,6 +57,43 @@ export default class MetaReplySender extends IgAuthentication {
         type: 'template',
         payload: { template_type: 'generic', elements },
       },
+    }
+
+    if (channel === 'instagram') {
+      const data = await this.request<any>({
+        method: 'POST',
+        url: '/me/messages',
+        data: { recipient: { id: recipientExternalId }, message },
+      })
+      return { messageId: data?.message_id ?? null, raw: data }
+    }
+    if (channel === 'messenger') {
+      return await this.sendMessenger(recipientExternalId, message)
+    }
+    throw new Error(`Unsupported channel: ${channel}`)
+  }
+
+  /**
+   * Send a single call-to-action card (one generic-template element with a
+   * web_url button). Hides a long URL behind a branded, tappable button —
+   * e.g. "Suivre ma commande". Same transport split as sendProductCards.
+   */
+  public async sendCtaButton(
+    channel: ReplyChannel,
+    recipientExternalId: string,
+    cta: CtaButton
+  ): Promise<SendResult> {
+    if (!cta.url) return { messageId: null, raw: { skipped: 'no url' } }
+
+    const element: any = {
+      title: cta.title.slice(0, 80),
+      default_action: { type: 'web_url', url: cta.url },
+      buttons: [{ type: 'web_url', url: cta.url, title: cta.buttonLabel.slice(0, 20) }],
+    }
+    if (cta.subtitle) element.subtitle = cta.subtitle.slice(0, 80)
+
+    const message = {
+      attachment: { type: 'template', payload: { template_type: 'generic', elements: [element] } },
     }
 
     if (channel === 'instagram') {

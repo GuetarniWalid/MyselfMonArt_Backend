@@ -46,7 +46,7 @@ const getOrderStatus: ToolHandler = {
     },
   },
 
-  async execute(input: { email?: string; order_number?: string }): Promise<string> {
+  async execute(input: { email?: string; order_number?: string }, context): Promise<string> {
     if (!input.email && !input.order_number) {
       return JSON.stringify({
         ok: false,
@@ -81,10 +81,19 @@ const getOrderStatus: ToolHandler = {
     const estimated = addDays(orderedAt, days, business)
     const isOverdue = DateTime.now() > estimated
 
-    // The follow link we give the customer is Shopify's own order status page:
-    // localized to the order's language, branded (shop domain), and it links to
-    // the REAL carrier tracking that Shopify resolved (no guessing carrier URLs).
+    // The follow link is Shopify's own order status page: localized, branded,
+    // links to the real carrier tracking Shopify resolved. We send it as a
+    // tappable BUTTON CARD (set on the scratch) rather than pasting the long
+    // ugly URL into the message text.
     const followUrl = order.statusPageUrl
+    if (followUrl) {
+      context.scratch.cta = {
+        title: `Votre commande ${order.name}`,
+        subtitle: 'Suivi et détails en temps réel',
+        url: followUrl,
+        buttonLabel: 'Suivre ma commande',
+      }
+    }
 
     return JSON.stringify({
       found: true,
@@ -94,13 +103,13 @@ const getOrderStatus: ToolHandler = {
       payment_status: order.financialStatus,
       items: order.itemTitles,
       carrier: order.tracking[0]?.company ?? null,
-      follow_order_url: followUrl,
+      follow_button_ready: !!followUrl,
       estimated_delivery_date: estimated.toISODate(),
       delay_used: `${days} jours ${business ? 'ouvrés' : 'calendaires'}`,
       is_overdue: isOverdue,
       note: isOverdue
         ? "Date estimée DÉPASSÉE : excuses sincères + rappelle avec délicatesse que nos œuvres sont fabriquées SUR MESURE (pas en stock), ce qui fait leur valeur et peut allonger les délais ; dis que tu enquêtes et que l'équipe revient au plus vite ; appelle escalateToHuman (reason='commande_en_retard'). Ne promets pas de délai précis."
-        : "Donne un statut clair et rassurant + la date estimée. Pour le suivi, partage follow_order_url (page de suivi de la commande, déjà dans la bonne langue, avec le lien transporteur). Ne révèle jamais l'adresse.",
+        : "Donne un statut clair et rassurant + la date estimée. Un bouton de suivi est envoyé automatiquement après ton message (follow_button_ready) — NE colle PAS d'URL dans ton texte, dis simplement que le suivi est juste en dessous. Ne révèle jamais l'adresse.",
     })
   },
 }

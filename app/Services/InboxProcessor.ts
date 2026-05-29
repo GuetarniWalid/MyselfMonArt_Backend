@@ -110,7 +110,7 @@ export default class InboxProcessor {
       const replyText =
         result.replyText && result.replyText.trim().length > 0
           ? result.replyText
-          : 'Merci pour ton message ✨ Je transmets ça à l’équipe et on revient vers toi très vite !'
+          : 'Je transmets votre demande à notre équipe, qui revient vers vous au plus vite.'
 
       {
         await ConversationMessage.create({
@@ -152,6 +152,17 @@ export default class InboxProcessor {
                 `⚠️  Product cards send failed for inbox=${inbox.id}:`,
                 cardErr?.message
               )
+            }
+          }
+
+          // Follow with a CTA button card (e.g. order tracking) if the agent
+          // set one. Non-fatal, like product cards.
+          if (result.cta) {
+            try {
+              await sender.sendCtaButton(inbox.channel as any, inbox.externalUserId!, result.cta)
+              console.info(`🔘 Sent CTA button "${result.cta.buttonLabel}" to inbox=${inbox.id}`)
+            } catch (ctaErr: any) {
+              console.error(`⚠️  CTA button send failed for inbox=${inbox.id}:`, ctaErr?.message)
             }
           }
         } catch (sendErr: any) {

@@ -1,7 +1,14 @@
 import Env from '@ioc:Adonis/Core/Env'
 import Authentication from '../Claude/Authentication'
 import buildSystemPrompt from './prompts/system'
-import { toolDefinitions, toolRegistry, ToolHandler, ProductCard, ToolScratch } from './tools'
+import {
+  toolDefinitions,
+  toolRegistry,
+  ToolHandler,
+  ProductCard,
+  ToolScratch,
+  CtaButton,
+} from './tools'
 import type Conversation from 'App/Models/Conversation'
 import type ConversationMessage from 'App/Models/ConversationMessage'
 
@@ -10,6 +17,7 @@ interface AgentResult {
   escalated: boolean
   toolCalls: Array<{ name: string; input: any; output: string }>
   cards: ProductCard[]
+  cta: CtaButton | null
   tokensIn: number
   tokensOut: number
 }
@@ -68,6 +76,7 @@ export default class ConversationAgent extends Authentication {
           escalated: conversation.status === 'escalated',
           toolCalls: toolCallsLog,
           cards: scratch.cardsToSend,
+          cta: scratch.cta ?? null,
           tokensIn,
           tokensOut,
         }
@@ -107,6 +116,7 @@ export default class ConversationAgent extends Authentication {
       escalated: conversation.status === 'escalated',
       toolCalls: toolCallsLog,
       cards: scratch.cardsToSend,
+      cta: scratch.cta ?? null,
       tokensIn,
       tokensOut,
     }

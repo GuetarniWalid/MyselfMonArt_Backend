@@ -23,4 +23,11 @@ export const toolRegistry: Map<string, ToolHandler> = new Map(
 
 export const toolDefinitions = tools.map((t) => t.definition)
 
-export type { ToolHandler, ToolContext, ToolDefinition, ProductCard, ToolScratch } from './types'
+export type {
+  ToolHandler,
+  ToolContext,
+  ToolDefinition,
+  ProductCard,
+  ToolScratch,
+  CtaButton,
+} from './types'
