@@ -50,6 +50,20 @@ export default class InboxProcessor {
 
       const conversation = await this.getOrCreateConversation(inbox)
 
+      // Escalation is evaluated PER MESSAGE, not as a sticky conversation flag.
+      // Reset any prior escalation so a single past legal-threat message doesn't
+      // keep marking every later (normal) message as escalated and re-emailing.
+      // escalateToHuman will re-set 'escalated' only if THIS message warrants it.
+      if (conversation.status === 'escalated') {
+        conversation.status = 'active'
+        conversation.escalatedAt = null
+        conversation.escalationReason = null
+        const meta = conversation.metadata ?? {}
+        delete (meta as any).escalation_summary
+        conversation.metadata = meta
+        await conversation.save()
+      }
+
       // Hard cap: at most MAX_REPLIES_PER_USER_24H auto-replies to the same
       // conversation per rolling 24h. Protects against runaway Claude cost and
       // spam loops. Over the cap we skip silently (no Claude call, no reply).
@@ -147,7 +161,11 @@ export default class InboxProcessor {
       // The escalation email is a non-critical side effect: it must never be
       // able to block finalization or, worse, leave the row in 'processing'
       // where the sweep cron would reprocess it and double-send the reply.
-      const terminalStatus = conversation.status === 'escalated' ? 'escalated' : 'replied'
+      // Cast: TS narrowed status to 'active' from the reset assignment above,
+      // but escalateToHuman may have flipped it during the agent run (reloaded
+      // via conversation.refresh()).
+      const escalatedNow = (conversation.status as string) === 'escalated'
+      const terminalStatus = escalatedNow ? 'escalated' : 'replied'
       await this.finalize(
         inbox,
         terminalStatus,

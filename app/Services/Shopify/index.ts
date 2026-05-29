@@ -5,6 +5,7 @@ import Discount from './Discount'
 import File from './File'
 import Metafield from './Metafield'
 import Metaobject from './Metaobject'
+import Order from './Order'
 import Page from './Page'
 import Product from './Product'
 import Publications from './Publications'
@@ -20,6 +21,7 @@ export default class Shopify {
   public file: File
   public metafield: Metafield
   public metaobject: Metaobject
+  public order: Order
   public page: Page
   public product: Product
   public publications: Publications
@@ -34,6 +36,7 @@ export default class Shopify {
     this.file = new File()
     this.metafield = new Metafield()
     this.metaobject = new Metaobject()
+    this.order = new Order()
     this.page = new Page()
     this.product = new Product()
     this.publications = new Publications()
