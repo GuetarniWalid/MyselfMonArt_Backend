@@ -64,6 +64,7 @@ export default Env.rules({
   INSTAGRAM_APP_ID: Env.schema.string(),
   INSTAGRAM_APP_SECRET: Env.schema.string(),
   META_VERIFY_TOKEN: Env.schema.string(),
+  META_APP_SECRET: Env.schema.string.optional(),
   FACEBOOK_PAGE_ID: Env.schema.string.optional(),
   FACEBOOK_PAGE_ACCESS_TOKEN: Env.schema.string.optional(),
   BACKEND_URL: Env.schema.string(),

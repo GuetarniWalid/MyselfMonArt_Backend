@@ -194,8 +194,14 @@ export default class MessageInboxController {
   }
 
   /**
-   * Meta uses HMAC SHA256 of the raw request body keyed by the App Secret.
+   * Meta signs the raw body with HMAC SHA256 keyed by the App Secret.
    * Header: `X-Hub-Signature-256: sha256=<hex>`.
+   *
+   * Instagram-Login webhooks are signed with the Instagram product secret
+   * (INSTAGRAM_APP_SECRET); Page/Messenger webhooks are signed with the parent
+   * Meta App secret (META_APP_SECRET) — a different value. We accept the
+   * payload if EITHER secret produces a matching signature, so both channels
+   * verify without per-object branching.
    */
   private verifySignature(request: HttpContextContract['request'], rawBody: string): boolean {
     try {
@@ -205,15 +211,20 @@ export default class MessageInboxController {
       const [scheme, providedHash] = header.split('=')
       if (scheme !== 'sha256' || !providedHash) return false
 
-      const expectedHash = crypto
-        .createHmac('sha256', Env.get('INSTAGRAM_APP_SECRET'))
-        .update(rawBody, 'utf-8')
-        .digest('hex')
+      const secrets = [Env.get('INSTAGRAM_APP_SECRET'), Env.get('META_APP_SECRET')].filter(
+        (s): s is string => !!s
+      )
 
-      const a = Buffer.from(expectedHash, 'hex')
-      const b = Buffer.from(providedHash, 'hex')
-      if (a.length !== b.length) return false
-      return crypto.timingSafeEqual(new Uint8Array(a), new Uint8Array(b))
+      return secrets.some((secret) => {
+        const expectedHash = crypto
+          .createHmac('sha256', secret)
+          .update(rawBody, 'utf-8')
+          .digest('hex')
+        const a = Buffer.from(expectedHash, 'hex')
+        const b = Buffer.from(providedHash, 'hex')
+        if (a.length !== b.length) return false
+        return crypto.timingSafeEqual(new Uint8Array(a), new Uint8Array(b))
+      })
     } catch (error) {
       console.error('Error verifying Meta signature:', error)
       return false
