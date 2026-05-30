@@ -61,6 +61,9 @@ export default class CollectionTranslator {
     if (this.payload.descriptionHtml) {
       schema.descriptionHtml = z.string()
     }
+    if (this.payload.intro?.value) {
+      schema.intro = z.string()
+    }
     if (this.payload.handle) {
       schema.handle = z.string()
     }
@@ -86,6 +89,9 @@ export default class CollectionTranslator {
     if (this.payload.descriptionHtml) {
       payload.descriptionHtml = this.payload.descriptionHtml
     }
+    if (this.payload.intro?.value) {
+      payload.intro = this.payload.intro.value
+    }
     if (this.payload.handle) {
       payload.handle = this.payload.handle
     }
@@ -108,7 +114,8 @@ export default class CollectionTranslator {
     return `You are a professional translation model specializing in e-commerce product data. Your task is to translate collection data accurately while maintaining the tone, context, and formatting. 
 When translating, prioritize SEO optimization by using the most commonly searched keywords and phrases in ${language}, rather than direct word-for-word translation. 
 Ensure all fields, including title, description, SEO metadata, and image alt text, are optimized for search engines in ${language} while maintaining a natural, user-friendly tone. 
-For the descriptionHtml field, preserve all HTML tags while translating its content. Use your knowledge of linguistic and cultural nuances to produce a high-quality translation that aligns with local search behaviors and preferences`
+For the descriptionHtml field, preserve all HTML tags while translating its content. Use your knowledge of linguistic and cultural nuances to produce a high-quality translation that aligns with local search behaviors and preferences.
+The intro field is the editorial introduction text shown at the top of the collection page. Translate it fully and naturally into ${language}, preserving its tone and line breaks — never return the original text unchanged.`
   }
 
   public formatTranslationResponse({
@@ -126,6 +133,12 @@ For the descriptionHtml field, preserve all HTML tags while translating its cont
     }
     if (response.descriptionHtml) {
       responseFormatted.descriptionHtml = response.descriptionHtml
+    }
+    if (response.intro && payload.intro) {
+      responseFormatted.intro = {
+        id: payload.intro.id,
+        value: response.intro,
+      }
     }
     if (response.handle) {
       responseFormatted.handle = response.handle

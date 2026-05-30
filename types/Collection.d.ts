@@ -3,6 +3,10 @@ export interface CollectionWithOutdatedTranslations {
   title: string
   descriptionHtml: string
   handle: string
+  introMetafield: {
+    id: string
+    value: string
+  } | null
   altTextsMetaObject: {
     reference?: {
       id: string
@@ -29,6 +33,10 @@ export interface CollectionToTranslate {
   title: string
   descriptionHtml: string
   handle: string
+  intro?: {
+    id: string
+    value: string
+  }
   seo: {
     title: string
     description: string
@@ -43,6 +51,7 @@ export interface CollectionToTranslateFormatted {
   title: string
   descriptionHtml: string
   handle: string
+  intro?: string
   metaTitle: string
   metaDescription: string
   imageAltText: string

@@ -23,9 +23,14 @@ export default class PullDataModeler extends DefaultPullDataModeler {
           collection.node.altTextsMetaObject?.reference?.id
         )) as boolean
 
+        // Check if the "intro" metafield (custom.intro) translation is missing/outdated.
+        // This is the intro text rendered at the top of the storefront collection page.
+        const isIntroOutdated = await this.isIntroOutdated(collection.node.introMetafield?.id)
+
         const collectionWithOnlyKeyToTranslate = this.getCollectionWithOnlyKeyToTranslate(
           collection.node,
-          isAltMediaOutdated
+          isAltMediaOutdated,
+          isIntroOutdated
         )
         if (collectionWithOnlyKeyToTranslate) {
           collectionToTranslate.push(collectionWithOnlyKeyToTranslate)
@@ -54,6 +59,10 @@ export default class PullDataModeler extends DefaultPullDataModeler {
                       title
                       descriptionHtml
                       handle
+                      introMetafield: metafield(namespace: "custom", key: "intro") {
+                        id
+                        value
+                      }
                       image {
                         id
                         altText
@@ -109,15 +118,39 @@ export default class PullDataModeler extends DefaultPullDataModeler {
     return metaobjectEntry[0]?.outdated !== undefined ? metaobjectEntry[0]?.outdated : true
   }
 
+  private async isIntroOutdated(metafieldId: string | undefined) {
+    if (!metafieldId) return false
+
+    const { query, variables } = this.getMetaobjectQuery(metafieldId, 'en')
+    const data = (await this.fetchGraphQL(query, variables)) as MetaobjectTranslation
+
+    const entry = data.translatableResource.translations.filter(
+      (translation) => translation.key === 'value'
+    )
+    // No translation registered yet → it needs translating; otherwise use Shopify's outdated flag.
+    return entry[0]?.outdated !== undefined ? entry[0].outdated : true
+  }
+
   public getCollectionWithOnlyKeyToTranslate(
     collection: CollectionWithOutdatedTranslations,
-    isAltMediaOutdated: boolean
+    isAltMediaOutdated: boolean,
+    isIntroOutdated: boolean
   ) {
     const { translations, ...collectionWithoutTranslations } = collection
 
     const mutableCollection = collectionWithoutTranslations as {
       [key: string]: any
       seo?: { title?: string; description?: string }
+    }
+
+    // The intro lives in a metafield (separate translatable resource). Keep it only
+    // when its translation is missing/outdated; drop the raw metafield wrapper either way.
+    delete mutableCollection.introMetafield
+    if (isIntroOutdated && collection.introMetafield?.value) {
+      mutableCollection.intro = {
+        id: collection.introMetafield.id,
+        value: collection.introMetafield.value,
+      }
     }
 
     translations.forEach((translation) => {
