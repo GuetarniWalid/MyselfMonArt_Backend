@@ -16,6 +16,7 @@ const METAOBJECT_TYPES: MetaobjectQueryDef[] = [
   { type: 'custom_media', fieldKey: 'alt' },
   { type: 'shopify--color-pattern', fieldKey: 'label' },
   { type: 'shopify--theme', fieldKey: 'label' },
+  { type: 'shopify--art-movement', fieldKey: 'label' },
 ]
 
 export default class PullDataModeler extends DefaultPullDataModeler {
@@ -26,10 +27,7 @@ export default class PullDataModeler extends DefaultPullDataModeler {
     this.utils = new Utils()
   }
 
-  public async getResourceOutdatedTranslations(
-    locale: LanguageCode = 'en',
-    region?: RegionCode
-  ) {
+  public async getResourceOutdatedTranslations(locale: LanguageCode = 'en', region?: RegionCode) {
     const allMetaobjects: MetaobjectToTranslate[] = []
 
     for (const def of METAOBJECT_TYPES) {
