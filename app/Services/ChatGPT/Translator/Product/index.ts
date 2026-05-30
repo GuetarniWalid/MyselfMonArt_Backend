@@ -92,6 +92,9 @@ export default class ProductTranslator {
     if (this.payload.title) {
       schema.title = z.string()
     }
+    if (this.payload.shortTitle?.value) {
+      schema.shortTitle = z.string()
+    }
     if (this.payload.descriptionHtml) {
       schema.descriptionHtml = z.string()
     }
@@ -131,6 +134,9 @@ export default class ProductTranslator {
 
     if (this.payload.title) {
       payload.title = this.payload.title
+    }
+    if (this.payload.shortTitle?.value) {
+      payload.shortTitle = this.payload.shortTitle.value
     }
     if (this.payload.descriptionHtml) {
       payload.descriptionHtml = this.payload.descriptionHtml
@@ -172,7 +178,8 @@ export default class ProductTranslator {
     let prompt = `You are a professional translation model specializing in e-commerce product data. Your task is to translate product data accurately while maintaining the tone, context, and formatting.
 When translating, prioritize SEO optimization by using the most commonly searched keywords and phrases in ${language}, rather than direct word-for-word translation.
 Ensure all fields, including title, description, SEO metadata, and media alt text, are optimized for search engines in ${language} while maintaining a natural, user-friendly tone.
-For the descriptionHtml field, preserve all HTML tags while translating its content. Use your knowledge of linguistic and cultural nuances to produce a high-quality translation that aligns with local search behaviors and preferences`
+For the descriptionHtml field, preserve all HTML tags while translating its content. Use your knowledge of linguistic and cultural nuances to produce a high-quality translation that aligns with local search behaviors and preferences.
+The shortTitle field is a concise product-card display name (a few words). Translate it into a natural, catchy ${language} equivalent of similar length — never return the original text unchanged.`
 
     if (this.unknownOptionValues.length > 0) {
       prompt += `\n\nThe optionValuesToTranslate field contains product option values (materials, finishes, borders, frames, etc.) that need translation from French to ${language}. Translate each value concisely for e-commerce dropdown menus. Return the translations in the same order in optionValuesTranslated. If a value is already in ${language}, you MUST still provide a natural ${language} translation or equivalent — do not return the exact same text as the original.`
@@ -193,6 +200,12 @@ For the descriptionHtml field, preserve all HTML tags while translating its cont
     responseFormatted.id = payload.id
     if (response.title) {
       responseFormatted.title = response.title
+    }
+    if (response.shortTitle && payload.shortTitle) {
+      responseFormatted.shortTitle = {
+        id: payload.shortTitle.id,
+        value: response.shortTitle,
+      }
     }
     if (response.descriptionHtml) {
       responseFormatted.descriptionHtml = response.descriptionHtml

@@ -35,9 +35,17 @@ export default class PullDataModeler extends DefaultPullDataModeler {
           product.node.altTextsMetaObject?.reference?.id
         )) as boolean
 
+        // Check if the "short title" metafield (title.short) translation is outdated/missing.
+        // This metafield is what the storefront renders on collection/product cards.
+        const isShortTitleOutdated = await this.isShortTitleOutdated(
+          product.node.shortTitleMetafield?.id,
+          locale
+        )
+
         const productWithOnlyKeyToTranslate = this.getProductWithOnlyKeyToTranslate(
           product.node,
           isAltMediaOutdated,
+          isShortTitleOutdated,
           locale,
           region
         )
@@ -71,6 +79,10 @@ export default class PullDataModeler extends DefaultPullDataModeler {
                       title
                       descriptionHtml
                       handle
+                      shortTitleMetafield: metafield(namespace: "title", key: "short") {
+                        id
+                        value
+                      }
                       media(first: 10) {
                         nodes {
                           id
@@ -151,9 +163,23 @@ export default class PullDataModeler extends DefaultPullDataModeler {
     return metaobjectEntry[0]?.outdated !== undefined ? metaobjectEntry[0]?.outdated : true
   }
 
+  private async isShortTitleOutdated(metafieldId: string | undefined, locale: LanguageCode = 'en') {
+    if (!metafieldId) return false
+
+    const { query, variables } = this.getMetaobjectQuery(metafieldId, locale)
+    const data = (await this.fetchGraphQL(query, variables)) as MetaobjectTranslation
+
+    const entry = data.translatableResource.translations.filter(
+      (translation) => translation.key === 'value'
+    )
+    // No translation registered yet → it needs translating; otherwise use Shopify's outdated flag.
+    return entry[0]?.outdated !== undefined ? entry[0].outdated : true
+  }
+
   public getProductWithOnlyKeyToTranslate(
     product: ProductWithOutdatedTranslations,
     isAltMediaOutdated: boolean,
+    isShortTitleOutdated: boolean,
     locale?: LanguageCode,
     region?: RegionCode
   ) {
@@ -162,6 +188,16 @@ export default class PullDataModeler extends DefaultPullDataModeler {
     const mutableProduct = productWithoutTranslations as {
       [key: string]: any
       seo?: { title?: string; description?: string }
+    }
+
+    // The short title lives in a metafield (separate translatable resource). Keep it only
+    // when its translation is missing/outdated; drop the raw metafield wrapper either way.
+    delete mutableProduct.shortTitleMetafield
+    if (isShortTitleOutdated && product.shortTitleMetafield?.value) {
+      mutableProduct.shortTitle = {
+        id: product.shortTitleMetafield.id,
+        value: product.shortTitleMetafield.value,
+      }
     }
 
     translations.forEach((translation) => {

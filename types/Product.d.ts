@@ -36,6 +36,10 @@ export interface ProductWithOutdatedTranslations {
   title: string
   descriptionHtml: string
   handle: string
+  shortTitleMetafield: {
+    id: string
+    value: string
+  } | null
   altTextsMetaObject: {
     reference?: {
       id: string
@@ -92,6 +96,10 @@ export interface ProductToTranslate {
   title: string
   descriptionHtml: string
   handle: string
+  shortTitle?: {
+    id: string
+    value: string
+  }
   productType: string
   options: {
     id: string
@@ -113,6 +121,7 @@ export interface ProductToTranslate {
 
 export interface ProductToTranslateFormatted {
   title: string
+  shortTitle?: string
   descriptionHtml: string
   handle: string
   productType: string

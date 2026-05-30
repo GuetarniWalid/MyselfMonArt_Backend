@@ -3,6 +3,10 @@ import { schema, CustomMessages } from '@ioc:Adonis/Core/Validator'
 export default class ProductToTranslateValidator {
   public schema = schema.create({
     title: schema.string.optional(),
+    shortTitle: schema.object.optional().members({
+      id: schema.string(),
+      value: schema.string(),
+    }),
     descriptionHtml: schema.string.optional(),
     handle: schema.string.optional(),
     productType: schema.string.optional(),

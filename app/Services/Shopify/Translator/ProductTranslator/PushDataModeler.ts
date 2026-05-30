@@ -22,6 +22,7 @@ export default class PushDataModeler extends DefaultPushDataModeler {
     const collectionTranslationInputs = [] as TranslationInput[]
     const translationEntriesForMedia = [] as TranslationsRegister[]
     const translationEntriesForOptions = [] as TranslationsRegister[]
+    const translationEntriesForShortTitle = [] as TranslationsRegister[]
 
     for (const key in resourceToTranslate) {
       if (key === 'id') {
@@ -29,6 +30,27 @@ export default class PushDataModeler extends DefaultPushDataModeler {
       }
       const oldValue = resourceToTranslate[key]
       const newValue = resourceTranslated[key]
+
+      // Handle the short title metafield (separate translatable resource: the metafield itself)
+      if (key === 'shortTitle' && newValue && typeof newValue === 'object') {
+        const translationInputShortTitle = [] as TranslationInput[]
+        this.utils.createTranslationEntry(
+          {
+            key: 'value',
+            isoCode,
+            newValue: (newValue as { id: string; value: string }).value,
+            oldValue: (oldValue as { id: string; value: string }).value,
+          },
+          translationInputShortTitle
+        )
+        if (translationInputShortTitle.length > 0) {
+          translationEntriesForShortTitle.push({
+            resourceId: (oldValue as { id: string; value: string }).id,
+            translations: translationInputShortTitle,
+          })
+        }
+        continue
+      }
 
       // Handle nested SEO object
       if (key === 'seo' && typeof newValue === 'object') {
@@ -82,6 +104,7 @@ export default class PushDataModeler extends DefaultPushDataModeler {
       },
       ...translationEntriesForMedia,
       ...translationEntriesForOptions,
+      ...translationEntriesForShortTitle,
     ]
   }
 
