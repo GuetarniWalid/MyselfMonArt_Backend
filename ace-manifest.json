@@ -154,7 +154,7 @@
       },
       "commandPath": "./commands/PinterestTestPublishOne",
       "commandName": "pinterest:test_publish_one",
-      "description": "Dry-run: mirror the cron (auto-create missing boards, build the pin payload) without posting the pin. Saves the cropped image locally for visual inspection.",
+      "description": "Test one Pinterest publication in a chosen format. Dry-run by default (everything except the final POST /pins); pass --publish to actually post.",
       "args": [],
       "aliases": [],
       "flags": [
@@ -163,6 +163,18 @@
           "propertyName": "product",
           "type": "string",
           "description": "Shopify product ID (numeric or gid://). Defaults to next eligible product."
+        },
+        {
+          "name": "format",
+          "propertyName": "format",
+          "type": "string",
+          "description": "Format to test: image | video | carousel. Defaults to image."
+        },
+        {
+          "name": "publish",
+          "propertyName": "publish",
+          "type": "boolean",
+          "description": "Actually publish the pin (real POST /pins). Without it, the run is a dry-run."
         },
         {
           "name": "skip-create-boards",

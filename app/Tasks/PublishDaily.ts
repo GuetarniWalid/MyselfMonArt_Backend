@@ -7,14 +7,19 @@ import { logTaskBoundary } from 'App/Utils/Logs'
 // timezone option, so the cron fires in server local time. We fire hourly at
 // :30 and gate inside handle() using Paris-anchored time — robust to any
 // server timezone (UTC, Paris, or whatever the host decides).
+//
+// 5 pins/day, ~3h apart (well under any spam threshold). The grid is tilted to
+// the home-decor sweet spots the research surfaced: Saturday morning (8h-12h,
+// weekend "project/research" mode) and Thursday evening (20h-23h, aspirational
+// planning). Other days keep a morning→midday→evening spread.
 const PUBLISH_HOURS_BY_DAY: Record<number, number[]> = {
-  0: [10, 17, 20],
-  1: [8, 12, 18],
-  2: [8, 12, 18],
-  3: [8, 12, 18],
-  4: [8, 12, 18],
-  5: [8, 12, 18],
-  6: [10, 14, 20],
+  0: [10, 13, 16, 18, 20], // Sun
+  1: [8, 11, 14, 18, 21], // Mon
+  2: [8, 11, 14, 18, 21], // Tue
+  3: [8, 11, 14, 18, 21], // Wed
+  4: [8, 12, 17, 20, 22], // Thu — evening reinforced (20h-23h sweet spot)
+  5: [8, 11, 14, 18, 21], // Fri
+  6: [8, 10, 12, 15, 19], // Sat — morning reinforced (8h-12h sweet spot)
 }
 
 const PARIS_WEEKDAY: Record<string, number> = {

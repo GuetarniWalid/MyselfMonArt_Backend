@@ -60,15 +60,64 @@ export interface Board {
   }
 }
 
-export interface PinPayload {
+export type PinterestPinFormat = 'image' | 'video' | 'carousel'
+
+export type PinContentType = 'image/png' | 'image/jpeg'
+
+/** Common fields shared by every pin variant, regardless of media source. */
+export interface PinPayloadBase {
   board_id: string
   title: string
   description: string
   link: string
   alt_text: string
+}
+
+/** Single static image pin (base64 upload). */
+export interface ImagePinPayload extends PinPayloadBase {
   media_source: {
     source_type: 'image_base64'
-    content_type: 'image/png' | 'image/jpeg'
+    content_type: PinContentType
     data: string
   }
+}
+
+/** Video pin — references a media upload already registered + processed. */
+export interface VideoPinPayload extends PinPayloadBase {
+  media_source: {
+    source_type: 'video_id'
+    media_id: string
+    cover_image_content_type: PinContentType
+    cover_image_data: string
+  }
+}
+
+/** Carousel pin — 2 to 5 base64 images sharing the same aspect ratio. */
+export interface CarouselPinPayload extends PinPayloadBase {
+  media_source: {
+    source_type: 'multiple_image_base64'
+    items: Array<{
+      content_type: PinContentType
+      data: string
+    }>
+  }
+}
+
+export type PinPayload = ImagePinPayload | VideoPinPayload | CarouselPinPayload
+
+/** Response of POST /v5/media (register a media upload). */
+export interface MediaUploadRegistration {
+  media_id: string
+  media_type: 'video'
+  upload_url: string
+  upload_parameters: Record<string, string>
+}
+
+export type MediaUploadStatus = 'registered' | 'processing' | 'succeeded' | 'failed'
+
+/** Response of GET /v5/media/{media_id}. */
+export interface MediaUpload {
+  media_id: string
+  media_type: 'video'
+  status: MediaUploadStatus
 }
