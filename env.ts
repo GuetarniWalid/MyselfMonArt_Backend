@@ -69,4 +69,6 @@ export default Env.rules({
   FACEBOOK_PAGE_ACCESS_TOKEN: Env.schema.string.optional(),
   BACKEND_URL: Env.schema.string(),
   CHROME_EXTENSION_ID: Env.schema.string(),
+  // URL publique du moteur de rendu des mockups (PC exposé via tunnel Cloudflare). Optionnel.
+  RENDER_ENGINE_URL: Env.schema.string.optional(),
 })

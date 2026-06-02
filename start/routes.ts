@@ -19,8 +19,15 @@
 */
 
 import Route from '@ioc:Adonis/Core/Route'
+import Env from '@ioc:Adonis/Core/Env'
 
 Route.get('/', 'DashboardController.index').middleware(['auth'])
+// Application "Publisher" : UI servie ici ; le rendu des mockups est délégué au moteur externe (PC via tunnel Cloudflare).
+// URL fixe par défaut (tunnel nommé render.myselfmonart.com) ; surchargeable par la variable d'env RENDER_ENGINE_URL.
+Route.get('/publisher', async ({ view }) => {
+  const renderBase = Env.get('RENDER_ENGINE_URL') || 'https://render.myselfmonart.com'
+  return view.render('pages/publisher', { renderBase })
+}).middleware(['auth'])
 Route.post('/', 'WebhooksController.handle')
 Route.post('/webhooks', 'WebhooksController.handle')
 
