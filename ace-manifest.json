@@ -1,5 +1,36 @@
 {
   "commands": {
+    "clean:theme_media_overrides": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/CleanThemeMediaOverrides",
+      "commandName": "clean:theme_media_overrides",
+      "description": "Remove stale theme SVG/media translation overrides",
+      "args": [],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "locales",
+          "propertyName": "locales",
+          "type": "string",
+          "description": "Comma-separated locales (default en,es,de)"
+        },
+        {
+          "name": "filter",
+          "propertyName": "filter",
+          "type": "string",
+          "description": "Only act on keys whose resourceId contains this substring"
+        },
+        {
+          "name": "apply",
+          "propertyName": "apply",
+          "type": "boolean",
+          "description": "Actually remove overrides (otherwise dry run)"
+        }
+      ]
+    },
     "color:attribution": {
       "settings": {
         "loadApp": true,

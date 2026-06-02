@@ -47,6 +47,59 @@ export default class Translator extends Authentication {
     )
   }
 
+  /**
+   * Theme section-setting media (SVG icons, file refs) must stay identical across
+   * locales. Returns any media setting that still carries a per-locale override for
+   * `locale` — these are stale and should be removed so the storefront inherits the
+   * source artwork. Only meaningful for the static_section resource.
+   */
+  public async getStaleThemeMediaOverrides(locale: LanguageCode) {
+    if (!(this.resourceHandler instanceof StaticSectionTranslator)) {
+      throw new Error('getStaleThemeMediaOverrides is only supported for static_section')
+    }
+    return await this.resourceHandler.pullDataModeler.getStaleMediaOverrides(locale)
+  }
+
+  /**
+   * Removes per-locale translation overrides for the given keys on a resource, so the
+   * storefront falls back to the default-locale (source) value. Used to purge stale
+   * theme media overrides. Keys are removed in batches per resource.
+   */
+  public async removeTranslations({
+    resourceId,
+    translationKeys,
+    locale,
+  }: {
+    resourceId: string
+    translationKeys: string[]
+    locale: LanguageCode
+  }) {
+    const batchSize = 100
+    const responses = [] as any[]
+    for (let i = 0; i < translationKeys.length; i += batchSize) {
+      const keys = translationKeys.slice(i, i + batchSize)
+      const { query, variables } = this.removeTranslationQuery(resourceId, keys, locale)
+      const response = await this.fetchGraphQL(query, variables)
+      if (!response || response.errors) {
+        throw new Error(JSON.stringify(response?.errors))
+      }
+      responses.push(response)
+    }
+    return responses
+  }
+
+  private removeTranslationQuery(resourceId: string, translationKeys: string[], locale: string) {
+    return {
+      query: `mutation TranslationsRemove($resourceId: ID!, $translationKeys: [String!]!, $locales: [String!]!) {
+        translationsRemove(resourceId: $resourceId, translationKeys: $translationKeys, locales: $locales) {
+          translations { key locale }
+          userErrors { field message }
+        }
+      }`,
+      variables: { resourceId, translationKeys, locales: [locale] },
+    }
+  }
+
   private getTranslatorHandler(
     resource: Resource
   ):
