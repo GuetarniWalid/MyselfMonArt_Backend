@@ -71,4 +71,6 @@ export default Env.rules({
   CHROME_EXTENSION_ID: Env.schema.string(),
   // URL publique du moteur de rendu des mockups (PC exposé via tunnel Cloudflare). Optionnel.
   RENDER_ENGINE_URL: Env.schema.string.optional(),
+  // Modèle d'image OpenAI pour le redimensionnement d'oeuvre (défaut gpt-image-2 dans le code). Optionnel.
+  OPENAI_IMAGE_MODEL: Env.schema.string.optional(),
 })

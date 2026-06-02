@@ -98,4 +98,7 @@ Route.group(() => {
     '/shopify-product-publisher/publish',
     'ShopifyProductPublishersController.publishOnShopify'
   )
+
+  // Redimensionnement intelligent d'une oeuvre vers un ratio cible (3:4 / 1:1 / 4:3) via gpt-image-2
+  Route.post('/resize-artwork', 'ResizeArtworkController.resize')
 }).prefix('/api')

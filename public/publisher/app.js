@@ -82,24 +82,131 @@ function loadImageFile(file) {
   reader.readAsDataURL(file)
 }
 
+// Ratio cible exact par orientation
+const TARGET_RATIO = { portrait: 3 / 4, square: 1, landscape: 4 / 3 }
+// Classe l'image et détermine s'il faut la retailler (mauvais format pour son orientation).
 function detectOrientation(w, h) {
   const ratio = w / h
   let ori, label
-  if (ratio >= 0.95 && ratio <= 1.05) {
+  // near-square élargi (±10%) -> cible carré ; sinon portrait/paysage
+  if (ratio >= 0.9 && ratio <= 1.1) {
     ori = 'square'
     label = 'Carré'
-  } else if (ratio < 0.95) {
+  } else if (ratio < 0.9) {
     ori = 'portrait'
     label = 'Portrait'
   } else {
     ori = 'landscape'
     label = 'Paysage'
   }
+  // déjà au bon format ? tolérance relative 3% vs le ratio cible de sa classe
+  const target = TARGET_RATIO[ori]
+  const needsResize = Math.abs(ratio - target) / target > 0.03
+
   state.orientation = ori
+  state.sourceRatio = ratio
+  state.needsResize = needsResize
   const badge = $('#orientationBadge')
   badge.textContent = label
   badge.className = 'badge ' + ori
   badge.classList.remove('hidden')
+  updateRatioUI() // overlay grille + bouton retailler
+}
+
+// Affiche/masque l'overlay quadrillé (cadre cible) et le bouton "Retailler au bon format".
+function updateRatioUI() {
+  const overlay = $('#ratioOverlay')
+  const btn = $('#resizeBtn')
+  const warn = $('#ratioWarning')
+  const hideAll = () => {
+    overlay.classList.add('hidden')
+    btn.classList.add('hidden')
+    warn.classList.add('hidden')
+  }
+  if (!state.orientation) return hideAll()
+  if (state.needsResize) {
+    overlay.style.aspectRatio = String(TARGET_RATIO[state.orientation])
+    overlay.classList.remove('hidden')
+    warn.classList.remove('hidden')
+    const labels = { portrait: '3:4', square: '1:1', landscape: '4:3' }
+    btn.textContent = `Retailler en ${labels[state.orientation]}`
+    btn.classList.remove('hidden')
+  } else {
+    hideAll()
+  }
+}
+
+/* ---------- Retaillage de l'œuvre via GPT-image (preview low -> valider high) ---------- */
+let lastResizedImage = null // dernier résultat (data URI) en attente de validation
+async function callResize(quality) {
+  const r = await fetch(API + '/api/resize-artwork', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: state.imageDataUrl, target: state.orientation, quality }),
+  })
+  const data = await r.json().catch(() => ({}))
+  if (!r.ok || !data.success) {
+    throw new Error(data.message || data.error || 'Erreur serveur (' + r.status + ')')
+  }
+  return data.data.image
+}
+function showResizeLoading(msg) {
+  $('#resizeLoading').classList.remove('hidden')
+  $('#resizeLoadingMsg').textContent = msg
+  $('#resizeCompare').classList.add('hidden')
+  $('#resizeActions').classList.add('hidden')
+  $('#resizeFinal').classList.add('hidden')
+}
+async function runResizePreview() {
+  $('#resizeOverlay').classList.remove('hidden')
+  $('#resizeBefore').src = state.imageDataUrl
+  showResizeLoading("Génération de l'aperçu… (~20-30s)")
+  try {
+    lastResizedImage = await callResize('low')
+    $('#resizeAfter').src = lastResizedImage
+    $('#resizeLoading').classList.add('hidden')
+    $('#resizeCompare').classList.remove('hidden')
+    $('#resizeActions').classList.remove('hidden')
+  } catch (e) {
+    $('#resizeLoadingMsg').textContent = 'Échec : ' + e.message
+    setTimeout(() => $('#resizeOverlay').classList.add('hidden'), 3000)
+  }
+}
+$('#resizeBtn').addEventListener('click', runResizePreview)
+$('#resizeRetry').addEventListener('click', runResizePreview)
+$('#resizeCancel').addEventListener('click', () => {
+  $('#resizeOverlay').classList.add('hidden')
+  lastResizedImage = null
+})
+// Valider : on régénère en HAUTE qualité, puis on remplace l'image source
+$('#resizeValidate').addEventListener('click', async () => {
+  showResizeLoading('Génération en haute qualité… (peut prendre 1-2 min)')
+  try {
+    const hi = await callResize('high')
+    applyResizedImage(hi)
+    $('#resizeCompare').classList.remove('hidden')
+    $('#resizeAfter').src = hi
+    $('#resizeLoading').classList.add('hidden')
+    $('#resizeFinal').classList.remove('hidden')
+  } catch (e) {
+    $('#resizeLoadingMsg').textContent = 'Échec : ' + e.message
+    $('#resizeActions').classList.remove('hidden')
+  }
+})
+$('#resizeClose').addEventListener('click', () => {
+  $('#resizeOverlay').classList.add('hidden')
+})
+// Remplace l'image uploadée par la version retaillée et relance la détection
+function applyResizedImage(dataUrl) {
+  state.imageDataUrl = dataUrl
+  const img = new Image()
+  img.onload = () => {
+    detectOrientation(img.naturalWidth, img.naturalHeight)
+    sourcePreview.src = dataUrl
+    renderMockups()
+    refreshAction()
+  }
+  img.src = dataUrl
 }
 
 /* ---------- 2. Type produit + collections ---------- */
