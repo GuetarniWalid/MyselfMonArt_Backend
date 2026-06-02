@@ -99,6 +99,8 @@ Route.group(() => {
     'ShopifyProductPublishersController.publishOnShopify'
   )
 
-  // Redimensionnement intelligent d'une oeuvre vers un ratio cible (3:4 / 1:1 / 4:3) via gpt-image-2
-  Route.post('/resize-artwork', 'ResizeArtworkController.resize')
+  // Redimensionnement intelligent d'une oeuvre vers un ratio cible (3:4 / 1:1 / 4:3) via gpt-image-2.
+  // Asynchrone (job + polling) car gpt-image-2 dépasse les ~100s que Cloudflare tolère (sinon 524).
+  Route.post('/resize-artwork', 'ResizeArtworkController.resize') // démarre le job -> { jobId }
+  Route.get('/resize-artwork/result', 'ResizeArtworkController.result') // état du job (polling)
 }).prefix('/api')
