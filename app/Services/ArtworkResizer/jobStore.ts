@@ -102,6 +102,9 @@ export async function cleanup(): Promise<void> {
 }
 
 const inflight = new Set<Promise<void>>()
+// Plafond de jobs simultanés : garde-fou anti-emballement (double-clic, boucle abusive).
+// gpt-image-2 est payant et lourd (sharp + buffers) -> on refuse au-delà plutôt que de tout lancer.
+const MAX_INFLIGHT = 8
 
 /**
  * Lance le redimensionnement en arrière-plan. NE PAS attendre cette fonction
@@ -109,6 +112,14 @@ const inflight = new Set<Promise<void>>()
  * dans le fichier de job, lu ensuite via read().
  */
 export function start(id: string, image: string, target: Target, quality: 'low' | 'high'): void {
+  if (inflight.size >= MAX_INFLIGHT) {
+    finish(id, {
+      status: 'error',
+      error: 'Service de génération occupé. Réessaie dans quelques secondes.',
+    }).catch(() => {})
+    Logger.warn('resize REFUSED job=%s (inflight=%s >= %s)', id, inflight.size, MAX_INFLIGHT)
+    return
+  }
   const p = (async () => {
     const t0 = Date.now()
     try {
