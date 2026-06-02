@@ -76,6 +76,18 @@
 
   <div id="lightbox" class="lightbox hidden"><img id="lightboxImg" alt=""><button class="lb-close">✕</button></div>
   <div id="toast" class="toast hidden"></div>
+
+  <!-- Overlay de progression (publication) -->
+  <div id="progress" class="progress-overlay hidden">
+    <div class="progress-card">
+      <div id="progressSpinner" class="progress-ring"></div>
+      <div id="progressIcon" class="progress-icon hidden"></div>
+      <h3 id="progressTitle">Publication en cours…</h3>
+      <p id="progressMsg">Préparation des images…</p>
+      <button id="progressClose" class="primary-btn hidden">Fermer</button>
+      <a id="progressLink" class="ghost-btn hidden" target="_blank" rel="noopener">Voir le produit</a>
+    </div>
+  </div>
 </div>
 
 <!-- Config injectée par le backend :
