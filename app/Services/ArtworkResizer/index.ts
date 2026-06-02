@@ -67,7 +67,7 @@ export default class ArtworkResizer {
       size: t.size,
       quality,
     }
-    const rsp = await this.openai.images.edit(params, { timeout: 170000 })
+    const rsp = await this.openai.images.edit(params, { timeout: 580000 })
 
     const outB64 = rsp.data?.[0]?.b64_json
     if (!outB64) throw new Error('Réponse vide de gpt-image')
