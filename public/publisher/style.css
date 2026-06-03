@@ -90,6 +90,7 @@ body{
 .resize-actions .primary-btn,.resize-actions .ghost-btn{width:100%;margin-top:0}
 .decor-cta{margin-top:12px}
 .decor-result img{width:100%;border-radius:10px;border:1px solid var(--line);display:block}
+.decor-vibe{width:100%;padding:11px;border-radius:11px;border:1px solid var(--line);font-family:inherit;font-size:14px;background:#fff;color:var(--text)}
 
 /* ---- segmented (type produit) ---- */
 .seg{display:flex;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:4px;gap:4px}
