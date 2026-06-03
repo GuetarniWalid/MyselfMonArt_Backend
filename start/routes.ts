@@ -105,4 +105,9 @@ Route.group(() => {
   // /publisher est déjà protégée, donc le cookie de session est envoyé sur ces fetch same-origin).
   Route.post('/resize-artwork', 'ResizeArtworkController.resize').middleware(['auth']) // démarre le job -> { jobId }
   Route.get('/resize-artwork/result', 'ResizeArtworkController.result').middleware(['auth']) // état du job (polling)
+
+  // Génération d'un DÉCOR IA (intérieur + cadre vide au bon ratio) via gpt-image-2.
+  // Asynchrone (job + polling) comme le resize. Auth obligatoire (appel OpenAI payant).
+  Route.post('/generate-decor', 'DecorController.generate').middleware(['auth']) // démarre le job -> { jobId }
+  Route.get('/generate-decor/result', 'DecorController.result').middleware(['auth']) // état du job (polling)
 }).prefix('/api')

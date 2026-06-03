@@ -4,6 +4,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 import ArtworkResizer from './index'
+import DecorGenerator, { DecorOptions } from '../DecorGenerator'
 
 /**
  * Stockage de jobs de redimensionnement sur disque + exécution en arrière-plan.
@@ -78,7 +79,7 @@ async function finish(
     const base: Job = raw ? (JSON.parse(raw) as Job) : { status: 'pending', createdAt: Date.now() }
     await safeWrite(file(id), JSON.stringify({ ...base, ...patch }))
   } catch (e) {
-    Logger.error('resize jobStore.finish id=%s: %s', id, (e as Error).message)
+    Logger.error('jobStore.finish id=%s: %s', id, (e as Error).message)
   }
 }
 
@@ -139,6 +140,45 @@ export function start(
         'resize FAIL job=%s q=%s %ss: %s',
         id,
         quality,
+        Math.round((Date.now() - t0) / 1000),
+        (error && (error as any).message) || String(error)
+      )
+    }
+  })()
+  inflight.add(p)
+  p.finally(() => inflight.delete(p))
+}
+
+/**
+ * Lance la génération d'un DÉCOR (gpt-image-2) en arrière-plan. Même réserve que start() :
+ * NE PAS attendre (le travail tourne détaché, le résultat est écrit dans le fichier de job).
+ */
+export function startDecor(
+  id: string,
+  artwork: string,
+  target: Target,
+  opts: DecorOptions = {}
+): void {
+  if (inflight.size >= MAX_INFLIGHT) {
+    finish(id, {
+      status: 'error',
+      error: 'Service de génération occupé. Réessaie dans quelques secondes.',
+    }).catch(() => {})
+    Logger.warn('decor REFUSED job=%s (inflight=%s >= %s)', id, inflight.size, MAX_INFLIGHT)
+    return
+  }
+  const p = (async () => {
+    const t0 = Date.now()
+    try {
+      const generator = new DecorGenerator()
+      const decor = await generator.generate(artwork, target, opts)
+      await finish(id, { status: 'done', image: decor })
+      Logger.info('decor OK job=%s %ss', id, Math.round((Date.now() - t0) / 1000))
+    } catch (error) {
+      await finish(id, { status: 'error', error: mapResizeError(error) })
+      Logger.error(
+        'decor FAIL job=%s %ss: %s',
+        id,
         Math.round((Date.now() - t0) / 1000),
         (error && (error as any).message) || String(error)
       )

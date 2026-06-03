@@ -71,6 +71,10 @@ export default Env.rules({
   CHROME_EXTENSION_ID: Env.schema.string(),
   // URL publique du moteur de rendu des mockups (PC exposé via tunnel Cloudflare). Optionnel.
   RENDER_ENGINE_URL: Env.schema.string.optional(),
-  // Modèle d'image OpenAI pour le redimensionnement d'oeuvre (défaut gpt-image-2 dans le code). Optionnel.
+  // Modèle d'image OpenAI pour le redimensionnement d'oeuvre + génération de décor (défaut gpt-image-2). Optionnel.
   OPENAI_IMAGE_MODEL: Env.schema.string.optional(),
+  // Modèle de vision OpenAI pour déduire le thème déco depuis l'oeuvre (défaut gpt-4o-2024-08-06). Optionnel.
+  OPENAI_VISION_MODEL: Env.schema.string.optional(),
+  // Qualité gpt-image-2 pour la génération de décor (défaut high). Optionnel.
+  OPENAI_DECOR_QUALITY: Env.schema.enum.optional(['low', 'medium', 'high', 'auto'] as const),
 })
