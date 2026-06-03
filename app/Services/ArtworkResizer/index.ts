@@ -29,14 +29,22 @@ The ONLY allowed change is rendering quality: sharpen existing edges, recover cr
   }
   return `Recompose this artwork to fully fit a ${ratio} ${orientation} frame. Do NOT add solid color fills, empty backgrounds, blank margins, letterbox bars, or borders to pad the image — instead, regenerate and extend the composition so the original artwork fills the entire new frame edge to edge, corner to corner.
 
+This is a faithful recomposition, NOT a redesign or a cleanup. Treat the artwork as two layers and rebuild BOTH across the whole new frame:
+- FOREGROUND: the discrete elements, shapes, motifs, marks and main subjects.
+- BACKGROUND: the color, texture and field behind and BETWEEN those elements — including any color that is only glimpsed in the gaps, interstices and negative space (for example a faint turquoise ground showing only between many small dots). This background is an intentional part of the artwork and part of its palette, never empty space to be filled.
+
 Preserve faithfully:
-- The EXACT artistic style, technique and medium of the original (if it is minimalist keep it minimalist with the same amount of empty space; if it is dense and busy keep it equally dense; if abstract stay abstract; if figurative stay figurative).
-- The original color palette, lighting, contrast and overall mood — sample new areas from the same colors and textures.
-- The main subjects at their original proportions: do NOT stretch, squash, skew or distort them. To fill new space, naturally add MORE of the same elements at the same scale and style rather than enlarging existing ones.
-- The original fill density and spatial rhythm across the whole frame, so the new areas look as intentionally composed as the original.
+- The EXACT artistic style, technique and medium of the original (if minimalist keep it minimalist with the same amount of empty space; if dense and busy keep it equally dense; if abstract stay abstract; if figurative stay figurative).
+- The COMPLETE original color palette — every hue present in the source, with NO exceptions. This explicitly includes background, base and underlying tones, and any color that is low-saturation, low-contrast, occupies only a small fraction of the surface, or appears only in the gaps between elements. Do NOT simplify, clean up, flatten, unify, neutralize, mute, brighten, darken or harmonize the palette; do NOT drop, merge, recolor or replace any color, and do NOT let a faint color be absorbed or crowded out by a more dominant neighbor. Keep every hue in the same role (foreground vs background), saturation and proportion.
+- The figure/ground relationship: wherever you add new elements, the SAME background color and texture must show through between them at the SAME visibility as in the original, so the contrast the artwork relies on is reproduced everywhere — in the original AND the newly generated regions.
+- The original lighting, contrast and overall mood, without flattening, averaging or boosting them.
+- The main subjects at their original proportions: do NOT stretch, squash, skew or distort them. To fill new space, naturally add MORE of the same foreground elements at the same scale and style OVER the same continued background, rather than enlarging existing ones or letting either layer take over.
+- The original fill density and spatial rhythm across the whole frame, so the new areas look as intentionally composed as the original and reveal the same amount of background between elements. Do NOT pack elements tighter to cover the background.
 - Any existing border, frame, mat or decorative edge: if the original has a border, keep a consistent border all the way around the new frame; if it has none, add none.
 
-The result must look like the same artwork, simply composed for a ${ratio} ${orientation} canvas.`
+When generating new areas, sample directly from the original and reproduce the SAME foreground motif together with the SAME background/interstitial color and texture underneath it — never the motif on a different or simplified ground, and never the ground without its motif.
+
+The result must look like the same artwork — every subtle color, fine detail and background tone intact — simply composed for a ${ratio} ${orientation} canvas.`
 }
 
 export default class ArtworkResizer {
