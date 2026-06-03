@@ -8,6 +8,8 @@ export default class ResizeArtworkRequestValidator {
     image: schema.string(), // data URI ou base64 brut de l'oeuvre à recadrer
     target: schema.enum(['portrait', 'square', 'landscape'] as const),
     quality: schema.enum.optional(['low', 'high'] as const), // défaut low (aperçu)
+    // recompose (défaut) = recomposer l'original ; enhance = re-rendu fidèle de l'aperçu LOW validé
+    mode: schema.enum.optional(['recompose', 'enhance'] as const),
   })
 
   public messages: CustomMessages = {

@@ -13,11 +13,18 @@ export default class ResizeArtworkController {
    */
   public async resize({ request, response }: HttpContextContract) {
     try {
-      const { image, target, quality } = await request.validate(ResizeArtworkRequestValidator)
+      const { image, target, quality, mode } = await request.validate(ResizeArtworkRequestValidator)
       const jobId = randomUUID()
       await ResizeJobs.create(jobId)
-      ResizeJobs.start(jobId, image, target, quality || 'low') // détaché : surtout PAS de await
-      Logger.info('resize START job=%s target=%s q=%s', jobId, target, quality || 'low')
+      // détaché : surtout PAS de await. mode 'enhance' = re-rendu fidèle de l'aperçu LOW validé.
+      ResizeJobs.start(jobId, image, target, quality || 'low', mode || 'recompose')
+      Logger.info(
+        'resize START job=%s target=%s q=%s mode=%s',
+        jobId,
+        target,
+        quality || 'low',
+        mode || 'recompose'
+      )
       return { success: true, data: { jobId } }
     } catch (error) {
       if (error.code === 'E_VALIDATION_FAILURE') {
@@ -50,13 +57,11 @@ export default class ResizeArtworkController {
     }
     const job = await ResizeJobs.read(id)
     if (!job) {
-      return response
-        .status(404)
-        .json({
-          success: false,
-          status: 'not_found',
-          message: 'Session de génération expirée. Relance.',
-        })
+      return response.status(404).json({
+        success: false,
+        status: 'not_found',
+        message: 'Session de génération expirée. Relance.',
+      })
     }
     if (job.status === 'done') {
       ResizeJobs.remove(id).catch(() => {})

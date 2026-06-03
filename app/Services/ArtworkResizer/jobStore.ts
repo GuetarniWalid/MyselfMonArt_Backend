@@ -111,7 +111,13 @@ const MAX_INFLIGHT = 8
  * dans le controller (sinon Cloudflare coupe à ~100s). Le résultat est écrit
  * dans le fichier de job, lu ensuite via read().
  */
-export function start(id: string, image: string, target: Target, quality: 'low' | 'high'): void {
+export function start(
+  id: string,
+  image: string,
+  target: Target,
+  quality: 'low' | 'high',
+  mode: 'recompose' | 'enhance' = 'recompose'
+): void {
   if (inflight.size >= MAX_INFLIGHT) {
     finish(id, {
       status: 'error',
@@ -124,7 +130,7 @@ export function start(id: string, image: string, target: Target, quality: 'low' 
     const t0 = Date.now()
     try {
       const resizer = new ArtworkResizer()
-      const resized = await resizer.resize(image, target, quality)
+      const resized = await resizer.resize(image, target, quality, mode)
       await finish(id, { status: 'done', image: resized })
       Logger.info('resize OK job=%s q=%s %ss', id, quality, Math.round((Date.now() - t0) / 1000))
     } catch (error) {
