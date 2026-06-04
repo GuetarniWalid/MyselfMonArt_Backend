@@ -34,6 +34,9 @@ Route.post('/webhooks', 'WebhooksController.handle')
 Route.get('/webhooks/meta', 'MessageInboxController.verify')
 Route.post('/webhooks/meta', 'MessageInboxController.receive')
 
+// Gmail push (Pub/Sub) for the SAV email channel. Auth via ?token=<secret>.
+Route.post('/webhooks/email', 'EmailInboxController.receive')
+
 Route.group(() => {
   Route.get('/', () => 'test ok')
   Route.get('/websocket', async ({ view }) => {
@@ -110,4 +113,8 @@ Route.group(() => {
   // Asynchrone (job + polling) comme le resize. Auth obligatoire (appel OpenAI payant).
   Route.post('/generate-decor', 'DecorController.generate').middleware(['auth']) // démarre le job -> { jobId }
   Route.get('/generate-decor/result', 'DecorController.result').middleware(['auth']) // état du job (polling)
+
+  // Insertion de l'oeuvre dans le décor validé via Nano Banana (Gemini). Async (job+polling), auth (payant).
+  Route.post('/insert-artwork', 'InsertArtworkController.generate').middleware(['auth']) // démarre le job
+  Route.get('/insert-artwork/result', 'InsertArtworkController.result').middleware(['auth']) // état (polling)
 }).prefix('/api')

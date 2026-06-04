@@ -5,6 +5,7 @@ import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 import ArtworkResizer from './index'
 import DecorGenerator, { DecorOptions } from '../DecorGenerator'
+import ArtworkInserter, { InsertOptions } from '../ArtworkInserter'
 
 /**
  * Stockage de jobs de redimensionnement sur disque + exécution en arrière-plan.
@@ -188,7 +189,47 @@ export function startDecor(
   p.finally(() => inflight.delete(p))
 }
 
-// Traduit une erreur OpenAI/réseau en message clair pour l'utilisateur.
+/**
+ * Lance l'INSERTION de l'oeuvre dans le décor (Nano Banana/Gemini) en arrière-plan. Même réserve :
+ * NE PAS attendre dans le controller (le travail tourne détaché, le résultat est écrit dans le job).
+ */
+export function startInsert(
+  id: string,
+  decor: string,
+  artwork: string,
+  target: Target,
+  opts: InsertOptions = {}
+): void {
+  if (inflight.size >= MAX_INFLIGHT) {
+    finish(id, {
+      status: 'error',
+      error: 'Service de génération occupé. Réessaie dans quelques secondes.',
+    }).catch(() => {})
+    Logger.warn('insert REFUSED job=%s (inflight=%s >= %s)', id, inflight.size, MAX_INFLIGHT)
+    return
+  }
+  const p = (async () => {
+    const t0 = Date.now()
+    try {
+      const inserter = new ArtworkInserter()
+      const out = await inserter.insert(decor, artwork, target, opts)
+      await finish(id, { status: 'done', image: out })
+      Logger.info('insert OK job=%s %ss', id, Math.round((Date.now() - t0) / 1000))
+    } catch (error) {
+      await finish(id, { status: 'error', error: mapResizeError(error) })
+      Logger.error(
+        'insert FAIL job=%s %ss: %s',
+        id,
+        Math.round((Date.now() - t0) / 1000),
+        (error && (error as any).message) || String(error)
+      )
+    }
+  })()
+  inflight.add(p)
+  p.finally(() => inflight.delete(p))
+}
+
+// Traduit une erreur OpenAI/Gemini/réseau en message clair pour l'utilisateur.
 export function mapResizeError(error: any): string {
   const status = error?.status || error?.response?.status
   const code = error?.code || error?.error?.code || ''
@@ -206,6 +247,14 @@ export function mapResizeError(error: any): string {
   }
   if (status === 429 || code === 'rate_limit_exceeded') {
     return 'Trop de demandes en même temps. Patiente quelques secondes puis réessaye.'
+  }
+  if (
+    msg.includes('blocked') ||
+    msg.includes('prohibited') ||
+    msg.includes('image_safety') ||
+    code === 'PROHIBITED_CONTENT'
+  ) {
+    return 'Le rendu a été refusé par la modération (réessaie ou change d’œuvre).'
   }
   if (
     status === 400 &&

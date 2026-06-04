@@ -85,6 +85,7 @@
     "@adonisjs/shield": "^7.1.1",
     "@adonisjs/view": "^6.2.0",
     "@anthropic-ai/sdk": "^0.71.2",
+    "@google/genai": "^2.8.0",
     "adonis5-scheduler": "^2.1.1",
     "axios": "^1.6.2",
     "crawlee": "^3.5.8",
