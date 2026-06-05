@@ -327,6 +327,16 @@ function openDecorOverlay() {
 async function runDecorGenerate() {
   if (!state.imageDataUrl) return toast("Choisis une image d'abord", 'err')
   if (state.needsResize) return toast("Retaille d'abord l'image au bon format", 'err')
+  // INPUT OBLIGATOIRE : c'est ton texte qui pilote tout le décor — pas de texte, pas de génération.
+  const vibeEl = $('#decorVibe')
+  const direction = vibeEl ? vibeEl.value.trim() : ''
+  if (!direction) {
+    if (vibeEl) vibeEl.focus()
+    return toast(
+      'Décris le décor que tu veux (ex. « chambre scandinave, murs rose poudré »).',
+      'err'
+    )
+  }
   showDecorLoading('Génération du décor sur-mesure… (~1-2 min)')
   try {
     const product =
@@ -335,8 +345,6 @@ async function runDecorGenerate() {
         : state.productType === 'tapisserie'
           ? 'tapestry'
           : 'canvas'
-    const vibeEl = $('#decorVibe')
-    const direction = vibeEl ? vibeEl.value.trim() : '' // orientation libre (raffinée côté serveur)
     lastDecor = await callDecorJob({
       image: state.imageDataUrl,
       target: state.orientation,

@@ -15,3 +15,10 @@ photoshop-plugin/mockups/
 .flaskenv*
 !.env.project
 !.env.vault
+# Fichiers de test visuel décor/insertion (jetables)
+_test_decor.js
+_test_insert.js
+_v2_*.jpg
+_ins_*.jpg
+_decor_test_*.jpg
+_art.jpg

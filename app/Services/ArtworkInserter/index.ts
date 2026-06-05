@@ -32,6 +32,7 @@ const SUPPORT: Record<
     face: string // nom de la surface grise à remplir
     mounted: string // "...comme la vraie oeuvre <mounted>"
     fitClause: string // précision sur l'ajustement bord à bord / wrap
+    texture: string // texture de surface réaliste (toile = tissage fin, poster = papier mat…)
     supportRule: string // règle dure spécifique au support (cadre ou pas)
     negative: string // rappel négatif final propre au support
   }
@@ -43,10 +44,12 @@ const SUPPORT: Record<
     mounted: 'artwork printed directly onto that bare stretched canvas',
     fitClause:
       'The print covers the canvas face edge-to-edge; if the thin wrapped side edges (the shallow depth of the canvas) are visible, let the artwork wrap cleanly and continuously around them. Keep the canvas perfectly flat and planar with its clean wrapped edges and subtle shallow depth.',
+    texture:
+      'The artwork is printed on a REAL stretched cotton/linen canvas: render a FINE, SUBTLE woven canvas weave across the whole surface and along the wrapped edges, catching the light very slightly so the texture is visible but delicate — never a coarse burlap weave, never a glossy sheen; keep it matte and true to the artwork colours.',
     supportRule:
       'This is a FRAMELESS gallery-wrapped canvas — it is a canvas, NOT a poster and NOT a framed picture. Do NOT add or invent any frame, border, mat, passe-partout, fillet, molding or glass around it. The image goes directly onto the bare stretched canvas, edge-to-edge. Reuse the exact frameless canvas object already in the FIRST image and keep it frameless.',
     negative:
-      'no added frame, no border, no mat, no molding, no glass — it stays a bare frameless gallery-wrapped stretched canvas with clean wrapped edges',
+      'no added frame, no border, no mat, no molding, no glass — it stays a bare frameless gallery-wrapped stretched canvas with clean wrapped edges and a fine matte canvas weave',
   },
   poster: {
     surface: 'framed poster: a flat printed sheet inside the slim minimalist frame already present',
@@ -54,6 +57,8 @@ const SUPPORT: Record<
     mounted: 'real printed poster mounted in that existing frame',
     fitClause:
       'The print fills the whole aperture edge-to-edge with NO mat / no passe-partout, sitting flat behind the frame opening.',
+    texture:
+      'The poster is a flat matte printed sheet with a smooth paper surface — no canvas weave, no gloss, no glass glare.',
     supportRule:
       'Reuse the slim frame that is ALREADY in the FIRST image. Do NOT add a SECOND frame, extra border, mat or molding. The artwork stays strictly inside the existing aperture.',
     negative: 'no second frame, no extra border or mat, keep the single slim frame already present',
@@ -65,6 +70,8 @@ const SUPPORT: Record<
     mounted: 'design woven into that hanging textile panel',
     fitClause:
       'The artwork sits flat across the rectangular textile face, following its subtle natural weave and any gentle fabric undulation, edge-to-edge with no leftover grey band.',
+    texture:
+      'The design reads as WOVEN into the textile: a soft natural fabric weave across the whole face, gently following any fabric undulation — matte, no gloss.',
     supportRule:
       'This is a soft textile hung from a slim rod — NOT a framed picture. Do NOT add any frame, border, mat, molding or glass. Keep the existing tapestry object and its rod exactly as they are.',
     negative: 'no frame, no glass, no border — keep the hanging woven textile look',
@@ -82,7 +89,9 @@ Task: place the SECOND image (the artwork) so it fills EXACTLY the empty light-g
 Hard rules:
 - Keep the artwork 100% identical to the SECOND image: same colors, same patterns, same composition, same brush/print texture, and reproduce any text or signature exactly, character-for-character, with the same fonts and layout. Do NOT redraw, restyle, re-illustrate, crop, mirror, or re-interpret the artwork.
 - Only fit the artwork to the grey ${s.face}. Match its perspective, scale and corners so the artwork sits flat with correct foreshortening, edge to edge, with no leftover grey band. ${s.fitClause}
-- Adapt ONLY global lighting to the room: apply the same soft light direction and subtle shadows already present on the support, so it looks naturally lit. The support is MATTE (no glass, no sheen): do NOT add any glossy reflection, specular highlight or glare — keep its surface matte. Do not alter the artwork's own colors or content.
+- SURFACE TEXTURE (important): ${s.texture}
+- MOUNTED ON THE WALL, NOT FLOATING (important): the support hangs flat and CLOSE against the wall (only a few centimetres deep). Cast only a SMALL, soft, TIGHT contact shadow hugging its edges — a thin shadow just under the top edge and along the side away from the light source — so it clearly reads as mounted ON the wall. Do NOT add a large, soft, detached drop shadow and do NOT leave a wide gap of shadow; it must never look like it is floating above the wall like a button.
+- Adapt ONLY global lighting to the room: apply the same soft light direction already present, so it looks naturally lit. The support is MATTE (no glass, no sheen): do NOT add any glossy reflection, specular highlight or glare — keep its surface matte. Do not alter the artwork's own colors or content.
 - SUPPORT TYPE (critical): ${s.supportRule}
 - Keep EVERYTHING ELSE in the FIRST image exactly the same: walls, furniture, floor, decor, the support itself, lighting and camera. Change nothing outside the grey ${s.face}.
 
