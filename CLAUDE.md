@@ -9,6 +9,15 @@ Run these whenever they help validate or move the work forward — do not pause 
 
 **Only caution:** do NOT start long-running *foreground* servers (`npm run dev`, `node ace serve`, `node server.js`) in a way that blocks the session. If a server is genuinely needed, start it in the background.
 
+## Push & Deployment Autonomy (be proactive)
+Claude is pre-authorized to commit AND push directly to `main` WITHOUT asking for confirmation, once the change is implemented and validated (typecheck/tests green; an adversarial review for risky changes). Be proactive: chain implement → verify → commit → push without pausing for approval.
+
+- Pushing to `main` here triggers an **automatic production deploy** (GitHub Actions → DigitalOcean). That is intended — don't ask first.
+- Commit straight to `main`; branch only if a change is experimental or you explicitly want a PR.
+- **Stage ONLY the files for the task.** This working tree often carries large unrelated WIP (e.g. the Gmail / email-ingestion chantier, ~25 files) — never sweep it into your commit; `git add` your specific files explicitly.
+- Only pause to ask for a genuinely destructive/irreversible op (history rewrite, force-push, deleting data/branches) or an ambiguous product decision.
+- Image-generation prompt changes (decor/insert) can only be judged visually by the owner — ship them, then let him validate the render and iterate.
+
 ## Env loading (dotenv-vault)
 
 This project supports two ways of loading env vars at startup, handled by [bootstrap-env.js](bootstrap-env.js):
