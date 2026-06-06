@@ -259,6 +259,20 @@ export class ShopifyClient {
                   }
                 }
               }
+              media(first: 10) {
+                nodes {
+                  ... on MediaImage {
+                    id
+                    alt
+                    status
+                    image {
+                      url
+                      width
+                      height
+                    }
+                  }
+                }
+              }
               variants(first: 10) {
                 edges {
                   node {
@@ -323,6 +337,20 @@ export class ShopifyClient {
               }
             }
           }
+          media(first: 50) {
+            nodes {
+              ... on MediaImage {
+                id
+                alt
+                status
+                image {
+                  url
+                  width
+                  height
+                }
+              }
+            }
+          }
           variants(first: 100) {
             edges {
               node {
@@ -378,6 +406,10 @@ export class ShopifyClient {
             id
             title
             handle
+            seo {
+              title
+              description
+            }
           }
           userErrors {
             field
@@ -2284,6 +2316,25 @@ export class ShopifyClient {
                 filesize
               }
             }
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `
+    return this.graphql(mutation, { files })
+  }
+  async fileUpdate(files) {
+    const mutation = `
+      mutation fileUpdate($files: [FileUpdateInput!]!) {
+        fileUpdate(files: $files) {
+          files {
+            id
+            alt
+            fileStatus
           }
           userErrors {
             field

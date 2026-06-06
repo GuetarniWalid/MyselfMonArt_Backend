@@ -188,7 +188,7 @@ function registerTools(server, shopifyClient) {
   )
   server.tool(
     'updateProduct',
-    'Update an existing product',
+    'Update an existing product (title, description, tags, status, vendor, productType) and/or its SEO meta title/description',
     {
       id: z.string().describe('The product ID to update'),
       title: z.string().optional(),
@@ -197,13 +197,30 @@ function registerTools(server, shopifyClient) {
       productType: z.string().optional(),
       tags: z.array(z.string()).optional(),
       status: z.enum(['ACTIVE', 'DRAFT', 'ARCHIVED']).optional(),
+      seoTitle: z
+        .string()
+        .optional()
+        .describe(
+          'SEO meta title (the <title> tag). Pass "" to clear the override and fall back to the product title. Omit to leave unchanged.'
+        ),
+      seoDescription: z
+        .string()
+        .optional()
+        .describe('SEO meta description. Pass "" to clear the override. Omit to leave unchanged.'),
     },
     async (args) => {
       try {
-        const { id, ...input } = args
+        const { id, seoTitle, seoDescription, ...input } = args
         if (input.description) {
           input.descriptionHtml = input.description
           delete input.description
+        }
+        // Only build input.seo if at least one SEO field was provided, so we
+        // never overwrite the existing SEO override when it's left untouched.
+        if (seoTitle !== undefined || seoDescription !== undefined) {
+          input.seo = {}
+          if (seoTitle !== undefined) input.seo.title = seoTitle
+          if (seoDescription !== undefined) input.seo.description = seoDescription
         }
         const result = await shopifyClient.updateProduct(id, input)
         if (result.data.productUpdate.userErrors.length > 0) {
@@ -2540,6 +2557,67 @@ function registerTools(server, shopifyClient) {
             {
               type: 'text',
               text: `Error uploading file: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'updateImageAlt',
+    'Update the ALT (accessibility) text of one or more existing images via the fileUpdate mutation (batchable). ' +
+      'Use the MediaImage GID (gid://shopify/MediaImage/...) obtained from getProduct -> media nodes — NOT the product id or the legacy Image id. ' +
+      'LIMITATIONS: (1) This only WRITES alt text — Shopify silently ignores an empty string ("") so it cannot CLEAR an alt. ' +
+      '(2) Only update media whose status is READY (visible via getProduct). ' +
+      '(3) Requires the write_files (or write_themes) access scope — write_products alone is NOT sufficient.',
+    {
+      files: z
+        .array(
+          z.object({
+            id: z
+              .string()
+              .describe(
+                'MediaImage GID, e.g. gid://shopify/MediaImage/123 (from getProduct -> media nodes)'
+              ),
+            alt: z.string().max(512).describe('New accessibility text (max 512 characters)'),
+          })
+        )
+        .min(1)
+        .max(25)
+        .describe(
+          '1–25 images per call (stays within the Shopify GraphQL cost budget; no Bulk API needed).'
+        ),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.fileUpdate(args.files)
+        const payload = result.data.fileUpdate
+        if (payload.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error updating image alt: ${JSON.stringify(payload.userErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(payload.files, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error updating image alt: ${error.message}`,
             },
           ],
           isError: true,
