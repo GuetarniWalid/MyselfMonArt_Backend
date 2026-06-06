@@ -360,8 +360,14 @@ export class ShopifyClient {
                 sku
                 barcode
                 inventoryQuantity
-                weight
-                weightUnit
+                inventoryItem {
+                  measurement {
+                    weight {
+                      value
+                      unit
+                    }
+                  }
+                }
               }
             }
           }
