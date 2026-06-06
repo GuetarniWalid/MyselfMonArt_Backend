@@ -801,6 +801,26 @@ export class ShopifyClient {
     }
     return this.graphql(query, variables)
   }
+  async updateCollection(id, input) {
+    const mutation = `
+      mutation updateCollection($input: CollectionInput!) {
+        collectionUpdate(input: $input) {
+          collection {
+            id
+            title
+            handle
+            descriptionHtml
+            updatedAt
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `
+    return this.graphql(mutation, { input: { ...input, id } })
+  }
   // Location operations
   async getLocations() {
     const query = `

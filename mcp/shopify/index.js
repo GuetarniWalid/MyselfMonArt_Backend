@@ -594,6 +594,65 @@ function registerTools(server, shopifyClient) {
       }
     }
   )
+  server.tool(
+    'updateCollection',
+    'Update an existing collection (title is also the storefront H1), description, handle/URL, or SEO fields',
+    {
+      id: z.string().describe('The collection ID to update (e.g. gid://shopify/Collection/123)'),
+      title: z
+        .string()
+        .optional()
+        .describe('Collection title — this is also the H1 on the collection page'),
+      description: z.string().optional().describe('Collection description (HTML allowed)'),
+      handle: z.string().optional().describe('URL handle/slug of the collection'),
+      seoTitle: z.string().optional().describe('SEO meta title'),
+      seoDescription: z.string().optional().describe('SEO meta description'),
+    },
+    async (args) => {
+      try {
+        const { id, description, seoTitle, seoDescription, ...rest } = args
+        const input = { ...rest }
+        if (description !== undefined) {
+          input.descriptionHtml = description
+        }
+        if (seoTitle !== undefined || seoDescription !== undefined) {
+          input.seo = {}
+          if (seoTitle !== undefined) input.seo.title = seoTitle
+          if (seoDescription !== undefined) input.seo.description = seoDescription
+        }
+        const result = await shopifyClient.updateCollection(id, input)
+        if (result.data.collectionUpdate.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error updating collection: ${JSON.stringify(result.data.collectionUpdate.userErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result.data.collectionUpdate.collection, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error updating collection: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
   // Location Tools
   server.tool('listLocations', 'List all store locations', async () => {
     try {
