@@ -133,8 +133,20 @@
     <div class="resize-card">
       <h3>Décor sur-mesure (IA)</h3>
       <div class="resize-body">
-        <p class="decor-hint">Décris la scène voulue — c'est ton texte qui crée le décor (pièce, couleur des murs, style, ambiance). Tout est possible.</p>
-        <input id="decorVibe" class="decor-vibe" type="text" maxlength="240" placeholder="Ex. : chambre de petite fille, murs rose bonbon · chambre lambris vietnamien · salon Art déco bleu nuit…">
+        <p class="decor-hint">Choisis une pièce et/ou décris l'ambiance (couleur des murs, style, époque…). Au moins l'un des deux.</p>
+        <select id="decorRoom" class="decor-vibe">
+          <option value="">Choisir une pièce (optionnel)</option>
+          <option value="living room">Salon</option>
+          <option value="bedroom">Chambre</option>
+          <option value="kitchen">Cuisine</option>
+          <option value="dining room">Salle à manger</option>
+          <option value="home office">Bureau</option>
+          <option value="entryway">Entrée</option>
+          <option value="bathroom">Salle de bain</option>
+          <option value="reading nook">Coin lecture</option>
+          <option value="studio">Atelier</option>
+        </select>
+        <input id="decorVibe" class="decor-vibe" type="text" maxlength="240" placeholder="Ambiance (optionnel) : ex. murs rose poudré, esprit scandinave, vinyle vintage…">
         <div id="decorLoading" class="resize-loading hidden">
           <div class="progress-ring"></div>
           <p id="decorLoadingMsg">Génération du décor…</p>

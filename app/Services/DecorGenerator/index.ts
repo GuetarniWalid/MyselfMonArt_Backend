@@ -7,9 +7,9 @@ type Target = 'portrait' | 'square' | 'landscape'
 type Product = 'canvas' | 'poster' | 'tapestry'
 
 export interface DecorOptions {
-  roomType?: string // (héritage) — ignoré : la pièce/le style viennent du texte de l'utilisateur
+  roomType?: string // pièce choisie au menu (ex: living room, bedroom) ; préfixée au souhait `theme`
   product?: Product
-  theme?: string // OBLIGATOIRE : le souhait libre de l'utilisateur, qui PILOTE toute la scène
+  theme?: string // souhait libre ; avec roomType, compose la scène — au moins l'un des deux requis
 }
 
 // Ratio/orientation pour le prompt + taille image gpt-image-2 EXACTE pour le ratio. La taille pixel
@@ -68,11 +68,15 @@ export default class DecorGenerator {
     const product: Product =
       opts.product === 'poster' ? 'poster' : opts.product === 'tapestry' ? 'tapestry' : 'canvas'
 
-    // INPUT OBLIGATOIRE : sans souhait, on NE génère PAS (nouvelle règle produit).
-    const wish = (opts.theme || '').trim().slice(0, 400)
+    // INPUT OBLIGATOIRE : la PIÈCE choisie (menu) et/ou le TEXTE libre composent le souhait —
+    // au moins l'un des deux est requis. La pièce, si fournie, est simplement préfixée au texte
+    // (l'art-director la traite comme le reste du souhait ; pas de pool/style maison imposé).
+    const room = (opts.roomType || '').trim()
+    const desc = (opts.theme || '').trim()
+    const wish = [room, desc].filter(Boolean).join(', ').slice(0, 400)
     if (!wish) {
       throw new Error(
-        'Décris le décor que tu veux (le champ texte est obligatoire pour générer un décor).'
+        'Décris le décor que tu veux ou choisis une pièce (au moins l’un des deux est requis).'
       )
     }
 

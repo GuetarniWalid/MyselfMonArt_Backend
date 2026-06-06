@@ -1,5 +1,7 @@
+import type { CollectionToTranslate } from 'Types/Collection'
 import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import ChatGPT from 'App/Services/ChatGPT'
+import LinkLocalizer from 'App/Services/LinkLocalizer'
 import Shopify from 'App/Services/Shopify'
 import { logTaskBoundary } from 'App/Utils/Logs'
 
@@ -19,11 +21,30 @@ export default class TranslateCollection extends BaseTask {
     const collectionsToTranslate = await shopify.translator('collection').getOutdatedTranslations()
     console.log('🚀 ~ collections to translate length:', collectionsToTranslate.length)
     const chatGPT = new ChatGPT()
+    const linkLocalizer = new LinkLocalizer('en')
 
     for (const collection of collectionsToTranslate) {
       console.log('============================')
       console.log('Id collection to translate => ', collection.id)
-      const collectionTranslated = await chatGPT.translate(collection, 'collection', 'en')
+      const collectionTranslated = (await chatGPT.translate(
+        collection,
+        'collection',
+        'en'
+      )) as Partial<CollectionToTranslate>
+
+      // Rewrite any in-description links so they point at the English equivalent page
+      // (locale prefix + translated handle) instead of the French source page.
+      if (collectionTranslated.descriptionHtml) {
+        collectionTranslated.descriptionHtml = await linkLocalizer.localizeHtml(
+          collectionTranslated.descriptionHtml
+        )
+      }
+      if (collectionTranslated.intro?.value) {
+        collectionTranslated.intro.value = await linkLocalizer.localizeHtml(
+          collectionTranslated.intro.value
+        )
+      }
+
       const responses = await shopify.translator('collection').updateTranslation({
         resourceToTranslate: collection,
         resourceTranslated: collectionTranslated,

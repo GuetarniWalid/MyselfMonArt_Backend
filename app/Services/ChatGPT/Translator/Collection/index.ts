@@ -115,6 +115,7 @@ export default class CollectionTranslator {
 When translating, prioritize SEO optimization by using the most commonly searched keywords and phrases in ${language}, rather than direct word-for-word translation. 
 Ensure all fields, including title, description, SEO metadata, and image alt text, are optimized for search engines in ${language} while maintaining a natural, user-friendly tone. 
 For the descriptionHtml field, preserve all HTML tags while translating its content. Use your knowledge of linguistic and cultural nuances to produce a high-quality translation that aligns with local search behaviors and preferences.
+IMPORTANT — links: translate the visible anchor text, but keep every \`href\` attribute value EXACTLY as in the source. Do NOT translate, localize, or otherwise modify any URL inside an href. URL rewriting is handled separately downstream.
 The intro field is the editorial introduction text shown at the top of the collection page. Translate it fully and naturally into ${language}, preserving its tone and line breaks — never return the original text unchanged.`
   }
 

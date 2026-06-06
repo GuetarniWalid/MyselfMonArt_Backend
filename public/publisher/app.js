@@ -80,7 +80,9 @@ function loadImageFile(file) {
       dzInner.classList.add('hidden')
       changeBtn.classList.remove('hidden')
       const dv = $('#decorVibe')
-      if (dv) dv.value = '' // reset l'orientation décor entre deux œuvres
+      if (dv) dv.value = '' // reset les entrées décor IA (pièce + ambiance) entre deux œuvres
+      const dr = $('#decorRoom')
+      if (dr) dr.value = ''
       state.decor = null
       renderMockups()
       renderSavedTemplates()
@@ -334,15 +336,14 @@ function openDecorOverlay() {
 async function runDecorGenerate() {
   if (!state.imageDataUrl) return toast("Choisis une image d'abord", 'err')
   if (state.needsResize) return toast("Retaille d'abord l'image au bon format", 'err')
-  // INPUT OBLIGATOIRE : c'est ton texte qui pilote tout le décor — pas de texte, pas de génération.
+  // La PIÈCE (menu) et/ou le TEXTE libre composent le souhait — au moins l'un des deux est requis.
+  const roomEl = $('#decorRoom')
+  const roomType = roomEl && roomEl.value ? roomEl.value : null // '' = aucune pièce précise
   const vibeEl = $('#decorVibe')
   const direction = vibeEl ? vibeEl.value.trim() : ''
-  if (!direction) {
+  if (!roomType && !direction) {
     if (vibeEl) vibeEl.focus()
-    return toast(
-      'Décris le décor que tu veux (ex. « chambre scandinave, murs rose poudré »).',
-      'err'
-    )
+    return toast('Choisis une pièce ou décris le décor que tu veux.', 'err')
   }
   showDecorLoading('Génération du décor sur-mesure… (~1-2 min)')
   try {
@@ -352,10 +353,17 @@ async function runDecorGenerate() {
       target: state.orientation,
       product,
       theme: direction,
+      roomType,
     })
     // On fige les métadonnées AU MOMENT de la génération (produit/thème/orientation réels de cette
     // image) pour qu'une sauvegarde ultérieure ne dérive pas si l'utilisateur change de type produit.
-    lastDecor = { image, product, theme: direction || null, orientation: state.orientation }
+    const roomLabel = roomEl && roomEl.value ? roomEl.options[roomEl.selectedIndex].text : ''
+    lastDecor = {
+      image,
+      product,
+      theme: [roomLabel, direction].filter(Boolean).join(' · ') || null,
+      orientation: state.orientation,
+    }
     $('#decorImg').src = lastDecor.image
     $('#decorLoading').classList.add('hidden')
     $('#decorResult').classList.remove('hidden')

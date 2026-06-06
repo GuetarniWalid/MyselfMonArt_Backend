@@ -1,5 +1,24 @@
 {
   "commands": {
+    "backfill:collection-links": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/BackfillCollectionLinks",
+      "commandName": "backfill:collection-links",
+      "description": "Re-localize links in existing EN collection descriptions",
+      "args": [],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "execute",
+          "propertyName": "execute",
+          "type": "boolean",
+          "description": "Actually write the corrected translations to Shopify"
+        }
+      ]
+    },
     "clean:theme_media_overrides": {
       "settings": {
         "loadApp": true,
@@ -51,6 +70,18 @@
       "commandPath": "./commands/DeleteMerchantCenterProducts",
       "commandName": "delete:merchant_center_products",
       "description": "Delete all products from Google Merchant Center",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
+    "email:sync": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/EmailSync",
+      "commandName": "email:sync",
+      "description": "Run one Gmail inbox sync for the SAV email channel (ingest new mail → triage → draft replies). First run only baselines the cursor.",
       "args": [],
       "aliases": [],
       "flags": []
