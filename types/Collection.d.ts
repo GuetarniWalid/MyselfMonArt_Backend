@@ -7,6 +7,14 @@ export interface CollectionWithOutdatedTranslations {
     id: string
     value: string
   } | null
+  guideMetafield: {
+    id: string
+    value: string
+  } | null
+  faqMetafield: {
+    id: string
+    value: string
+  } | null
   altTextsMetaObject: {
     reference?: {
       id: string
@@ -37,6 +45,14 @@ export interface CollectionToTranslate {
     id: string
     value: string
   }
+  guide?: {
+    id: string
+    value: string
+  }
+  faq?: {
+    id: string
+    value: string
+  }
   seo: {
     title: string
     description: string
@@ -52,6 +68,8 @@ export interface CollectionToTranslateFormatted {
   descriptionHtml: string
   handle: string
   intro?: string
+  guide?: string
+  faq?: string
   metaTitle: string
   metaDescription: string
   imageAltText: string

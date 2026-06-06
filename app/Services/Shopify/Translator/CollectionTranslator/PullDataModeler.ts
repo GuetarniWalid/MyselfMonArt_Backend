@@ -23,14 +23,22 @@ export default class PullDataModeler extends DefaultPullDataModeler {
           collection.node.altTextsMetaObject?.reference?.id
         )) as boolean
 
-        // Check if the "intro" metafield (custom.intro) translation is missing/outdated.
-        // This is the intro text rendered at the top of the storefront collection page.
-        const isIntroOutdated = await this.isIntroOutdated(collection.node.introMetafield?.id)
+        // The intro/guide/faq texts live in `custom.*` metafields, which Shopify treats
+        // as separate translatable resources. Check each one's EN translation state.
+        const isIntroOutdated = await this.isMetafieldValueOutdated(
+          collection.node.introMetafield?.id
+        )
+        const isGuideOutdated = await this.isMetafieldValueOutdated(
+          collection.node.guideMetafield?.id
+        )
+        const isFaqOutdated = await this.isMetafieldValueOutdated(collection.node.faqMetafield?.id)
 
         const collectionWithOnlyKeyToTranslate = this.getCollectionWithOnlyKeyToTranslate(
           collection.node,
           isAltMediaOutdated,
-          isIntroOutdated
+          isIntroOutdated,
+          isGuideOutdated,
+          isFaqOutdated
         )
         if (collectionWithOnlyKeyToTranslate) {
           collectionToTranslate.push(collectionWithOnlyKeyToTranslate)
@@ -60,6 +68,14 @@ export default class PullDataModeler extends DefaultPullDataModeler {
                       descriptionHtml
                       handle
                       introMetafield: metafield(namespace: "custom", key: "intro") {
+                        id
+                        value
+                      }
+                      guideMetafield: metafield(namespace: "custom", key: "guide") {
+                        id
+                        value
+                      }
+                      faqMetafield: metafield(namespace: "custom", key: "faq") {
                         id
                         value
                       }
@@ -118,7 +134,11 @@ export default class PullDataModeler extends DefaultPullDataModeler {
     return metaobjectEntry[0]?.outdated !== undefined ? metaobjectEntry[0]?.outdated : true
   }
 
-  private async isIntroOutdated(metafieldId: string | undefined) {
+  /**
+   * Generic outdated check for a `value`-keyed translatable metafield (intro, guide, faq).
+   * Returns true when the EN translation is missing or Shopify flags it outdated.
+   */
+  private async isMetafieldValueOutdated(metafieldId: string | undefined) {
     if (!metafieldId) return false
 
     const { query, variables } = this.getMetaobjectQuery(metafieldId, 'en')
@@ -134,7 +154,9 @@ export default class PullDataModeler extends DefaultPullDataModeler {
   public getCollectionWithOnlyKeyToTranslate(
     collection: CollectionWithOutdatedTranslations,
     isAltMediaOutdated: boolean,
-    isIntroOutdated: boolean
+    isIntroOutdated: boolean,
+    isGuideOutdated: boolean = false,
+    isFaqOutdated: boolean = false
   ) {
     const { translations, ...collectionWithoutTranslations } = collection
 
@@ -143,13 +165,28 @@ export default class PullDataModeler extends DefaultPullDataModeler {
       seo?: { title?: string; description?: string }
     }
 
-    // The intro lives in a metafield (separate translatable resource). Keep it only
-    // when its translation is missing/outdated; drop the raw metafield wrapper either way.
+    // intro/guide/faq each live in their own `custom.*` metafield (a separate
+    // translatable resource). Keep each only when its translation is missing/outdated;
+    // drop the raw metafield wrappers either way.
     delete mutableCollection.introMetafield
+    delete mutableCollection.guideMetafield
+    delete mutableCollection.faqMetafield
     if (isIntroOutdated && collection.introMetafield?.value) {
       mutableCollection.intro = {
         id: collection.introMetafield.id,
         value: collection.introMetafield.value,
+      }
+    }
+    if (isGuideOutdated && collection.guideMetafield?.value) {
+      mutableCollection.guide = {
+        id: collection.guideMetafield.id,
+        value: collection.guideMetafield.value,
+      }
+    }
+    if (isFaqOutdated && collection.faqMetafield?.value) {
+      mutableCollection.faq = {
+        id: collection.faqMetafield.id,
+        value: collection.faqMetafield.value,
       }
     }
 

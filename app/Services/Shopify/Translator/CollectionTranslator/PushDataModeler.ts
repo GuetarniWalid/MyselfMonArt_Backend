@@ -12,10 +12,10 @@ export default class PushDataModeler extends DefaultPushDataModeler {
     resourceTranslated: Partial<CollectionToTranslate>
     isoCode: LanguageCode
   }): Promise<TranslationsRegister[]> {
-    // The intro metafield is a separate translatable resource (the metafield itself),
-    // so strip it before delegating the standard fields to the base modeler.
-    const { intro: oldIntro, ...restOld } = resourceToTranslate
-    const { intro: newIntro, ...restNew } = resourceTranslated
+    // intro/guide/faq are each their own translatable resource (the metafield itself),
+    // so strip them before delegating the standard fields to the base modeler.
+    const { intro: oldIntro, guide: oldGuide, faq: oldFaq, ...restOld } = resourceToTranslate
+    const { intro: newIntro, guide: newGuide, faq: newFaq, ...restNew } = resourceTranslated
 
     const entries = await super.formatTranslationFieldsForGraphQLMutation({
       resourceToTranslate: restOld,
@@ -23,22 +23,31 @@ export default class PushDataModeler extends DefaultPushDataModeler {
       isoCode,
     })
 
-    if (oldIntro?.id && newIntro?.value) {
-      const introInputs = [] as TranslationInput[]
-      this.utils.createTranslationEntry(
-        {
-          key: 'value',
-          isoCode,
-          newValue: newIntro.value,
-          oldValue: oldIntro.value,
-        },
-        introInputs
-      )
-      if (introInputs.length > 0) {
-        entries.push({ resourceId: oldIntro.id, translations: introInputs })
-      }
-    }
+    this.pushMetafieldValueEntry(oldIntro, newIntro, isoCode, entries)
+    this.pushMetafieldValueEntry(oldGuide, newGuide, isoCode, entries)
+    this.pushMetafieldValueEntry(oldFaq, newFaq, isoCode, entries)
 
     return entries
+  }
+
+  /**
+   * Registers a `value`-keyed translation entry for a standalone translatable
+   * metafield (intro/guide/faq). No-op when ids/values are missing or unchanged.
+   */
+  private pushMetafieldValueEntry(
+    old: { id: string; value: string } | undefined,
+    next: { id: string; value: string } | undefined,
+    isoCode: LanguageCode,
+    entries: TranslationsRegister[]
+  ) {
+    if (!old?.id || !next?.value) return
+    const inputs = [] as TranslationInput[]
+    this.utils.createTranslationEntry(
+      { key: 'value', isoCode, newValue: next.value, oldValue: old.value },
+      inputs
+    )
+    if (inputs.length > 0) {
+      entries.push({ resourceId: old.id, translations: inputs })
+    }
   }
 }

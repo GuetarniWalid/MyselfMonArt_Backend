@@ -44,6 +44,19 @@ export default class TranslateCollection extends BaseTask {
           collectionTranslated.intro.value
         )
       }
+      if (collectionTranslated.guide?.value) {
+        collectionTranslated.guide.value = await linkLocalizer.localizeHtml(
+          collectionTranslated.guide.value
+        )
+      }
+      // The FAQ is a JSON array of { q, a }; localize links inside each HTML answer,
+      // leaving the JSON structure intact.
+      if (collectionTranslated.faq?.value) {
+        collectionTranslated.faq.value = await this.localizeFaqLinks(
+          collectionTranslated.faq.value,
+          linkLocalizer
+        )
+      }
 
       const responses = await shopify.translator('collection').updateTranslation({
         resourceToTranslate: collection,
@@ -62,5 +75,30 @@ export default class TranslateCollection extends BaseTask {
     console.log('✅ Collections translations updated')
 
     logTaskBoundary(false, 'Translate collection')
+  }
+
+  /**
+   * Localizes links inside a FAQ JSON value (array of { q, a }) by rewriting hrefs in
+   * each HTML answer. Returns the original string unchanged if it can't be parsed.
+   */
+  private async localizeFaqLinks(faqValue: string, linkLocalizer: LinkLocalizer) {
+    try {
+      const items = JSON.parse(faqValue)
+      if (!Array.isArray(items)) return faqValue
+      const localized = [] as any[]
+      for (const item of items) {
+        // Pass non-object entries through verbatim.
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+          localized.push(item)
+          continue
+        }
+        const next = { ...item }
+        if (typeof item.a === 'string') next.a = await linkLocalizer.localizeHtml(item.a)
+        localized.push(next)
+      }
+      return JSON.stringify(localized)
+    } catch {
+      return faqValue
+    }
   }
 }
