@@ -3,13 +3,16 @@ import type { LanguageCode, MetaobjectTranslation, RegionCode } from 'Types/Tran
 import DefaultPullDataModeler from '../PullDataModeler'
 import Utils from '../Utils'
 import English from 'App/Services/ChatGPT/Translator/Product/English'
+import TranslationSkipCacheService from 'App/Services/TranslationSkipCache'
 
 export default class PullDataModeler extends DefaultPullDataModeler {
   private utils: Utils
+  private skipCache: TranslationSkipCacheService
 
   constructor() {
     super()
     this.utils = new Utils()
+    this.skipCache = new TranslationSkipCacheService()
   }
   public async getResourceOutdatedTranslations(locale: LanguageCode = 'en', region?: RegionCode) {
     const productToTranslate = [] as Partial<ProductToTranslate>[]
@@ -43,7 +46,7 @@ export default class PullDataModeler extends DefaultPullDataModeler {
           locale
         )
 
-        const productWithOnlyKeyToTranslate = this.getProductWithOnlyKeyToTranslate(
+        const productWithOnlyKeyToTranslate = await this.getProductWithOnlyKeyToTranslate(
           product.node,
           isAltMediaOutdated,
           isShortTitleOutdated,
@@ -177,7 +180,7 @@ export default class PullDataModeler extends DefaultPullDataModeler {
     return entry[0]?.outdated !== undefined ? entry[0].outdated : true
   }
 
-  public getProductWithOnlyKeyToTranslate(
+  public async getProductWithOnlyKeyToTranslate(
     product: ProductWithOutdatedTranslations,
     isAltMediaOutdated: boolean,
     isShortTitleOutdated: boolean,
@@ -214,22 +217,24 @@ export default class PullDataModeler extends DefaultPullDataModeler {
       }
     })
 
-    const processedOptions = product.options.map((option) => {
-      const processedOption = this.deleteUpToDateOptionValuesFromOption(
-        { ...option },
-        locale,
-        region
-      )
+    const processedOptions = await Promise.all(
+      product.options.map(async (option) => {
+        const processedOption = await this.deleteUpToDateOptionValuesFromOption(
+          { ...option },
+          locale,
+          region
+        )
 
-      const { translations: optionTranslations, ...optionWithoutTranslations } = processedOption
-      optionTranslations.forEach((translation) => {
-        const key = this.getKeyFromTranslationKey(translation.key)
-        if (!translation.outdated) {
-          delete optionWithoutTranslations[key]
-        }
+        const { translations: optionTranslations, ...optionWithoutTranslations } = processedOption
+        optionTranslations.forEach((translation) => {
+          const key = this.getKeyFromTranslationKey(translation.key)
+          if (!translation.outdated) {
+            delete optionWithoutTranslations[key]
+          }
+        })
+        return optionWithoutTranslations
       })
-      return optionWithoutTranslations
-    })
+    )
     mutableProduct.options = processedOptions
 
     const processedMedia = this.getAltMediaToTranslate(product, isAltMediaOutdated)
@@ -255,7 +260,7 @@ export default class PullDataModeler extends DefaultPullDataModeler {
     }
   }
 
-  private deleteUpToDateOptionValuesFromOption(
+  private async deleteUpToDateOptionValuesFromOption(
     option: ProductWithOutdatedTranslations['options'][number],
     locale?: LanguageCode,
     region?: RegionCode
@@ -263,45 +268,72 @@ export default class PullDataModeler extends DefaultPullDataModeler {
     const optionValues = option.optionValues
     const translator = locale === 'en' ? new English(region) : null
 
-    const optionValuesCleaned = optionValues.map((optionValue) => {
-      const { translations, ...optionValueWithoutTranslations } = optionValue
-      translations.forEach((translation) => {
-        const key = this.getKeyFromTranslationKey(translation.key)
-        if (!translation.outdated) {
-          delete optionValueWithoutTranslations[key]
+    const optionValuesCleaned = await Promise.all(
+      optionValues.map(async (optionValue) => {
+        const sourceName = optionValue.name
+        const { translations, ...optionValueWithoutTranslations } = optionValue
+        translations.forEach((translation) => {
+          const key = this.getKeyFromTranslationKey(translation.key)
+          if (!translation.outdated) {
+            delete optionValueWithoutTranslations[key]
+          }
+        })
+
+        // Skip option values where the dictionary translation equals the source
+        // (e.g., "Poster" → "Poster", "Aluminium" → "Aluminium")
+        // These would be rejected by Shopify with "Value cannot match original content"
+        if (
+          translator &&
+          optionValueWithoutTranslations.name &&
+          translator.isKnownValue(optionValueWithoutTranslations.name) &&
+          translator.translateOptionValue(optionValueWithoutTranslations.name) ===
+            optionValueWithoutTranslations.name
+        ) {
+          delete (optionValueWithoutTranslations as { [key: string]: any }).name
         }
+
+        // For locales without a local dictionary (de/es), option values that carry no
+        // translatable words — dimensions like "40x60 cm", pure numbers — read identically
+        // in every language. ChatGPT echoes them back unchanged, Shopify rejects
+        // value===source, nothing is registered, and the value would be re-queued for
+        // translation every night forever. Drop them here so they never enter the loop;
+        // the storefront correctly falls back to the source value. en converts dimensions
+        // to inches via the dictionary above, so it is intentionally excluded.
+        if (
+          locale !== 'en' &&
+          optionValueWithoutTranslations.name &&
+          this.isLanguageNeutralValue(optionValueWithoutTranslations.name)
+        ) {
+          delete (optionValueWithoutTranslations as { [key: string]: any }).name
+        }
+
+        // Real words that read the same in the target language (e.g. "Aluminium",
+        // "Poster", "Plexiglas" → German) survive the guards above for de/es because we
+        // have no local dictionary for those locales. ChatGPT echoes them back unchanged,
+        // Utils.createTranslationEntry drops value===source, nothing is registered, and
+        // Shopify keeps reporting them outdated — so they'd be re-sent to ChatGPT every
+        // night forever (a per-locale, per-product cost leak). Once TranslateProduct has
+        // observed such an echo it records it in the skip cache; honour that here so the
+        // value is dropped until its source word actually changes (the hash guards that).
+        if (optionValueWithoutTranslations.name) {
+          const shouldSkip = await this.skipCache.shouldSkip(
+            {
+              resourceId: optionValue.id,
+              resourceType: 'product_option_value',
+              locale: locale ?? 'en',
+              region,
+              fieldKey: 'name',
+            },
+            sourceName
+          )
+          if (shouldSkip) {
+            delete (optionValueWithoutTranslations as { [key: string]: any }).name
+          }
+        }
+
+        return optionValueWithoutTranslations
       })
-
-      // Skip option values where the dictionary translation equals the source
-      // (e.g., "Poster" → "Poster", "Aluminium" → "Aluminium")
-      // These would be rejected by Shopify with "Value cannot match original content"
-      if (
-        translator &&
-        optionValueWithoutTranslations.name &&
-        translator.isKnownValue(optionValueWithoutTranslations.name) &&
-        translator.translateOptionValue(optionValueWithoutTranslations.name) ===
-          optionValueWithoutTranslations.name
-      ) {
-        delete (optionValueWithoutTranslations as { [key: string]: any }).name
-      }
-
-      // For locales without a local dictionary (de/es), option values that carry no
-      // translatable words — dimensions like "40x60 cm", pure numbers — read identically
-      // in every language. ChatGPT echoes them back unchanged, Shopify rejects
-      // value===source, nothing is registered, and the value would be re-queued for
-      // translation every night forever. Drop them here so they never enter the loop;
-      // the storefront correctly falls back to the source value. en converts dimensions
-      // to inches via the dictionary above, so it is intentionally excluded.
-      if (
-        locale !== 'en' &&
-        optionValueWithoutTranslations.name &&
-        this.isLanguageNeutralValue(optionValueWithoutTranslations.name)
-      ) {
-        delete (optionValueWithoutTranslations as { [key: string]: any }).name
-      }
-
-      return optionValueWithoutTranslations
-    })
+    )
 
     return {
       ...option,
