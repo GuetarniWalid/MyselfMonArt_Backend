@@ -1,5 +1,10 @@
 import type { ModelToTranslate } from 'Types/Model'
-import type { LanguageCode, TranslationInput, TranslationsRegister } from 'Types/Translation'
+import type {
+  LanguageCode,
+  RegionCode,
+  TranslationInput,
+  TranslationsRegister,
+} from 'Types/Translation'
 import DefaultPushDataModeler from '../PushDataModeler'
 
 export default class PushDataModeler extends DefaultPushDataModeler {
@@ -7,10 +12,12 @@ export default class PushDataModeler extends DefaultPushDataModeler {
     resourceToTranslate,
     resourceTranslated,
     isoCode,
+    region,
   }: {
     resourceToTranslate: ModelToTranslate
     resourceTranslated: ModelToTranslate
     isoCode: LanguageCode
+    region?: RegionCode
   }): Promise<TranslationsRegister[]> {
     const translationInputs = [] as TranslationInput[]
 
@@ -21,7 +28,8 @@ export default class PushDataModeler extends DefaultPushDataModeler {
         newValue: resourceTranslated.value as string,
         oldValue: resourceToTranslate.value as string,
       },
-      translationInputs
+      translationInputs,
+      region
     )
 
     return [

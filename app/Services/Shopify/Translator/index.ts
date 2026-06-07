@@ -61,6 +61,20 @@ export default class Translator extends Authentication {
   }
 
   /**
+   * Returns the theme's custom locale-content strings (the `t:` keys) that still need a
+   * translation for the given locale/region. Only meaningful for the static_section resource.
+   */
+  public async getOutdatedThemeLocaleContent(locale: LanguageCode = 'en', region?: RegionCode) {
+    if (!(this.resourceHandler instanceof StaticSectionTranslator)) {
+      throw new Error('getOutdatedThemeLocaleContent is only supported for static_section')
+    }
+    return await this.resourceHandler.pullDataModeler.getLocaleContentOutdatedTranslations(
+      locale,
+      region
+    )
+  }
+
+  /**
    * Removes per-locale translation overrides for the given keys on a resource, so the
    * storefront falls back to the default-locale (source) value. Used to purge stale
    * theme media overrides. Keys are removed in batches per resource.

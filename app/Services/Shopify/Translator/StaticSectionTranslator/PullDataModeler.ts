@@ -1,9 +1,88 @@
-import type { LanguageCode } from 'Types/Translation'
+import type { LanguageCode, RegionCode } from 'Types/Translation'
 import type { StaticSectionResponse, StaticSectionToTranslate } from 'Types/StaticSection'
 import type { TranslatableContent, Translation } from 'Types/Theme'
 import DefaultPullDataModeler from '../PullDataModeler'
+import Utils from '../Utils'
 
 export default class PullDataModeler extends DefaultPullDataModeler {
+  private utils: Utils
+
+  constructor() {
+    super()
+    this.utils = new Utils()
+  }
+
+  /**
+   * Theme LOCALE CONTENT = the theme's `t:` translation strings (locales/*.json),
+   * a single translatable resource (`OnlineStoreThemeLocaleContent`). We translate only
+   * the theme's OWN custom keys (sections.*, snippet.*, general.*, etc.) and deliberately
+   * SKIP the `shopify.*` and `customer_accounts.*` system namespaces — Shopify ships
+   * official translations for those, so re-translating them with ChatGPT would be worse.
+   * Returns items needing a translation (missing or outdated) for the given locale/region.
+   */
+  public async getLocaleContentOutdatedTranslations(
+    locale: LanguageCode = 'en',
+    region?: RegionCode
+  ): Promise<StaticSectionToTranslate[]> {
+    const themeId = await this.getMainThemeId()
+    const id = this.getIdFromThemeId(themeId)
+    const resourceId = `gid://shopify/OnlineStoreThemeLocaleContent/${id}`
+    const marketId = region ? this.utils.getMarketId(region) : undefined
+
+    const { query, variables } = this.getLocaleContentQuery(resourceId, locale, marketId)
+    const data = (await this.fetchGraphQL(query, variables)) as StaticSectionResponse
+    const node = data.translatableResourcesByIds.edges.map((edge) => edge.node)[0]
+    if (!node) return []
+
+    const toTranslate: StaticSectionToTranslate[] = []
+    for (const content of node.translatableContent) {
+      if (this.isShopifyManagedKey(content.key)) continue
+      if (this.isTranslationMedia(content)) continue
+      const hasNonEmptySource = typeof content.value === 'string' && content.value.trim() !== ''
+      if (!hasNonEmptySource) continue
+
+      const { isTranslationExists, translation } = this.isTranslationExists(
+        content,
+        node.translations,
+        locale
+      )
+      const isOutdated = this.isTranslationOutdated(isTranslationExists, translation)
+      if (!isTranslationExists || isOutdated) {
+        toTranslate.push({ id: resourceId, key: content.key, value: content.value })
+      }
+    }
+
+    return toTranslate
+  }
+
+  /** `shopify.*` and `customer_accounts.*` are Shopify-managed; never translate them here. */
+  private isShopifyManagedKey(key: string): boolean {
+    const top = key.split(':')[0]
+    return top.startsWith('shopify.') || top.startsWith('customer_accounts.')
+  }
+
+  private getLocaleContentQuery(resourceId: string, locale: LanguageCode, marketId?: string) {
+    return {
+      query: `query GetThemeLocaleContent($ids: [ID!]!) {
+        translatableResourcesByIds(first: 1, resourceIds: $ids) {
+          edges {
+            node {
+              resourceId
+              translatableContent { key value locale }
+              translations(locale: "${locale}"${marketId ? `, marketId: "${marketId}"` : ''}) {
+                key
+                value
+                locale
+                outdated
+              }
+            }
+          }
+        }
+      }`,
+      variables: { ids: [resourceId] },
+    }
+  }
+
   public async getResourceOutdatedTranslations(locale: LanguageCode = 'en') {
     const translatableContent = [] as StaticSectionToTranslate[]
     const themeId = await this.getMainThemeId()
