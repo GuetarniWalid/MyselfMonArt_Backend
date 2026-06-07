@@ -3,14 +3,14 @@ import type { LanguageCode } from 'Types/Translation'
 import DefaultPullDataModeler from '../PullDataModeler'
 
 export default class PullDataModeler extends DefaultPullDataModeler {
-  public async getResourceOutdatedTranslations() {
+  public async getResourceOutdatedTranslations(locale: LanguageCode = 'en') {
     const blogToTranslate = [] as Partial<BlogToTranslate>[]
     let cursor: string | null = null
     let hasNextPage = true
 
     while (hasNextPage) {
       // Get blogs with outdated translations without metaobject translations
-      const { query, variables } = this.getBlogsWithOutdatedTranslationsQuery(cursor)
+      const { query, variables } = this.getBlogsWithOutdatedTranslationsQuery(cursor, locale)
       const blogsData = await this.fetchGraphQL(query, variables)
       const blogs = blogsData.blogs.edges as {
         node: BlogWithOutdatedTranslations

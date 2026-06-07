@@ -17,6 +17,8 @@ export default class TranslateProduct extends BaseTask {
 
     await this.translateTo('en')
     await this.translateTo('en', 'UK')
+    await this.translateTo('de')
+    await this.translateTo('es')
 
     logTaskBoundary(false, 'Translate product')
   }

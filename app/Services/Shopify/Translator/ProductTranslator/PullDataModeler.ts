@@ -32,7 +32,8 @@ export default class PullDataModeler extends DefaultPullDataModeler {
       for (const product of products) {
         // Check if alt media is outdated
         const isAltMediaOutdated = (await this.isAltMediaOutdated(
-          product.node.altTextsMetaObject?.reference?.id
+          product.node.altTextsMetaObject?.reference?.id,
+          locale
         )) as boolean
 
         // Check if the "short title" metafield (title.short) translation is outdated/missing.
@@ -145,12 +146,12 @@ export default class PullDataModeler extends DefaultPullDataModeler {
     }
   }
 
-  private async isAltMediaOutdated(metaobjectId: string | undefined) {
+  private async isAltMediaOutdated(metaobjectId: string | undefined, locale: LanguageCode = 'en') {
     if (!metaobjectId) return []
 
     const { query: metaobjectQuery, variables: metaobjectVariables } = this.getMetaobjectQuery(
       metaobjectId,
-      'en'
+      locale
     )
     const metaobjectData = (await this.fetchGraphQL(
       metaobjectQuery,
@@ -284,6 +285,21 @@ export default class PullDataModeler extends DefaultPullDataModeler {
         delete (optionValueWithoutTranslations as { [key: string]: any }).name
       }
 
+      // For locales without a local dictionary (de/es), option values that carry no
+      // translatable words — dimensions like "40x60 cm", pure numbers — read identically
+      // in every language. ChatGPT echoes them back unchanged, Shopify rejects
+      // value===source, nothing is registered, and the value would be re-queued for
+      // translation every night forever. Drop them here so they never enter the loop;
+      // the storefront correctly falls back to the source value. en converts dimensions
+      // to inches via the dictionary above, so it is intentionally excluded.
+      if (
+        locale !== 'en' &&
+        optionValueWithoutTranslations.name &&
+        this.isLanguageNeutralValue(optionValueWithoutTranslations.name)
+      ) {
+        delete (optionValueWithoutTranslations as { [key: string]: any }).name
+      }
+
       return optionValueWithoutTranslations
     })
 
@@ -291,6 +307,23 @@ export default class PullDataModeler extends DefaultPullDataModeler {
       ...option,
       optionValues: optionValuesCleaned.filter((value) => !this.isEmptyField(value)),
     }
+  }
+
+  /**
+   * True when a value carries no translatable words — e.g. "40x60 cm", "40 x 60 cm",
+   * "2 cm", "100x100", "2,5 cm" — so it reads identically in every language. Such values
+   * must not be sent for translation: ChatGPT would echo the source, Shopify rejects
+   * value===source, and the value would loop forever. Strips number+unit tokens and
+   * dimension separators; if nothing but separators/spaces remains, it is language-neutral.
+   */
+  private isLanguageNeutralValue(value: string): boolean {
+    const residual = value
+      .trim()
+      .toLowerCase()
+      .replace(/\d+([.,]\d+)?\s*(cm|mm|m|in|inch|inches)?/g, ' ')
+      .replace(/[x×*/+\-.,'"]/g, ' ')
+      .replace(/\s+/g, '')
+    return residual.length === 0
   }
 
   private getAltMediaToTranslate(

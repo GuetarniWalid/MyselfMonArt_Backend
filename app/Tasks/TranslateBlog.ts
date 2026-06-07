@@ -1,3 +1,4 @@
+import type { LanguageCode } from 'Types/Translation'
 import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import ChatGPT from 'App/Services/ChatGPT'
 import Shopify from 'App/Services/Shopify'
@@ -15,19 +16,27 @@ export default class TranslateBlog extends BaseTask {
   public async handle() {
     logTaskBoundary(true, 'Translate blog')
 
+    await this.translateTo('en')
+    await this.translateTo('de')
+    await this.translateTo('es')
+
+    logTaskBoundary(false, 'Translate blog')
+  }
+
+  private async translateTo(locale: LanguageCode) {
     const shopify = new Shopify()
-    const blogsToTranslate = await shopify.translator('blog').getOutdatedTranslations()
+    const blogsToTranslate = await shopify.translator('blog').getOutdatedTranslations(locale)
     console.log('🚀 ~ blogs to translate length:', blogsToTranslate.length)
     const chatGPT = new ChatGPT()
 
     for (const blog of blogsToTranslate) {
       console.log('============================')
       console.log('Id blog to translate => ', blog.id)
-      const blogTranslated = await chatGPT.translate(blog, 'blog', 'en')
+      const blogTranslated = await chatGPT.translate(blog, 'blog', locale)
       const responses = await shopify.translator('blog').updateTranslation({
         resourceToTranslate: blog,
         resourceTranslated: blogTranslated,
-        isoCode: 'en',
+        isoCode: locale,
       })
       responses.forEach((response) => {
         if (response.translationsRegister.userErrors.length > 0) {
@@ -38,8 +47,6 @@ export default class TranslateBlog extends BaseTask {
       })
       console.log('============================')
     }
-    console.log('✅ Blogs translations updated')
-
-    logTaskBoundary(false, 'Translate blog')
+    console.log(`✅ Blogs translations updated to ${locale}`)
   }
 }

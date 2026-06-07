@@ -1,4 +1,5 @@
 import type { CollectionToTranslate } from 'Types/Collection'
+import type { LanguageCode } from 'Types/Translation'
 import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import ChatGPT from 'App/Services/ChatGPT'
 import LinkLocalizer from 'App/Services/LinkLocalizer'
@@ -17,11 +18,21 @@ export default class TranslateCollection extends BaseTask {
   public async handle() {
     logTaskBoundary(true, 'Translate collection')
 
+    await this.translateTo('en')
+    await this.translateTo('de')
+    await this.translateTo('es')
+
+    logTaskBoundary(false, 'Translate collection')
+  }
+
+  private async translateTo(locale: LanguageCode) {
     const shopify = new Shopify()
-    const collectionsToTranslate = await shopify.translator('collection').getOutdatedTranslations()
+    const collectionsToTranslate = await shopify
+      .translator('collection')
+      .getOutdatedTranslations(locale)
     console.log('🚀 ~ collections to translate length:', collectionsToTranslate.length)
     const chatGPT = new ChatGPT()
-    const linkLocalizer = new LinkLocalizer('en')
+    const linkLocalizer = new LinkLocalizer(locale)
 
     for (const collection of collectionsToTranslate) {
       console.log('============================')
@@ -29,10 +40,10 @@ export default class TranslateCollection extends BaseTask {
       const collectionTranslated = (await chatGPT.translate(
         collection,
         'collection',
-        'en'
+        locale
       )) as Partial<CollectionToTranslate>
 
-      // Rewrite any in-description links so they point at the English equivalent page
+      // Rewrite any in-description links so they point at the locale-equivalent page
       // (locale prefix + translated handle) instead of the French source page.
       if (collectionTranslated.descriptionHtml) {
         collectionTranslated.descriptionHtml = await linkLocalizer.localizeHtml(
@@ -61,7 +72,7 @@ export default class TranslateCollection extends BaseTask {
       const responses = await shopify.translator('collection').updateTranslation({
         resourceToTranslate: collection,
         resourceTranslated: collectionTranslated,
-        isoCode: 'en',
+        isoCode: locale,
       })
       responses.forEach((response) => {
         if (response.translationsRegister.userErrors.length > 0) {
@@ -72,9 +83,7 @@ export default class TranslateCollection extends BaseTask {
       })
       console.log('============================')
     }
-    console.log('✅ Collections translations updated')
-
-    logTaskBoundary(false, 'Translate collection')
+    console.log(`✅ Collections translations updated to ${locale}`)
   }
 
   /**

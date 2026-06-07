@@ -63,12 +63,16 @@ export default class ProductTranslator {
 
   private computeUnknownOptionValues() {
     this.unknownOptionValues = []
+    if (!this.payload.options) return
     const languageHandler = this.getLanguageHandler()
-    if (!languageHandler || !this.payload.options) return
 
     this.payload.options.forEach((option, optionIndex) => {
       option.optionValues?.forEach((optionValue, valueIndex) => {
-        if (optionValue.name && !languageHandler.isKnownValue(optionValue.name)) {
+        if (!optionValue.name) return
+        // With a local dictionary (en), only values it doesn't recognise go to ChatGPT;
+        // the rest are translated locally. Without a dictionary (de/es), every option
+        // value must go to ChatGPT, otherwise it would ship untranslated (French).
+        if (!languageHandler || !languageHandler.isKnownValue(optionValue.name)) {
           this.unknownOptionValues.push({
             optionIndex,
             valueIndex,

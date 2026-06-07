@@ -22,7 +22,8 @@ export default class PullDataModeler extends DefaultPullDataModeler {
       for (const content of fileData.translatableContent) {
         const { isTranslationExists, translation } = this.isTranslationExists(
           content,
-          fileData.translations
+          fileData.translations,
+          locale
         )
         const isTranslationOutdated = this.isTranslationOutdated(isTranslationExists, translation)
 

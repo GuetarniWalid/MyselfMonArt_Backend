@@ -3,14 +3,14 @@ import type { LanguageCode, MetaobjectTranslation } from 'Types/Translation'
 import DefaultPullDataModeler from '../PullDataModeler'
 
 export default class PullDataModeler extends DefaultPullDataModeler {
-  public async getResourceOutdatedTranslations() {
+  public async getResourceOutdatedTranslations(locale: LanguageCode = 'en') {
     const collectionToTranslate = [] as any[]
     let cursor: string | null = null
     let hasNextPage = true
 
     while (hasNextPage) {
       // Get collections with outdated translations without metaobject translations
-      const { query, variables } = this.getCollectionsWithOutdatedTranslationsQuery(cursor)
+      const { query, variables } = this.getCollectionsWithOutdatedTranslationsQuery(cursor, locale)
       const collectionsData = await this.fetchGraphQL(query, variables)
       const collections = collectionsData.collections.edges as {
         node: CollectionWithOutdatedTranslations
@@ -20,18 +20,24 @@ export default class PullDataModeler extends DefaultPullDataModeler {
       for (const collection of collections) {
         // Check if alt media is outdated
         const isAltMediaOutdated = (await this.isAltMediaOutdated(
-          collection.node.altTextsMetaObject?.reference?.id
+          collection.node.altTextsMetaObject?.reference?.id,
+          locale
         )) as boolean
 
         // The intro/guide/faq texts live in `custom.*` metafields, which Shopify treats
-        // as separate translatable resources. Check each one's EN translation state.
+        // as separate translatable resources. Check each one's translation state for this locale.
         const isIntroOutdated = await this.isMetafieldValueOutdated(
-          collection.node.introMetafield?.id
+          collection.node.introMetafield?.id,
+          locale
         )
         const isGuideOutdated = await this.isMetafieldValueOutdated(
-          collection.node.guideMetafield?.id
+          collection.node.guideMetafield?.id,
+          locale
         )
-        const isFaqOutdated = await this.isMetafieldValueOutdated(collection.node.faqMetafield?.id)
+        const isFaqOutdated = await this.isMetafieldValueOutdated(
+          collection.node.faqMetafield?.id,
+          locale
+        )
 
         const collectionWithOnlyKeyToTranslate = this.getCollectionWithOnlyKeyToTranslate(
           collection.node,
@@ -116,12 +122,12 @@ export default class PullDataModeler extends DefaultPullDataModeler {
     }
   }
 
-  private async isAltMediaOutdated(metaobjectId: string | undefined) {
+  private async isAltMediaOutdated(metaobjectId: string | undefined, locale: LanguageCode = 'en') {
     if (!metaobjectId) return []
 
     const { query: metaobjectQuery, variables: metaobjectVariables } = this.getMetaobjectQuery(
       metaobjectId,
-      'en'
+      locale
     )
     const metaobjectData = (await this.fetchGraphQL(
       metaobjectQuery,
@@ -136,12 +142,15 @@ export default class PullDataModeler extends DefaultPullDataModeler {
 
   /**
    * Generic outdated check for a `value`-keyed translatable metafield (intro, guide, faq).
-   * Returns true when the EN translation is missing or Shopify flags it outdated.
+   * Returns true when the translation for `locale` is missing or Shopify flags it outdated.
    */
-  private async isMetafieldValueOutdated(metafieldId: string | undefined) {
+  private async isMetafieldValueOutdated(
+    metafieldId: string | undefined,
+    locale: LanguageCode = 'en'
+  ) {
     if (!metafieldId) return false
 
-    const { query, variables } = this.getMetaobjectQuery(metafieldId, 'en')
+    const { query, variables } = this.getMetaobjectQuery(metafieldId, locale)
     const data = (await this.fetchGraphQL(query, variables)) as MetaobjectTranslation
 
     const entry = data.translatableResource.translations.filter(

@@ -3,14 +3,14 @@ import type { LanguageCode, MetaobjectTranslation } from 'Types/Translation'
 import DefaultPullDataModeler from '../PullDataModeler'
 
 export default class PullDataModeler extends DefaultPullDataModeler {
-  public async getResourceOutdatedTranslations() {
+  public async getResourceOutdatedTranslations(locale: LanguageCode = 'en') {
     const articleToTranslate = [] as Partial<ArticleToTranslate>[]
     let cursor: string | null = null
     let hasNextPage = true
 
     while (hasNextPage) {
       // Get articles with outdated translations without metaobject translations
-      const { query, variables } = this.getArticlesWithOutdatedTranslationsQuery(cursor)
+      const { query, variables } = this.getArticlesWithOutdatedTranslationsQuery(cursor, locale)
       const articlesData = await this.fetchGraphQL(query, variables)
       const articles = articlesData.articles.edges as {
         node: ArticleWithOutdatedTranslations
@@ -20,7 +20,8 @@ export default class PullDataModeler extends DefaultPullDataModeler {
       for (const article of articles) {
         // Check if alt media is outdated
         const isAltMediaOutdated = (await this.isAltMediaOutdated(
-          article.node.altTextsMetaObject?.reference?.id
+          article.node.altTextsMetaObject?.reference?.id,
+          locale
         )) as boolean
 
         const articleWithOnlyKeyToTranslate = this.getArticleWithOnlyKeyToTranslate(
@@ -88,12 +89,12 @@ export default class PullDataModeler extends DefaultPullDataModeler {
     }
   }
 
-  private async isAltMediaOutdated(metaobjectId: string | undefined) {
+  private async isAltMediaOutdated(metaobjectId: string | undefined, locale: LanguageCode = 'en') {
     if (!metaobjectId) return []
 
     const { query: metaobjectQuery, variables: metaobjectVariables } = this.getMetaobjectQuery(
       metaobjectId,
-      'en'
+      locale
     )
     const metaobjectData = (await this.fetchGraphQL(
       metaobjectQuery,
