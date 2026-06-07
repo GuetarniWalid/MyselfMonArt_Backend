@@ -17,8 +17,11 @@ export default class TranslateProduct extends BaseTask {
     logTaskBoundary(true, 'Translate Models')
 
     await this.translateTo('en')
-    await this.translateTo('de')
-    await this.translateTo('es')
+    // de/es paused on purpose: the ~1183 theme-template strings are translated manually
+    // (Claude, via `translate:manual`) to avoid the GPT cost. Re-enable these two lines
+    // once the manual theme backfill is done if ongoing auto-translation is wanted.
+    // await this.translateTo('de')
+    // await this.translateTo('es')
 
     logTaskBoundary(false, 'Translate Models')
   }
