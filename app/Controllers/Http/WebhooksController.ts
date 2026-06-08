@@ -7,6 +7,7 @@ import WebhookLog from 'App/Models/WebhookLog'
 import Database from '@ioc:Adonis/Lucid/Database'
 import { logTaskBoundary } from 'App/Utils/Logs'
 import VideoStorage from 'App/Services/VideoStorage'
+import PublishAlertMailer from 'App/Services/PublishAlertMailer'
 
 interface UpdateFailure {
   productId: string
@@ -151,8 +152,23 @@ export default class WebhooksController {
     if (product.artworkTypeMetafield?.value !== type) return
 
     console.info(`🚀 Filling model data on ${type}: ${id}`)
-    await shopify.product.artworkCopier.copyModelDataFromImageRatio(product)
-    console.info(`🚀 Data successfully copied on ${type} ${id}`)
+    let copyFailed = false
+    try {
+      await shopify.product.artworkCopier.copyModelDataFromImageRatio(product)
+      console.info(`🚀 Data successfully copied on ${type} ${id}`)
+    } catch (copyError: any) {
+      copyFailed = true
+      const msg = copyError instanceof Error ? copyError.message : String(copyError)
+      console.error(`❌ Model copy failed for ${type} ${id}: ${msg}`)
+    }
+
+    // Safety net: make sure the full variant matrix was actually created.
+    // Shopify caps variant creation (1,000/day past 50,000 variants), so a burst
+    // publish can leave a product with only its default variant — alert if so.
+    await this.verifyVariantMatrix(shopify, id, type)
+
+    // Don't enrich an incomplete product if the model copy failed outright
+    if (copyFailed) return
 
     // Color detection (runs after model data copy)
     console.info(`🎨 Detecting colors for ${type} ${id}`)
@@ -162,6 +178,47 @@ export default class WebhooksController {
     // Theme detection (runs after color detection)
     console.info(`🏷️  Detecting themes for ${type} ${id}`)
     await chatGPT.theme.detectAndSetThemes(product)
+  }
+
+  /**
+   * Safety net for partial variant creation.
+   *
+   * Shopify throttles/limits bulk variant creation during heavy publishing (and
+   * caps it at 1,000/day once a store passes 50,000 variants). When that happens
+   * mid-batch, the options get copied but the size×border×frame matrix is left
+   * incomplete (often a single default variant at 0,00). We compare the product's
+   * variant count against the model and email an alert if it's incomplete, so the
+   * product never silently ships with one variant. We do NOT auto-retry the copy
+   * here: hitting the daily limit triggers Shopify's multi-hour backoff, which
+   * would block the webhook — the human re-runs `shopify:resync_product_variants`
+   * once the daily quota resets.
+   */
+  private async verifyVariantMatrix(shopify: Shopify, id: string, type: string): Promise<void> {
+    try {
+      const product = await shopify.product.getProductById(id)
+      const model = await shopify.product.artworkCopier.getModelFromProduct(product)
+      const expected = model?.variants?.nodes?.length ?? 0
+
+      // No reliable reference point to assess completeness
+      if (expected <= 1) return
+
+      const actual = product.variants?.nodes?.length ?? 0
+      if (actual >= expected) return
+
+      console.error(
+        `❌ Incomplete variant matrix for ${type} ${id}: ${actual}/${expected} — alerting`
+      )
+      await new PublishAlertMailer().sendIncompleteVariants({
+        productId: id,
+        title: product.title,
+        type,
+        actual,
+        expected,
+      })
+    } catch (error: any) {
+      const msg = error instanceof Error ? error.message : String(error)
+      console.error(`⚠️  verifyVariantMatrix failed for ${id}: ${msg}`)
+    }
   }
 
   private async handleTapestryCreate(id: string) {
