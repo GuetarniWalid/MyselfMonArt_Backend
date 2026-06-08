@@ -258,6 +258,69 @@ export default class Product extends Authentication {
     return allProducts
   }
 
+  /**
+   * Lightweight scan for artworks (paintings/posters) whose variant matrix was
+   * never fully created: they carry real options but only a single (default)
+   * variant. Used by the RepairIncompleteArtworks cron to auto-heal products
+   * left behind when Shopify's daily variant-creation limit interrupts a burst
+   * publish. Cheap query (id, title, variant count, option names) — no variants
+   * payload, no per-product model fetch.
+   */
+  public async getIncompleteArtworks(): Promise<
+    Array<{ id: string; title: string; variantsCount: number }>
+  > {
+    const incomplete: Array<{ id: string; title: string; variantsCount: number }> = []
+    let cursor: string | null = null
+    let hasNextPage = true
+
+    while (hasNextPage) {
+      const query = `query IncompleteArtworksScan($cursor: String) {
+        products(first: 250, after: $cursor, query: "published_status:published") {
+          edges {
+            cursor
+            node {
+              id
+              title
+              variantsCount { count }
+              options(first: 3) { name }
+              tags
+              artworkTypeMetafield: metafield(namespace: "artwork", key: "type") { value }
+            }
+          }
+          pageInfo { hasNextPage }
+        }
+      }`
+
+      const data = await this.fetchGraphQL(query, { cursor }, 100)
+      const edges = (data.products.edges ?? []) as Array<any>
+
+      for (const edge of edges) {
+        const node = edge.node
+        const artworkType = node.artworkTypeMetafield?.value
+        if (artworkType !== 'painting' && artworkType !== 'poster') continue
+
+        const isModel = (node.tags ?? []).some((t: string) =>
+          ['portrait model', 'paysage model', 'square model'].includes(t)
+        )
+        if (isModel) continue
+
+        const optionCount = node.options?.length ?? 0
+        const variantsCount = node.variantsCount?.count ?? 0
+
+        // Real options but a single variant => the size×border×frame matrix is missing
+        if (optionCount >= 2 && variantsCount <= 1) {
+          incomplete.push({ id: node.id, title: node.title, variantsCount })
+        }
+      }
+
+      hasNextPage = data.products.pageInfo.hasNextPage
+      cursor = hasNextPage && edges.length ? edges[edges.length - 1].cursor : null
+      if (hasNextPage) await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+
+    return incomplete
+  }
+
   private getAllProductsQuery(cursor: string | null = null, includeUnpublished: boolean = false) {
     const statusQuery = includeUnpublished ? '' : 'published_status:published'
     return {

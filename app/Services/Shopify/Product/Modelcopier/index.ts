@@ -741,16 +741,12 @@ export default abstract class ModelCopier {
       inventoryPolicy?: 'DENY' | 'CONTINUE'
     }>
   ): Promise<void> {
-    // Exponential backoff delays for daily limit (in milliseconds)
-    // Much longer than Authentication.retryWithBackoff() delays since daily limit resets at midnight UTC
-    const DAILY_LIMIT_RETRY_DELAYS = [
-      1 * 60 * 1000, // 1 minute
-      5 * 60 * 1000, // 5 minutes
-      15 * 60 * 1000, // 15 minutes
-      60 * 60 * 1000, // 1 hour
-      6 * 60 * 60 * 1000, // 6 hours
-      24 * 60 * 60 * 1000, // 24 hours
-    ]
+    // Fail fast on the daily variant creation limit: do NOT block the webhook for
+    // hours waiting for the quota to reset. That in-memory wait does not survive a
+    // backend redeploy anyway. The RepairIncompleteArtworks daily cron owns the
+    // "retry later" responsibility — it re-runs the copy (differential, idempotent)
+    // once the quota is available. Empty array => throw on the first limit hit.
+    const DAILY_LIMIT_RETRY_DELAYS: number[] = []
 
     let lastError: Error | null = null
 
