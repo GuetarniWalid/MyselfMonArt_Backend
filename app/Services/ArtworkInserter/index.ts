@@ -10,7 +10,11 @@ export interface InsertOptions {
   fidelity?: 'standard' | 'high' // 'high' = Nano Banana Pro (meilleur sur le texte, ~3x plus cher)
 }
 
-// Ratio cible par orientation (verrouille l'aspectRatio de sortie = celui du décor -> cadre aligné).
+// Le DÉCOR est désormais TOUJOURS CARRÉ (cf. DecorGenerator) -> la sortie d'insertion est elle aussi
+// verrouillée en 1:1 pour épouser le décor sans reframing. Le tableau (support) dans la pièce garde sa
+// forme (portrait/carré/paysage) : c'est la zone grise à remplir, PAS le ratio de l'image. `target` ne
+// sert donc plus qu'à valider l'entrée (un vieux décor sauvegardé non carré serait recadré en carré).
+const OUTPUT_ASPECT_RATIO = '1:1'
 const TARGET = {
   portrait: { ratio: '3:4' },
   square: { ratio: '1:1' },
@@ -143,7 +147,7 @@ export default class ArtworkInserter {
       ],
       config: {
         responseModalities: ['IMAGE'],
-        imageConfig: { aspectRatio: t.ratio }, // camelCase ; verrouille le ratio = pas de reframing
+        imageConfig: { aspectRatio: OUTPUT_ASPECT_RATIO }, // décor carré -> sortie carrée, pas de reframing
       },
     }
 

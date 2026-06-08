@@ -12,13 +12,16 @@ export interface DecorOptions {
   theme?: string // souhait libre ; avec roomType, compose la scène — au moins l'un des deux requis
 }
 
-// Ratio/orientation pour le prompt + taille image gpt-image-2 EXACTE pour le ratio. La taille pixel
-// prime sur le texte, donc elle DOIT matcher le ratio cible (3:4 / 1:1 / 4:3) pour que l'insertion
-// de l'oeuvre (étape 2) reste alignée.
+// L'IMAGE générée est TOUJOURS CARRÉE (1024x1024) — exigence métier : la PHOTO du décor est carrée
+// quelle que soit l'orientation du tableau. Le ratio/orientation ci-dessous ne pilotent PLUS la taille
+// pixel ; ils ne servent qu'au PROMPT, pour que le SUPPORT VIDE (le « tableau ») accroché dans la pièce
+// garde, lui, la forme du tableau (portrait 3:4 / carré 1:1 / paysage 4:3). L'insertion (étape 2) sort
+// elle aussi en carré -> le tout reste aligné.
+const SQUARE_SIZE = '1024x1024'
 const TARGET = {
-  portrait: { ratio: '3:4', orientation: 'portrait', size: '1152x1536' },
-  square: { ratio: '1:1', orientation: 'square', size: '1024x1024' },
-  landscape: { ratio: '4:3', orientation: 'landscape', size: '1536x1152' },
+  portrait: { ratio: '3:4', orientation: 'portrait' },
+  square: { ratio: '1:1', orientation: 'square' },
+  landscape: { ratio: '4:3', orientation: 'landscape' },
 } as const
 
 // ---- ART-DIRECTOR : traduit le souhait libre en UNE scène concrète, cohérente, photoréaliste. ----
@@ -94,7 +97,7 @@ export default class DecorGenerator {
     const params: any = {
       model: this.imageModel,
       prompt,
-      size: t.size,
+      size: SQUARE_SIZE, // image TOUJOURS carrée ; la forme du tableau est portée par le prompt (t.ratio)
       quality: this.quality,
       n: 1,
     }
@@ -181,7 +184,7 @@ SCENE: ${scene}
 
 THE EMPTY ${productNoun} (focal point): a brand-new, unprinted ${productNoun} hangs alone on a clear stretch of wall, centered at eye level — one perfectly uniform, smooth MATTE light-grey (#ECECEC) surface, evenly flat-lit and shadow-free even though the room is directionally lit; nothing on it, no gradient, glow or pattern. Perfectly flat and planar, crisp straight edges, exact 90-degree corners, a calm clean margin of wall on all four sides, never touching the photo edge, nothing overlapping it. ${productLine}
 
-SHAPE & FRAMING: a ${orientation} rectangle, ${ratio} proportion, its axes parallel to the image edges, occupying roughly 70-80% of the image height, centered, shot dead straight-on, camera level, no wide-angle distortion, no keystone, vertical lines vertical.
+SHAPE & FRAMING: the overall photograph is a SQUARE frame (1:1). Inside it, the empty ${productNoun} is unmistakably a ${orientation} rectangle of ${ratio} proportion (do NOT make the support square unless that IS the stated proportion), its axes parallel to the image edges, centered at eye level. Size it generously — roughly two-thirds of the frame — yet ALWAYS keep a clear, even margin of bare wall on all four sides, so the support never touches or is cropped by the photo edge. Shot dead straight-on, camera level, no wide-angle distortion, no keystone, vertical lines vertical.
 
 QUALITY & COHERENCE (most important): ultra photorealistic, crisp and clean; physically coherent and plausible — correct scale, nothing blocking doors or windows, no floating, melted, duplicated or malformed objects, every item a real recognizable thing; one directional natural light source with soft realistic shadows; subtle natural film grain and a gentle vignette; natural true-to-life colour. It must NOT look AI-generated: no glossy plastic, no sourceless even lighting, no showroom sterility.
 
