@@ -16,6 +16,7 @@ import Authentication from '../Authentication'
 import ArticleTranslator from './ArticleTranslator'
 import BlogTranslator from './BlogTranslator'
 import CollectionTranslator from './CollectionTranslator'
+import LinkTranslator from './LinkTranslator'
 import MetaobjectTranslator from './MetaobjectTranslator'
 import ModelTranslator from './ModelTranslator'
 import PageTranslator from './PageTranslator'
@@ -27,6 +28,7 @@ export default class Translator extends Authentication {
     | ArticleTranslator
     | BlogTranslator
     | CollectionTranslator
+    | LinkTranslator
     | MetaobjectTranslator
     | PageTranslator
     | ProductTranslator
@@ -120,6 +122,7 @@ export default class Translator extends Authentication {
     | ArticleTranslator
     | BlogTranslator
     | CollectionTranslator
+    | LinkTranslator
     | MetaobjectTranslator
     | ModelTranslator
     | PageTranslator
@@ -133,6 +136,9 @@ export default class Translator extends Authentication {
     }
     if (resource === 'collection') {
       return new CollectionTranslator()
+    }
+    if (resource === 'link') {
+      return new LinkTranslator()
     }
     if (resource === 'metaobject') {
       return new MetaobjectTranslator()

@@ -2,6 +2,7 @@ export type Resource =
   | 'article'
   | 'blog'
   | 'collection'
+  | 'link'
   | 'metaobject'
   | 'model'
   | 'page'
