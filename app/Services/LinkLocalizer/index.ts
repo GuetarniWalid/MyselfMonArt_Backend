@@ -21,7 +21,7 @@ export default class LinkLocalizer extends Authentication {
   private storeHost = 'www.myselfmonart.com'
   private base = 'https://www.myselfmonart.com'
   // locale segments we recognise as a leading path prefix to strip before matching
-  private localeSegments = new Set(['en', 'fr', 'es', 'de'])
+  private localeSegments = new Set(['en', 'fr', 'es', 'de', 'nl'])
 
   // caches (per instance / per run)
   private collectionCache = new Map<string, string | null>()

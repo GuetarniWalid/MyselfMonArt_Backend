@@ -51,6 +51,8 @@ export default class MetaobjectTranslator {
         return 'English'
       case 'de':
         return 'German'
+      case 'nl':
+        return 'Dutch'
     }
   }
 

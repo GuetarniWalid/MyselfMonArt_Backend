@@ -9,7 +9,7 @@ export default class TestMetaobjectTranslations extends BaseCommand {
   public static commandName = 'test:metaobject_translations'
   public static description = 'Test metaobject translations for colors and themes'
 
-  @args.string({ description: 'Target language code (en, es, de)', required: false })
+  @args.string({ description: 'Target language code (en, es, de, nl)', required: false })
   public locale: LanguageCode
 
   @flags.string({ description: 'Region code (e.g., UK for en-UK)' })

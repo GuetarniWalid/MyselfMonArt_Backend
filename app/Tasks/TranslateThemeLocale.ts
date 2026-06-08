@@ -35,6 +35,7 @@ export default class TranslateThemeLocale extends BaseTask {
     await this.translateTo('en')
     await this.translateTo('es')
     await this.translateTo('de')
+    await this.translateTo('nl')
 
     logTaskBoundary(false, 'Translate theme locale content')
   }

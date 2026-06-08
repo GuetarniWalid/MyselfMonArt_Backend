@@ -41,6 +41,8 @@ export default class StaticSectionTranslator {
         return 'English'
       case 'de':
         return 'German'
+      case 'nl':
+        return 'Dutch'
     }
   }
 

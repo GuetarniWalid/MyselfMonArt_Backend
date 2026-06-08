@@ -13,7 +13,7 @@ export default class CleanThemeMediaOverrides extends BaseCommand {
   public static commandName = 'clean:theme_media_overrides'
   public static description = 'Remove stale theme SVG/media translation overrides'
 
-  @flags.string({ description: 'Comma-separated locales (default en,es,de)' })
+  @flags.string({ description: 'Comma-separated locales (default en,es,de,nl)' })
   public locales: string
 
   @flags.string({ description: 'Only act on keys whose resourceId contains this substring' })
@@ -28,7 +28,7 @@ export default class CleanThemeMediaOverrides extends BaseCommand {
   }
 
   public async run() {
-    const locales = (this.locales || 'en,es,de')
+    const locales = (this.locales || 'en,es,de,nl')
       .split(',')
       .map((l) => l.trim())
       .filter(Boolean) as LanguageCode[]

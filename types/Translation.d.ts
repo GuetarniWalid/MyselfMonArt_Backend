@@ -1,6 +1,6 @@
 import type { ProductToTranslate } from './Product'
 
-export type LanguageCode = 'en' | 'es' | 'de' | 'fr'
+export type LanguageCode = 'en' | 'es' | 'de' | 'fr' | 'nl'
 export type RegionCode = 'UK' | 'US'
 
 export type TranslatableContent = Partial<ProductToTranslate>

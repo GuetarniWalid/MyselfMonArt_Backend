@@ -21,6 +21,7 @@ export default class TranslateMetaobjects extends BaseTask {
     await this.translateTo('en', 'UK')
     await this.translateTo('es')
     await this.translateTo('de')
+    await this.translateTo('nl')
 
     logTaskBoundary(false, 'Translate metaobjects')
   }

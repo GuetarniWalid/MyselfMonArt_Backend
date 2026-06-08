@@ -8,7 +8,7 @@ export default class TestProductTranslations extends BaseCommand {
   public static commandName = 'test:product_translations'
   public static description = 'Test product translations with a limited number of products'
 
-  @args.string({ description: 'Target language code (en, es, de)', required: false })
+  @args.string({ description: 'Target language code (en, es, de, nl)', required: false })
   public locale: LanguageCode
 
   @flags.string({ description: 'Region code (e.g., UK for en-UK)' })

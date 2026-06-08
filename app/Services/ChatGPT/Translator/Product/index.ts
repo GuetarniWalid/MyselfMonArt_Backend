@@ -49,6 +49,8 @@ export default class ProductTranslator {
         return 'English'
       case 'de':
         return 'German'
+      case 'nl':
+        return 'Dutch'
     }
   }
 

@@ -19,6 +19,7 @@ export default class TranslateArticle extends BaseTask {
     await this.translateTo('en')
     await this.translateTo('de')
     await this.translateTo('es')
+    await this.translateTo('nl')
 
     logTaskBoundary(false, 'Translate article')
   }

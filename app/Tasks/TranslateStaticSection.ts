@@ -8,7 +8,7 @@ import { logTaskBoundary } from 'App/Utils/Logs'
 export default class TranslateStaticSection extends BaseTask {
   // Theme locales whose stale media overrides we keep in sync. The default locale
   // (French) is the source and is never overridden.
-  private static readonly MEDIA_CLEANUP_LOCALES: LanguageCode[] = ['en', 'es', 'de']
+  private static readonly MEDIA_CLEANUP_LOCALES: LanguageCode[] = ['en', 'es', 'de', 'nl']
 
   public static get schedule() {
     return CronTimeV2.everyDayAt(4, 30)
