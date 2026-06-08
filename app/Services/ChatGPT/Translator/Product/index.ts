@@ -4,6 +4,7 @@ import ProductToTranslateValidator from 'App/Validators/ProductToTranslateValida
 import { validator } from '@ioc:Adonis/Core/Validator'
 import { z } from 'zod'
 import English from './English'
+import { lookupOptionValue } from 'App/Services/Shopify/Translator/optionValueDictionary'
 
 export default class ProductTranslator {
   private targetLanguage: LanguageCode
@@ -71,8 +72,12 @@ export default class ProductTranslator {
     this.payload.options.forEach((option, optionIndex) => {
       option.optionValues?.forEach((optionValue, valueIndex) => {
         if (!optionValue.name) return
+        // Border/frame values resolved by the shared canonical dictionary (de/es/nl) must
+        // NOT go to ChatGPT — they have to stay byte-identical to the painting_option swatch
+        // metaobject names so the theme can match them (see optionValueDictionary.ts).
+        if (lookupOptionValue(optionValue.name, this.targetLanguage)) return
         // With a local dictionary (en), only values it doesn't recognise go to ChatGPT;
-        // the rest are translated locally. Without a dictionary (de/es), every option
+        // the rest are translated locally. Without a dictionary (de/es), every other option
         // value must go to ChatGPT, otherwise it would ship untranslated (French).
         if (!languageHandler || !languageHandler.isKnownValue(optionValue.name)) {
           this.unknownOptionValues.push({
@@ -283,6 +288,11 @@ The shortTitle field is a concise product-card display name (a few words). Trans
   }
 
   private translateOptionValueByLanguage(optionValue: string) {
+    // 1) Shared canonical border/frame dictionary (de/es/nl) — kept in sync with the
+    //    painting_option swatch metaobject names so the theme's swatch match works.
+    const canonical = lookupOptionValue(optionValue, this.targetLanguage)
+    if (canonical) return canonical
+    // 2) en local dictionary; 3) otherwise leave unchanged.
     const languageHandler = this.getLanguageHandler()
     return languageHandler?.translateOptionValue(optionValue) ?? optionValue
   }

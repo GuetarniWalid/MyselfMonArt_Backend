@@ -3,6 +3,7 @@ import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task
 import ChatGPT from 'App/Services/ChatGPT'
 import Shopify from 'App/Services/Shopify'
 import TranslationSkipCacheService from 'App/Services/TranslationSkipCache'
+import { lookupOptionValue } from 'App/Services/Shopify/Translator/optionValueDictionary'
 import { logTaskBoundary } from 'App/Utils/Logs'
 
 export default class TranslateMetaobjects extends BaseTask {
@@ -55,7 +56,17 @@ export default class TranslateMetaobjects extends BaseTask {
         continue
       }
 
-      const metaobjectTranslated = await chatGPT.translate(metaobject, 'metaobject', locale, region)
+      // Border/frame swatch names (painting_option.name) resolve through the shared canonical
+      // dictionary so they stay byte-identical to the product option-value translations —
+      // otherwise the theme's swatch match (`border.name == value`) breaks and the swatch
+      // disappears. Everything else still goes through ChatGPT. See optionValueDictionary.ts.
+      const canonicalName =
+        metaobject.type === 'painting_option' && metaobject.field.key === 'name'
+          ? lookupOptionValue(metaobject.field.jsonValue as string, locale)
+          : undefined
+      const metaobjectTranslated = canonicalName
+        ? { ...metaobject, field: { ...metaobject.field, jsonValue: canonicalName } }
+        : await chatGPT.translate(metaobject, 'metaobject', locale, region)
 
       // Pre-Shopify check: if the model returned a translation equal to the source
       // (typical when content is already in the target language, e.g. "Bronze" → "Bronze"),
