@@ -21,7 +21,7 @@ export default class TranslateMetaobjects extends BaseTask {
     await this.translateTo('en', 'UK')
     await this.translateTo('es')
     await this.translateTo('de')
-    await this.translateTo('nl')
+    // await this.translateTo('nl') // NL: backfill manuel (translate:manual) pour éviter le coût GPT — réactiver pour l'auto-heal une fois le backfill fait
 
     logTaskBoundary(false, 'Translate metaobjects')
   }
