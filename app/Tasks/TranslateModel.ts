@@ -17,11 +17,9 @@ export default class TranslateProduct extends BaseTask {
     logTaskBoundary(true, 'Translate Models')
 
     await this.translateTo('en')
-    // de/es paused on purpose: the ~1183 theme-template strings are translated manually
-    // (Claude, via `translate:manual`) to avoid the GPT cost. Re-enable these two lines
-    // once the manual theme backfill is done if ongoing auto-translation is wanted.
-    // await this.translateTo('de')
-    // await this.translateTo('es')
+    await this.translateTo('de')
+    await this.translateTo('es')
+    // await this.translateTo('nl')
 
     logTaskBoundary(false, 'Translate Models')
   }
@@ -35,7 +33,10 @@ export default class TranslateProduct extends BaseTask {
     const chatGPT = new ChatGPT()
 
     for (const content of contentToTranslate) {
-      if (content.file && !content.file.alt) continue
+      // Skip ALL media items: translating a theme image uploads a duplicate file per
+      // locale (~20s each, bloats the media library). The nightly cron stays text-only;
+      // the visible image is identical across locales anyway, only its alt text differs.
+      if (content.file) continue
 
       const modelTranslated = await chatGPT.translate(content, 'model', locale)
       const responses = await shopify.translator('model').updateTranslation({
