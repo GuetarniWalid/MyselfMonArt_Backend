@@ -4,6 +4,7 @@ import ChatGPT from 'App/Services/ChatGPT'
 import Shopify from 'App/Services/Shopify'
 import TranslationSkipCacheService from 'App/Services/TranslationSkipCache'
 import { lookupOptionValue } from 'App/Services/Shopify/Translator/optionValueDictionary'
+import { localePassesFor } from 'App/Services/i18n'
 import { logTaskBoundary } from 'App/Utils/Logs'
 
 export default class TranslateMetaobjects extends BaseTask {
@@ -18,11 +19,9 @@ export default class TranslateMetaobjects extends BaseTask {
   public async handle() {
     logTaskBoundary(true, 'Translate metaobjects')
 
-    await this.translateTo('en')
-    await this.translateTo('en', 'UK')
-    await this.translateTo('es')
-    await this.translateTo('de')
-    // await this.translateTo('nl') // NL: backfill manuel (translate:manual) pour éviter le coût GPT — réactiver pour l'auto-heal une fois le backfill fait
+    for (const { locale, region } of localePassesFor('metaobject')) {
+      await this.translateTo(locale, region)
+    }
 
     logTaskBoundary(false, 'Translate metaobjects')
   }
@@ -104,7 +103,12 @@ export default class TranslateMetaobjects extends BaseTask {
         const isValueMatch = messages.includes('value cannot match original content')
         const isInvalidLocale = messages.includes('locale is not a valid locale for the shop')
 
-        if ((isValueMatch || isInvalidLocale) && !cachedThisRound) {
+        // Only cache a genuine value-echo rejection. A transient "locale not enabled"
+        // error must NOT poison the cache: it stores the current source hash, and since
+        // shouldSkip only re-checks the source hash, the content would never be retried
+        // once the locale is re-enabled (FR frozen for good). isInvalidLocale just bails
+        // the locale below; the next run retries.
+        if (isValueMatch && !cachedThisRound) {
           await skipCache.markFailed(cacheKey, sourceContent, userErrors[0]?.message ?? 'rejected')
           cachedThisRound = true
           console.log('🧊 Cached as skip — will not retry until source changes')

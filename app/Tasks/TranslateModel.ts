@@ -3,6 +3,7 @@ import type { ModelToTranslate } from 'Types/Model'
 import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import ChatGPT from 'App/Services/ChatGPT'
 import Shopify from 'App/Services/Shopify'
+import { localePassesFor } from 'App/Services/i18n'
 import { logTaskBoundary } from 'App/Utils/Logs'
 export default class TranslateProduct extends BaseTask {
   public static get schedule() {
@@ -16,10 +17,9 @@ export default class TranslateProduct extends BaseTask {
   public async handle() {
     logTaskBoundary(true, 'Translate Models')
 
-    await this.translateTo('en')
-    await this.translateTo('de')
-    await this.translateTo('es')
-    // await this.translateTo('nl')
+    for (const { locale } of localePassesFor('model')) {
+      await this.translateTo(locale)
+    }
 
     logTaskBoundary(false, 'Translate Models')
   }

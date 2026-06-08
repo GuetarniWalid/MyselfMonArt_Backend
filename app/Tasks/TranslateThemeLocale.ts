@@ -4,6 +4,7 @@ import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task
 import ChatGPT from 'App/Services/ChatGPT'
 import Shopify from 'App/Services/Shopify'
 import TranslationSkipCacheService from 'App/Services/TranslationSkipCache'
+import { localePassesFor } from 'App/Services/i18n'
 import { logTaskBoundary } from 'App/Utils/Logs'
 
 /**
@@ -28,14 +29,12 @@ export default class TranslateThemeLocale extends BaseTask {
   public async handle() {
     logTaskBoundary(true, 'Translate theme locale content')
 
-    // NB: no separate 'en'+'UK' pass. These are theme UI strings (buttons, aria-labels,
-    // section copy) — a UK market override would be byte-identical to base English, so the
-    // UK market is already served by the base 'en' translation via Shopify's locale
-    // fallback. A distinct British-English variant isn't worth ~335 duplicate entries.
-    await this.translateTo('en')
-    await this.translateTo('es')
-    await this.translateTo('de')
-    // await this.translateTo('nl') // NL: backfill manuel (translate:manual) pour éviter le coût GPT — réactiver pour l'auto-heal une fois le backfill fait
+    // Theme UI strings (buttons, aria-labels, section copy). No market pass: 'theme_locale'
+    // isn't market-scoped in config/i18n, so a UK override (byte-identical to base English)
+    // is never emitted — the UK market is served by base 'en' via Shopify's locale fallback.
+    for (const { locale } of localePassesFor('theme_locale')) {
+      await this.translateTo(locale)
+    }
 
     logTaskBoundary(false, 'Translate theme locale content')
   }
@@ -117,7 +116,11 @@ export default class TranslateThemeLocale extends BaseTask {
           const isValueMatch = messages.includes('value cannot match original content')
           const isInvalidLocale = messages.includes('locale is not a valid locale for the shop')
 
-          if ((isValueMatch || isInvalidLocale) && !cachedThisRound) {
+          // Only cache a genuine value-echo rejection. A transient "locale not enabled"
+          // error must NOT poison the cache (shouldSkip only re-checks the source hash, so
+          // the key would never be retried once the locale is re-enabled). isInvalidLocale
+          // just bails the locale below; the next run retries.
+          if (isValueMatch && !cachedThisRound) {
             await skipCache.markFailed(cacheKey, item.value, userErrors[0]?.message ?? 'rejected')
             cachedThisRound = true
           }

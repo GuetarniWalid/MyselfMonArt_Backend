@@ -3,12 +3,14 @@ import type { StaticSectionToTranslate } from 'Types/StaticSection'
 import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import ChatGPT from 'App/Services/ChatGPT'
 import Shopify from 'App/Services/Shopify'
+import TranslationSkipCacheService from 'App/Services/TranslationSkipCache'
+import { ACTIVE_LOCALES, localePassesFor } from 'App/Services/i18n'
 import { logTaskBoundary } from 'App/Utils/Logs'
 
 export default class TranslateStaticSection extends BaseTask {
   // Theme locales whose stale media overrides we keep in sync. The default locale
   // (French) is the source and is never overridden.
-  private static readonly MEDIA_CLEANUP_LOCALES: LanguageCode[] = ['en', 'es', 'de', 'nl']
+  private static readonly MEDIA_CLEANUP_LOCALES: readonly LanguageCode[] = ACTIVE_LOCALES
 
   public static get schedule() {
     return CronTimeV2.everyDayAt(4, 30)
@@ -21,53 +23,108 @@ export default class TranslateStaticSection extends BaseTask {
   public async handle() {
     logTaskBoundary(true, 'Translate Static Sections')
 
-    const shopify = new Shopify()
-    const contentToTranslate = (await shopify
-      .translator('static_section')
-      .getOutdatedTranslations()) as StaticSectionToTranslate[]
+    // Section-setting text (titles/subtitles/buttons saved in the theme editor) must be
+    // translated into EVERY active language. This task used to push 'en' ONLY — so es/de/nl
+    // section copy was never translated (2026-06-08 i18n audit). It now derives its locales
+    // from config/i18n like the other tasks, with a skip cache and a graceful bail when a
+    // locale isn't enabled on the shop yet.
+    for (const { locale } of localePassesFor('static_section')) {
+      await this.translateTo(locale)
+    }
 
-    console.log('🚀 ~ static sections to translate length:', contentToTranslate.length)
+    await this.cleanStaleMediaOverrides(new Shopify())
+
+    logTaskBoundary(false, 'Translate Static Sections')
+  }
+
+  private async translateTo(locale: LanguageCode) {
+    const shopify = new Shopify()
+    const skipCache = new TranslationSkipCacheService()
     const chatGPT = new ChatGPT()
 
+    const items = (await shopify
+      .translator('static_section')
+      .getOutdatedTranslations(locale)) as StaticSectionToTranslate[]
+    console.log(`🚀 ~ [${locale}] static section settings to translate:`, items.length)
+
+    let localeNotSupportedByShop = false
     let failures = 0
-    for (const content of contentToTranslate) {
+
+    for (const item of items) {
+      const cacheKey = {
+        resourceId: item.id,
+        resourceType: 'static_section',
+        locale,
+        fieldKey: item.key,
+      }
+
+      if (await skipCache.shouldSkip(cacheKey, item.value)) {
+        continue
+      }
+
       try {
-        console.log('============================')
-        console.log(`🚀 ~ Translating static section key="${content.key}"`)
-        const themeTranslated = await chatGPT.translate(content, 'static_section', 'en')
+        const translated = (await chatGPT.translate(
+          item,
+          'static_section',
+          locale
+        )) as StaticSectionToTranslate
+
+        // Language-invariant value (brand name, "FAQ", a lone placeholder): Shopify rejects
+        // value===source so it would stay outdated forever — cache until the source changes.
+        if (translated.value === item.value) {
+          await skipCache.markFailed(cacheKey, item.value, 'Translation equals source content')
+          continue
+        }
+
         const responses = await shopify.translator('static_section').updateTranslation({
-          resourceToTranslate: content,
-          resourceTranslated: themeTranslated,
-          isoCode: 'en',
+          resourceToTranslate: item,
+          resourceTranslated: translated,
+          isoCode: locale,
         })
+
+        let cachedThisRound = false
         for (const response of responses) {
-          if (response.translationsRegister.userErrors.length > 0) {
-            console.log('🚨 Error => ', response.translationsRegister.userErrors)
-          } else {
-            console.log('✅ Translation updated')
+          const userErrors = response.translationsRegister.userErrors
+          if (userErrors.length === 0) continue
+
+          console.log(`🚨 [${locale}] ${item.key} =>`, userErrors)
+          const messages = userErrors
+            .map((e: { message?: string }) => (typeof e.message === 'string' ? e.message : ''))
+            .join(' | ')
+            .toLowerCase()
+          const isValueMatch = messages.includes('value cannot match original content')
+          const isInvalidLocale = messages.includes('locale is not a valid locale for the shop')
+
+          // Only cache a genuine value-echo. Never poison the cache on a transient
+          // "locale not enabled" error (it would freeze the key until the source changes).
+          if (isValueMatch && !cachedThisRound) {
+            await skipCache.markFailed(cacheKey, item.value, userErrors[0]?.message ?? 'rejected')
+            cachedThisRound = true
+          }
+          if (isInvalidLocale) {
+            localeNotSupportedByShop = true
+            console.log(
+              `⛔ Locale "${locale}" is not enabled on this shop — stopping this locale. ` +
+                `Enable it in Shopify Admin > Settings > Languages (next run picks it up).`
+            )
+            break
           }
         }
       } catch (error) {
         failures++
-        const message = (error as Error)?.message ?? String(error)
         console.error(
-          `🚨 Skipping static section key="${content.key}" — translation failed: ${message}`
+          `🚨 [${locale}] static section key="${item.key}" failed: ${(error as Error)?.message ?? String(error)}`
         )
       }
+
+      if (localeNotSupportedByShop) break
     }
 
-    console.log('============================')
-    if (failures > 0) {
-      console.log(
-        `⚠️  Static Sections translations finished with ${failures} skipped item(s) on ${contentToTranslate.length} total`
-      )
-    } else {
-      console.log('✅ Static Sections translations updated')
-    }
-
-    await this.cleanStaleMediaOverrides(shopify)
-
-    logTaskBoundary(false, 'Translate Static Sections')
+    console.log(
+      localeNotSupportedByShop
+        ? `⏹️  [${locale}] static sections skipped (locale not enabled on shop)`
+        : `✅ [${locale}] static sections updated${failures ? ` (${failures} failed)` : ''}`
+    )
   }
 
   /**

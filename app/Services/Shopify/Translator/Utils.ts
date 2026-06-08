@@ -2,7 +2,7 @@ import type { LanguageCode, RegionCode, TranslationInput } from 'Types/Translati
 import type { ResourceMedia, ResourceImage } from 'Types/Resource'
 import { createHash } from 'crypto'
 export default class Utils {
-  private marketMap = {
+  private marketMap: Partial<Record<RegionCode, string>> = {
     UK: '100549755227',
   }
 
@@ -42,7 +42,16 @@ export default class Utils {
   }
 
   public getMarketId(region: RegionCode): string {
-    return 'gid://shopify/Market/' + this.marketMap[region]
+    const marketNumericId = this.marketMap[region]
+    if (!marketNumericId) {
+      // Fail loud instead of building 'gid://shopify/Market/undefined' (silently rejected
+      // or mis-routed by Shopify). A region must be mapped before it can be translated to.
+      throw new Error(
+        `No Shopify Market mapped for region "${region}". Add it to Utils.marketMap ` +
+          `(and config/i18n MARKET_REGION_BY_LOCALE) before translating to ${region}.`
+      )
+    }
+    return 'gid://shopify/Market/' + marketNumericId
   }
 
   public isResourceMedia(data: ResourceMedia | ResourceImage): data is ResourceMedia {

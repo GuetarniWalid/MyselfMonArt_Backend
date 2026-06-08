@@ -4,6 +4,7 @@ import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task
 import ChatGPT from 'App/Services/ChatGPT'
 import Shopify from 'App/Services/Shopify'
 import TranslationSkipCacheService from 'App/Services/TranslationSkipCache'
+import { localePassesFor } from 'App/Services/i18n'
 import { logTaskBoundary } from 'App/Utils/Logs'
 export default class TranslateProduct extends BaseTask {
   public static get schedule() {
@@ -17,11 +18,9 @@ export default class TranslateProduct extends BaseTask {
   public async handle() {
     logTaskBoundary(true, 'Translate product')
 
-    await this.translateTo('en')
-    await this.translateTo('en', 'UK')
-    await this.translateTo('de')
-    await this.translateTo('es')
-    // await this.translateTo('nl') // NL: backfill manuel (translate:manual) pour éviter le coût GPT — réactiver pour l'auto-heal une fois le backfill fait
+    for (const { locale, region } of localePassesFor('product')) {
+      await this.translateTo(locale, region)
+    }
 
     logTaskBoundary(false, 'Translate product')
   }
