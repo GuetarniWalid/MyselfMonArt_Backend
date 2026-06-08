@@ -6,8 +6,48 @@ import { CreateProduct } from 'Types/Product'
 import Shopify from 'App/Services/Shopify'
 
 export default class ShopifyProductPublishersController {
+  // In-memory idempotency. A publish is slow (AI + Shopify) and can exceed the
+  // proxy/CDN timeout (~100s → 524), so the browser sees a failure even though the
+  // product was already created server-side. The user then re-clicks → duplicate
+  // products. We dedup by a client-provided idempotency key: an in-flight key
+  // returns "pending"; a completed key returns the already-created product instead
+  // of creating a new one.
+  private static readonly inFlightKeys = new Set<string>()
+  private static readonly completedKeys = new Map<string, { result: any; at: number }>()
+  private static readonly COMPLETED_TTL_MS = 10 * 60 * 1000
+
+  private static rememberCompleted(key: string, result: any) {
+    const now = Date.now()
+    ShopifyProductPublishersController.completedKeys.set(key, { result, at: now })
+    // Opportunistic cleanup of stale entries
+    ShopifyProductPublishersController.completedKeys.forEach((v, k) => {
+      if (now - v.at > ShopifyProductPublishersController.COMPLETED_TTL_MS) {
+        ShopifyProductPublishersController.completedKeys.delete(k)
+      }
+    })
+  }
+
   public async publishOnShopify({ request, response }: HttpContextContract) {
+    const idempotencyKey: string | undefined = request.input('idempotencyKey')
+
+    // Idempotency guard (synchronous check + add, before any await)
+    if (idempotencyKey) {
+      const done = ShopifyProductPublishersController.completedKeys.get(idempotencyKey)
+      if (done) {
+        return { ...done.result, deduped: true }
+      }
+      if (ShopifyProductPublishersController.inFlightKeys.has(idempotencyKey)) {
+        return {
+          success: true,
+          pending: true,
+          message: 'Publication déjà en cours, patiente un instant puis vérifie ta boutique.',
+        }
+      }
+      ShopifyProductPublishersController.inFlightKeys.add(idempotencyKey)
+    }
+
     let productPublisher: ShopifyProductPublisher | null = null
+    let backgrounded = false
 
     try {
       const checkedRequest = await request.validate(
@@ -161,31 +201,50 @@ export default class ShopifyProductPublishersController {
       await shopify.metafield.update(productCreated.id, 'artwork', 'type', productType)
       await shopify.publications.publishProductOnAll(productCreated.id)
 
-      // Poll media status until all images are processed (Shopify recommendation)
-      const { allReady, failedMedia } = await shopify.product.waitForMediaProcessing(
-        productCreated.id,
-        30, // Max 30 attempts
-        2000 // Poll every 2 seconds
-      )
-
-      if (!allReady) {
-        console.warn('[Product Publisher] Some media may still be processing after timeout')
-      }
-
-      if (failedMedia.length > 0) {
-        console.error(`[Product Publisher] ${failedMedia.length} media failed to process`)
-      }
-
-      return {
+      // The product is created and published — respond NOW. Previously we polled
+      // Shopify media processing here (up to ~60s), which kept the request open long
+      // enough to hit the proxy/CDN timeout (524). The browser then retried and
+      // created duplicates. The poll is best-effort status only, so move it off the
+      // request path.
+      const result = {
         success: true,
-        data: {
-          link: productCreated.onlineStoreUrl,
-          mediaStatus: {
-            allReady,
-            failedCount: failedMedia.length,
-          },
-        },
+        data: { link: productCreated.onlineStoreUrl },
       }
+      if (idempotencyKey) {
+        ShopifyProductPublishersController.rememberCompleted(idempotencyKey, result)
+      }
+
+      // Finish in the background: wait for Shopify to fetch + process the media, THEN
+      // clean up the locally-saved source images. Cleaning up earlier would delete the
+      // images while Shopify is still fetching them. The response is already sent.
+      backgrounded = true
+      const publisherRef = productPublisher
+      const createdProductId = productCreated.id
+      ;(async () => {
+        try {
+          const { allReady, failedMedia } = await shopify.product.waitForMediaProcessing(
+            createdProductId,
+            30,
+            2000
+          )
+          if (!allReady) {
+            console.warn('[Product Publisher] Some media may still be processing after timeout')
+          }
+          if (failedMedia.length > 0) {
+            console.error(`[Product Publisher] ${failedMedia.length} media failed to process`)
+          }
+        } catch (bgError: any) {
+          console.error('[Product Publisher] background media poll error:', bgError?.message)
+        } finally {
+          try {
+            await publisherRef?.cleanupSavedImages()
+          } catch (cleanupError: any) {
+            console.error('[Product Publisher] background cleanup error:', cleanupError?.message)
+          }
+        }
+      })()
+
+      return result
     } catch (error) {
       console.error('Product publisher error details:', {
         code: error.code,
@@ -209,7 +268,13 @@ export default class ShopifyProductPublishersController {
         error: error.message || 'An unexpected error occurred',
       })
     } finally {
-      if (productPublisher) {
+      if (idempotencyKey) {
+        ShopifyProductPublishersController.inFlightKeys.delete(idempotencyKey)
+      }
+      // On success, cleanup is deferred to the background task (it must run after
+      // Shopify has fetched the media). Only clean up here when we did NOT background,
+      // i.e. an error happened before the product was published.
+      if (!backgrounded && productPublisher) {
         await productPublisher.cleanupSavedImages()
       }
     }
