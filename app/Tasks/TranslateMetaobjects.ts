@@ -4,6 +4,7 @@ import ChatGPT from 'App/Services/ChatGPT'
 import Shopify from 'App/Services/Shopify'
 import TranslationSkipCacheService from 'App/Services/TranslationSkipCache'
 import { lookupOptionValue } from 'App/Services/Shopify/Translator/optionValueDictionary'
+import { lookupColorPattern } from 'App/Services/Shopify/Translator/colorPatternDictionary'
 import { localePassesFor } from 'App/Services/i18n'
 import { logTaskBoundary } from 'App/Utils/Logs'
 
@@ -62,7 +63,9 @@ export default class TranslateMetaobjects extends BaseTask {
       const canonicalName =
         metaobject.type === 'painting_option' && metaobject.field.key === 'name'
           ? lookupOptionValue(metaobject.field.jsonValue as string, locale)
-          : undefined
+          : metaobject.type === 'shopify--color-pattern' && metaobject.field.key === 'label'
+            ? lookupColorPattern(metaobject.field.jsonValue as string, locale)
+            : undefined
       const metaobjectTranslated = canonicalName
         ? { ...metaobject, field: { ...metaobject.field, jsonValue: canonicalName } }
         : await chatGPT.translate(metaobject, 'metaobject', locale, region)
