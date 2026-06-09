@@ -785,8 +785,8 @@ export default class Product extends Authentication {
     options: Array<{ name: string; values: string[] }>
   ) {
     return {
-      query: `mutation createOptions($productId: ID!, $options: [OptionCreateInput!]!) {
-        productOptionsCreate(productId: $productId, options: $options) {
+      query: `mutation createOptions($productId: ID!, $options: [OptionCreateInput!]!, $variantStrategy: ProductOptionCreateVariantStrategy) {
+        productOptionsCreate(productId: $productId, options: $options, variantStrategy: $variantStrategy) {
           userErrors {
             field
             message
@@ -810,7 +810,10 @@ export default class Product extends Authentication {
             name: value,
           })),
         })),
-        variantStrategyvariantStrategy: 'LEAVE_AS_ISLEAVE_AS_IS',
+        // Explicit LEAVE_AS_IS (also Shopify's default): don't let Shopify auto-create
+        // a variant matrix here — the differential copy flow reconciles variants itself
+        // afterwards via compareVariants/syncVariants.
+        variantStrategy: 'LEAVE_AS_IS',
       },
     }
   }
