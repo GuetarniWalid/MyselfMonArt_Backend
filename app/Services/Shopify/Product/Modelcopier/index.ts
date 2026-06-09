@@ -610,6 +610,10 @@ export default abstract class ModelCopier {
   protected async syncVariants(product: ProductById, diff: VariantsDiff) {
     const shopify = new Shopify()
     const errors: string[] = []
+    // The daily variant-creation limit is tracked SEPARATELY from genuine failures so
+    // it is never masked by (nor masks) a real price/delete error in the same call:
+    // a daily limit is deferrable (cron repairs it), a genuine failure must abort.
+    let dailyLimitError: Error | null = null
 
     // Shopify limit validation: products can have max 100 variants
     const currentVariantCount = product.variants?.nodes?.length || 0
@@ -627,17 +631,23 @@ export default abstract class ModelCopier {
       try {
         await this.createVariantsWithBatching(shopify, product.id, diff.variantsToCreate)
       } catch (error) {
-        // Include first few variant combinations in error message for debugging
-        const sampleVariants = diff.variantsToCreate
-          .slice(0, 3)
-          .map((v) => v.optionValues.map((opt) => `${opt.optionName}:${opt.name}`).join(', '))
-          .join(' | ')
-        const moreVariants =
-          diff.variantsToCreate.length > 3 ? ` (+${diff.variantsToCreate.length - 3} more)` : ''
-        const errorMsg = `Failed to create ${diff.variantsToCreate.length} variant(s) [${sampleVariants}${moreVariants}]: ${error.message}`
-        errors.push(errorMsg)
-        // Don't throw yet - try to complete other operations
-        console.error(`⚠️  ${errorMsg}`)
+        if (this.isDailyVariantLimitError(error)) {
+          // Quota hit — keep it out of `errors` so it stays cleanly deferrable.
+          dailyLimitError = error instanceof Error ? error : new Error(String(error))
+          console.warn(`⚠️  Daily variant limit hit while creating variants for ${product.id}`)
+        } else {
+          // Include first few variant combinations in error message for debugging
+          const sampleVariants = diff.variantsToCreate
+            .slice(0, 3)
+            .map((v) => v.optionValues.map((opt) => `${opt.optionName}:${opt.name}`).join(', '))
+            .join(' | ')
+          const moreVariants =
+            diff.variantsToCreate.length > 3 ? ` (+${diff.variantsToCreate.length - 3} more)` : ''
+          const errorMsg = `Failed to create ${diff.variantsToCreate.length} variant(s) [${sampleVariants}${moreVariants}]: ${error.message}`
+          errors.push(errorMsg)
+          // Don't throw yet - try to complete other operations
+          console.error(`⚠️  ${errorMsg}`)
+        }
       }
     }
 
@@ -664,12 +674,20 @@ export default abstract class ModelCopier {
       }
     }
 
-    // If any operations failed, throw with summary
+    // Genuine failures take precedence and must abort the copy. The message
+    // intentionally omits the daily-limit text so deferOrRethrowVariantError re-throws
+    // it immediately (never defers a product left in a genuinely inconsistent state).
     if (errors.length > 0) {
       throw new Error(
         `Partial variant sync failure for ${product.id}:\n${errors.join('\n')}\n` +
           `Product may be in inconsistent state. Manual review recommended.`
       )
+    }
+
+    // Only the daily variant-creation limit blocked us — surface it so the caller
+    // defers the variant matrix to the repair cron while applying everything else.
+    if (dailyLimitError) {
+      throw dailyLimitError
     }
   }
 
@@ -822,6 +840,13 @@ export default abstract class ModelCopier {
   protected async updateProductDifferentially(product: ProductById, model: ProductByTag) {
     console.info(`🔍 Comparing product ${product.id} with model`)
 
+    // A daily variant-limit hit must NOT abort the rest of the copy. Variants are the
+    // ONLY thing Shopify's daily cap blocks; category, metafields (color swatches,
+    // layout) and translations are independent and must still be applied. We remember
+    // the limit here and re-throw it after all the non-variant work is done, so the
+    // caller still alerts and RepairIncompleteArtworks finishes the matrix later.
+    let deferredVariantLimitError: Error | null = null
+
     try {
       // Compare products to detect all differences
       // Note: compareProducts calls compareOptions internally, which is necessary
@@ -859,6 +884,8 @@ export default abstract class ModelCopier {
 
       // Update options if needed
       if (diff.optionsDiff.needsUpdate) {
+        // Option changes themselves must succeed — a failure here is a real failure
+        // that leaves the product structurally broken, so it still aborts the copy.
         try {
           if (this.needsFullOptionsRecreation(diff.optionsDiff)) {
             console.info(`🔄 Recreating options (structural changes detected)`)
@@ -874,19 +901,24 @@ export default abstract class ModelCopier {
           // Add retry logic to handle async variant creation
           console.info(`🔄 Refetching product to get updated variants after option changes`)
           product = await this.waitForVariantsAfterOptionChange(product.id)
-
-          // Re-compare variants with fresh product data
-          const variantsDiff = this.compareVariants(product, model)
-
-          // Sync variants based on fresh comparison
-          if (variantsDiff.needsUpdate) {
-            console.info(
-              `🧹 Cleaning up variants: ${variantsDiff.variantsToUpdate.length} to update, ${variantsDiff.variantsToCreate.length} to create, ${variantsDiff.variantsToDelete.length} to delete`
-            )
-            await this.syncVariants(product, variantsDiff)
-          }
         } catch (error) {
           throw new Error(`Options update failed for ${product.id}: ${error.message}`)
+        }
+
+        // Re-compare variants with fresh product data
+        const variantsDiff = this.compareVariants(product, model)
+
+        // Sync variants based on fresh comparison. A daily variant-limit hit is
+        // deferred (not thrown) so the rest of the copy still runs.
+        if (variantsDiff.needsUpdate) {
+          console.info(
+            `🧹 Cleaning up variants: ${variantsDiff.variantsToUpdate.length} to update, ${variantsDiff.variantsToCreate.length} to create, ${variantsDiff.variantsToDelete.length} to delete`
+          )
+          try {
+            await this.syncVariants(product, variantsDiff)
+          } catch (error) {
+            deferredVariantLimitError = this.deferOrRethrowVariantError(error, product.id)
+          }
         }
       } else if (diff.variantsDiff.needsUpdate) {
         // Only update variants if options didn't change
@@ -904,7 +936,7 @@ export default abstract class ModelCopier {
             await this.syncVariants(product, diff.variantsDiff)
           }
         } catch (error) {
-          throw new Error(`Variants update failed for ${product.id}: ${error.message}`)
+          deferredVariantLimitError = this.deferOrRethrowVariantError(error, product.id)
         }
       }
 
@@ -919,7 +951,14 @@ export default abstract class ModelCopier {
       }
 
       // Update metafields if needed (hook for subclasses like ArtworkCopier)
-      await this.updateMetafieldsIfNeeded(product, diff)
+      // Guarded like the neighboring hooks so a metafield failure can never relabel or
+      // swallow a deferred daily-limit error that must still surface for the repair cron.
+      try {
+        await this.updateMetafieldsIfNeeded(product, diff)
+      } catch (error) {
+        console.warn(`⚠️  Metafield update failed for ${product.id}: ${error.message}`)
+        // Don't throw - metafield failure shouldn't fail the entire update
+      }
 
       // Update bundle.products metafield if needed (shared across all products)
       if (diff.bundleMetafieldDiff?.needsUpdate) {
@@ -943,11 +982,58 @@ export default abstract class ModelCopier {
         }
       }
 
-      console.info(`✅ Successfully updated product ${product.id}`)
+      if (deferredVariantLimitError) {
+        console.info(
+          `✅ Updated product ${product.id} (variant matrix pending — deferred to repair cron)`
+        )
+      } else {
+        console.info(`✅ Successfully updated product ${product.id}`)
+      }
     } catch (error) {
       console.error(`❌ Failed to update product ${product.id}: ${error.message || error}`)
       throw error // Re-throw to be caught by WebhooksController
     }
+
+    // All variant-independent work (category, metafields, translations) succeeded.
+    // If only the variant matrix was blocked by Shopify's daily limit, surface it
+    // now — after enrichment — so the caller alerts and RepairIncompleteArtworks
+    // finishes the matrix on a later run. Thrown here (outside the try) so it is not
+    // mislabeled as a hard "failed to update" of the whole copy.
+    if (deferredVariantLimitError) {
+      throw deferredVariantLimitError
+    }
+  }
+
+  /**
+   * Decide how to handle a variant-sync failure inside updateProductDifferentially.
+   *
+   * Shopify's daily variant-creation limit (1,000/day past 50,000 store variants) is
+   * a transient, variant-only condition: the RepairIncompleteArtworks cron re-runs the
+   * idempotent copy once the quota resets. It must NOT abort the rest of the model copy
+   * (category, metafields such as color swatches/layout, translations) — those have
+   * nothing to do with variants. We return the error so the orchestrator re-throws it at
+   * the very end (after the non-variant work is done), preserving the incomplete-variant
+   * alert + repair flow. Any other (genuine) variant failure is re-thrown immediately.
+   */
+  protected deferOrRethrowVariantError(error: any, productId: string): Error {
+    if (this.isDailyVariantLimitError(error)) {
+      console.warn(
+        `⏸️  Daily variant limit hit for ${productId}; deferring the variant matrix to the repair cron and continuing with the rest of the copy (category, metafields, translations)`
+      )
+      return error instanceof Error ? error : new Error(String(error))
+    }
+    throw new Error(`Variants update failed for ${productId}: ${error.message ?? error}`)
+  }
+
+  /**
+   * True when an error is Shopify's daily variant-creation limit. Matches both the raw
+   * Shopify "Daily variant creation limit" error and the wrapped message thrown by
+   * createVariantsBulkWithRetry / syncVariants ("Daily variant limit reached…"), which
+   * is also what RepairIncompleteArtworks and WebhooksController key off of.
+   */
+  protected isDailyVariantLimitError(error: any): boolean {
+    const message = error instanceof Error ? error.message : String(error)
+    return message.includes('Daily variant')
   }
 
   /**

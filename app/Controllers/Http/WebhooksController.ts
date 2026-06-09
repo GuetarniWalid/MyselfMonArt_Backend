@@ -157,9 +157,20 @@ export default class WebhooksController {
       await shopify.product.artworkCopier.copyModelDataFromImageRatio(product)
       console.info(`🚀 Data successfully copied on ${type} ${id}`)
     } catch (copyError: any) {
-      copyFailed = true
       const msg = copyError instanceof Error ? copyError.message : String(copyError)
-      console.error(`❌ Model copy failed for ${type} ${id}: ${msg}`)
+      // Shopify's daily variant-creation limit is NOT a real copy failure: options,
+      // metafields (color swatches, layout), category and translations were still
+      // applied — only the variant matrix is incomplete, and RepairIncompleteArtworks
+      // fills it once the quota resets. Color/theme detection below is independent of
+      // variants, so keep going (the limit must block variants only, nothing else).
+      if (msg.includes('Daily variant')) {
+        console.warn(
+          `⏸️  Daily variant limit hit for ${type} ${id}; variants deferred to repair cron, continuing with color/theme detection`
+        )
+      } else {
+        copyFailed = true
+        console.error(`❌ Model copy failed for ${type} ${id}: ${msg}`)
+      }
     }
 
     // Safety net: make sure the full variant matrix was actually created.
@@ -167,7 +178,9 @@ export default class WebhooksController {
     // publish can leave a product with only its default variant — alert if so.
     await this.verifyVariantMatrix(shopify, id, type)
 
-    // Don't enrich an incomplete product if the model copy failed outright
+    // Don't enrich an incomplete product only on a genuine copy failure. A daily
+    // variant-limit hit is not one: the product is otherwise correct, so colors and
+    // themes (which don't depend on variants) must still be detected and set.
     if (copyFailed) return
 
     // Color detection (runs after model data copy)
