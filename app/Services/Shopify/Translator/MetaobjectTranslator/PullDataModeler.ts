@@ -17,6 +17,7 @@ const METAOBJECT_TYPES: MetaobjectQueryDef[] = [
   { type: 'shopify--color-pattern', fieldKey: 'label' },
   { type: 'shopify--theme', fieldKey: 'label' },
   { type: 'shopify--art-movement', fieldKey: 'label' },
+  { type: 'format', fieldKey: 'etiquette' },
 ]
 
 export default class PullDataModeler extends DefaultPullDataModeler {
