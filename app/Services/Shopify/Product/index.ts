@@ -321,6 +321,73 @@ export default class Product extends Authentication {
     return incomplete
   }
 
+  /**
+   * Lightweight scan for artworks (paintings/posters) missing their AI-detected
+   * colors (shopify.color-pattern) and/or themes (shopify.theme). Used to backfill
+   * products published while Shopify's daily variant-creation limit was blocking the
+   * model copy: before the fix, a daily-limit hit aborted the webhook before color/
+   * theme detection ran, so those fields were never set. Cheap query (id, title, the
+   * two metafield ids) â€” the actual detection refetches the full product.
+   */
+  public async getArtworksMissingColorsOrThemes(): Promise<
+    Array<{ id: string; title: string; missingColors: boolean; missingThemes: boolean }>
+  > {
+    const missing: Array<{
+      id: string
+      title: string
+      missingColors: boolean
+      missingThemes: boolean
+    }> = []
+    let cursor: string | null = null
+    let hasNextPage = true
+
+    while (hasNextPage) {
+      const query = `query MissingColorsThemesScan($cursor: String) {
+        products(first: 250, after: $cursor, query: "published_status:published") {
+          edges {
+            cursor
+            node {
+              id
+              title
+              tags
+              artworkTypeMetafield: metafield(namespace: "artwork", key: "type") { value }
+              colorPatternMetafield: metafield(namespace: "shopify", key: "color-pattern") { id }
+              themeMetafield: metafield(namespace: "shopify", key: "theme") { id }
+            }
+          }
+          pageInfo { hasNextPage }
+        }
+      }`
+
+      const data = await this.fetchGraphQL(query, { cursor }, 100)
+      const edges = (data.products.edges ?? []) as Array<any>
+
+      for (const edge of edges) {
+        const node = edge.node
+        const artworkType = node.artworkTypeMetafield?.value
+        if (artworkType !== 'painting' && artworkType !== 'poster') continue
+
+        const isModel = (node.tags ?? []).some((t: string) =>
+          ['portrait model', 'paysage model', 'square model'].includes(t)
+        )
+        if (isModel) continue
+
+        const missingColors = !node.colorPatternMetafield
+        const missingThemes = !node.themeMetafield
+
+        if (missingColors || missingThemes) {
+          missing.push({ id: node.id, title: node.title, missingColors, missingThemes })
+        }
+      }
+
+      hasNextPage = data.products.pageInfo.hasNextPage
+      cursor = hasNextPage && edges.length ? edges[edges.length - 1].cursor : null
+      if (hasNextPage) await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+
+    return missing
+  }
+
   private getAllProductsQuery(cursor: string | null = null, includeUnpublished: boolean = false) {
     const statusQuery = includeUnpublished ? '' : 'published_status:published'
     return {
