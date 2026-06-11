@@ -211,10 +211,15 @@ export default class ColorPatternDetector extends Authentication {
   }
 
   /**
-   * Set color-pattern metafield with list of metaobject GIDs
+   * Set color-pattern metafield with list of metaobject GIDs.
+   * Also mirrors the list into painting.color: the storefront color filter runs on that
+   * custom metafield (filter.p.m.painting.color) because the taxonomy filter's value labels
+   * are frozen in a platform-side cache and never localize (see ShopifyBackfillPaintingColor).
    */
   private async setColorMetafield(productId: string, gids: string[]): Promise<void> {
     const shopify = new Shopify()
-    await shopify.metafield.update(productId, 'shopify', 'color-pattern', JSON.stringify(gids))
+    const value = JSON.stringify(gids)
+    await shopify.metafield.update(productId, 'shopify', 'color-pattern', value)
+    await shopify.metafield.update(productId, 'painting', 'color', value)
   }
 }

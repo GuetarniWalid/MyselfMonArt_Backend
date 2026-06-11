@@ -104,6 +104,55 @@ export default class Metafield extends Authentication {
     }
   }
 
+  /** Resolve a metaobject definition id by its type (e.g. "shopify--color-pattern"). */
+  public async getMetaobjectDefinitionIdByType(type: string): Promise<string | null> {
+    const query = `query DefByType($type: String!) {
+      metaobjectDefinitionByType(type: $type) { id name }
+    }`
+    const response = await this.fetchGraphQL(query, { type })
+    return response.metaobjectDefinitionByType?.id ?? null
+  }
+
+  /**
+   * Create a PRODUCT metafield definition of type list.metaobject_reference.
+   * Used for painting.color: the storefront TAXONOMY color filter's value labels are frozen
+   * in a platform-side cache (translations/label edits/product reindex never refresh them),
+   * while METAFIELD filters (filter.p.m.*) resolve labels + translations live — proven by
+   * the painting.layout format filter. Idempotent: returns the existing id if already taken.
+   */
+  public async createProductMetaobjectListDefinition(input: {
+    name: string
+    namespace: string
+    key: string
+    metaobjectDefinitionId: string
+  }): Promise<{ id: string | null; alreadyExisted: boolean; errors: string[] }> {
+    const mutation = `mutation CreateDef($definition: MetafieldDefinitionInput!) {
+      metafieldDefinitionCreate(definition: $definition) {
+        createdDefinition { id }
+        userErrors { field message code }
+      }
+    }`
+    const response = await this.fetchGraphQL(mutation, {
+      definition: {
+        name: input.name,
+        namespace: input.namespace,
+        key: input.key,
+        ownerType: 'PRODUCT',
+        type: 'list.metaobject_reference',
+        validations: [{ name: 'metaobject_definition_id', value: input.metaobjectDefinitionId }],
+      },
+    })
+    const errors = (response.metafieldDefinitionCreate.userErrors ?? []).map(
+      (e: { message: string; code?: string }) => `${e.code ?? ''} ${e.message}`.trim()
+    )
+    const taken = errors.some((m: string) => /TAKEN|in use|already/i.test(m))
+    return {
+      id: response.metafieldDefinitionCreate.createdDefinition?.id ?? null,
+      alreadyExisted: taken,
+      errors: taken ? [] : errors,
+    }
+  }
+
   // Video metafield helpers
   private readonly VIDEO_NAMESPACE = 'video'
   private readonly VIDEO_URL_KEY = 'url'

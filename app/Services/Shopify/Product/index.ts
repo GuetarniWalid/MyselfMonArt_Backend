@@ -388,6 +388,48 @@ export default class Product extends Authentication {
     return missing
   }
 
+  /**
+   * Paginated scan: every published product that carries a value for the given metafield.
+   * Returns [{ id, value }] with the raw metafield value string (e.g. a JSON GID list).
+   */
+  public async getAllProductsWithMetafield(
+    namespace: string,
+    key: string
+  ): Promise<Array<{ id: string; value: string }>> {
+    const found: Array<{ id: string; value: string }> = []
+    let cursor: string | null = null
+    let hasNextPage = true
+
+    while (hasNextPage) {
+      const query = `query ProductsWithMetafieldScan($cursor: String) {
+        products(first: 250, after: $cursor, query: "published_status:published") {
+          edges {
+            cursor
+            node {
+              id
+              target: metafield(namespace: "${namespace}", key: "${key}") { value }
+            }
+          }
+          pageInfo { hasNextPage }
+        }
+      }`
+
+      const data = await this.fetchGraphQL(query, { cursor }, 100)
+      const edges = (data.products.edges ?? []) as Array<any>
+
+      for (const edge of edges) {
+        const value = edge.node.target?.value
+        if (value) found.push({ id: edge.node.id, value })
+      }
+
+      hasNextPage = data.products.pageInfo.hasNextPage
+      cursor = hasNextPage && edges.length ? edges[edges.length - 1].cursor : null
+      if (hasNextPage) await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+
+    return found
+  }
+
   private getAllProductsQuery(cursor: string | null = null, includeUnpublished: boolean = false) {
     const statusQuery = includeUnpublished ? '' : 'published_status:published'
     return {
