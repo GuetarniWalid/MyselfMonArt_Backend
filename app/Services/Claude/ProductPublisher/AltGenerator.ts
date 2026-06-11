@@ -6,11 +6,16 @@ export default class AltGenerator {
   /**
    * Prepare request for MAIN ARTWORK alt generation (for AI)
    * This generates the pure artwork description
+   * existingContext (optionnel) : produit existant dont on remplace les images
+   * (mode « reimage ») — sans lui, le prompt est strictement identique au flux publish.
    */
-  public prepareRequest(imageUrl: string) {
+  public prepareRequest(
+    imageUrl: string,
+    existingContext?: { title: string; description: string }
+  ) {
     return {
       responseFormat: this.getResponseFormat(),
-      systemPrompt: this.getSystemPrompt(this.productType),
+      systemPrompt: this.getSystemPrompt(this.productType, existingContext),
       payload: { imageUrl },
     }
   }
@@ -25,7 +30,10 @@ export default class AltGenerator {
     })
   }
 
-  private getSystemPrompt(productType: 'poster' | 'painting' | 'tapestry') {
+  private getSystemPrompt(
+    productType: 'poster' | 'painting' | 'tapestry',
+    existingContext?: { title: string; description: string }
+  ) {
     const productTypeFr =
       productType === 'painting'
         ? 'Tableau sur toile'
@@ -35,6 +43,18 @@ export default class AltGenerator {
 
     const productTypeKeyword =
       productType === 'painting' ? 'tableau' : productType === 'poster' ? 'affiche' : 'tapisserie'
+
+    // Section ajoutée UNIQUEMENT en mode « reimage » (remplacement des images d'un
+    // produit existant) : sans existingContext, le prompt reste byte-identique.
+    const existingProductSection = existingContext
+      ? `
+
+<produit_existant>
+  Tu remplaces les visuels d'un produit DÉJÀ publié. L'alt doit rester aligné avec le sujet du titre existant (mêmes thèmes, même œuvre), sans recopier le titre mot pour mot.
+  <titre>${existingContext.title}</titre>
+  <description>${existingContext.description}</description>
+</produit_existant>`
+      : ''
 
     return `
 <role>
@@ -75,7 +95,7 @@ export default class AltGenerator {
     – Maximum 80 caractères
     – Assez spécifique pour éviter les collisions avec d'autres images
   </filename>
-</guidelines>
+</guidelines>${existingProductSection}
 
 <examples>
   <example type="${productType}">

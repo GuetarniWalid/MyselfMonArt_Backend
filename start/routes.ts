@@ -28,6 +28,12 @@ Route.get('/publisher', async ({ view }) => {
   const renderBase = Env.get('RENDER_ENGINE_URL') || 'https://render.myselfmonart.com'
   return view.render('pages/publisher', { renderBase })
 }).middleware(['auth'])
+// Mode « reimage » : même UI Publisher, mais pour REMPLACER les images d'un produit
+// existant. Le template injecte mode='reimage' dans window.PUBLISHER_CONFIG.
+Route.get('/publisher/reimage', async ({ view }) => {
+  const renderBase = Env.get('RENDER_ENGINE_URL') || 'https://render.myselfmonart.com'
+  return view.render('pages/publisher', { renderBase, mode: 'reimage' })
+}).middleware(['auth'])
 Route.post('/', 'WebhooksController.handle')
 Route.post('/webhooks', 'WebhooksController.handle')
 
@@ -101,6 +107,23 @@ Route.group(() => {
     '/shopify-product-publisher/publish',
     'ShopifyProductPublishersController.publishOnShopify'
   )
+
+  // Mode « reimage » : remplacement de TOUTES les images d'un produit existant.
+  // Auth obligatoire (mutations Shopify + appels IA payants).
+  Route.post(
+    '/shopify-product-publisher/replace-images',
+    'ShopifyProductPublishersController.replaceImages'
+  ).middleware(['auth'])
+
+  // Mode « reimage » : recherche du produit à refaire + contexte (orientation
+  // verrouillée, type, collection, images actuelles). Auth (données boutique).
+  Route.get('/products/search', 'ShopifyProductPublishersController.searchProducts').middleware([
+    'auth',
+  ])
+  Route.get(
+    '/products/reimage-context',
+    'ShopifyProductPublishersController.reimageContext'
+  ).middleware(['auth'])
 
   // Redimensionnement intelligent d'une oeuvre vers un ratio cible (3:4 / 1:1 / 4:3) via gpt-image-2.
   // Asynchrone (job + polling) car gpt-image-2 dépasse les ~100s que Cloudflare tolère (sinon 524).

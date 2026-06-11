@@ -13,6 +13,7 @@
 <body>
 <div class="app">
 
+  <!-- En-tête -->
   <header class="topbar">
     <div class="brand">
       <span class="logo">◈</span>
@@ -23,6 +24,25 @@
 
   <main class="content">
 
+    <!-- 0. Produit à refaire (mode reimage uniquement — révélé par app.js) -->
+    <section class="card hidden" id="productCard">
+      <h2 class="card-title">1 · Produit à refaire</h2>
+      <div class="field">
+        <label>Produit existant</label>
+        <div class="combo">
+          <input type="text" id="productSearch" placeholder="Rechercher un produit…" autocomplete="off">
+          <div id="productList" class="combo-list hidden"></div>
+        </div>
+        <div id="productChosen" class="chosen hidden"></div>
+      </div>
+      <div id="productImagesWrap" class="current-images hidden">
+        <span class="current-images-label">Images actuelles (seront remplacées)</span>
+        <div id="productImages" class="current-images-row"></div>
+      </div>
+      <p id="productVideoNote" class="video-note hidden">🎬 La vidéo du produit sera conservée</p>
+    </section>
+
+    <!-- 1. Upload -->
     <section class="card" id="uploadCard">
       <h2 class="card-title">1 · Votre image</h2>
       <label id="dropzone" class="dropzone" for="fileInput">
@@ -33,7 +53,6 @@
         </div>
         <div class="preview-wrap">
           <img id="sourcePreview" class="source-preview hidden" alt="aperçu">
-          <!-- cadre quadrillé = format cible ; visible si l'image n'est pas au bon ratio -->
           <div id="ratioOverlay" class="ratio-overlay hidden"></div>
         </div>
       </label>
@@ -44,14 +63,17 @@
       </div>
     </section>
 
+    <!-- 2. Paramètres -->
     <section class="card" id="paramsCard">
-      <h2 class="card-title">2 · Produit &amp; collection</h2>
+      <h2 class="card-title">2 · Produit & collection</h2>
+
       <div class="seg" id="productType">
         <button class="seg-btn active" data-type="toile">Toile</button>
         <button class="seg-btn" data-type="poster">Poster</button>
         <button class="seg-btn" data-type="tapisserie">Tapisserie</button>
       </div>
-      <div class="field">
+
+      <div class="field" id="collectionField">
         <label>Collection parente</label>
         <div class="combo">
           <input type="text" id="collectionSearch" placeholder="Rechercher une collection…" autocomplete="off">
@@ -84,16 +106,20 @@
 
   </main>
 
+  <!-- Barre d'action fixe -->
   <footer class="actionbar">
     <div class="action-info" id="actionInfo">—</div>
     <button id="publishBtn" class="primary-btn" disabled>Publier l'œuvre</button>
   </footer>
 
+  <!-- Overlay agrandissement -->
   <div id="lightbox" class="lightbox hidden"><img id="lightboxImg" alt=""><button class="lb-close">✕</button></div>
-  <div id="toast" class="toast hidden"></div>
 
   <!-- Menu contextuel (appui long / clic droit) -->
   <div id="ctxMenu" class="ctx-menu hidden"></div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast hidden"></div>
 
   <!-- Overlay de retaillage (preview avant/après GPT-image) -->
   <div id="resizeOverlay" class="resize-overlay hidden">
@@ -126,9 +152,8 @@
     <div class="resize-card">
       <h3>Décor sur-mesure (IA)</h3>
       <div class="resize-body">
-        <p class="decor-hint">Choisis une pièce et/ou décris l'ambiance (couleur des murs, style, époque…). Au moins l'un des deux.</p>
         <select id="decorRoom" class="decor-vibe">
-          <option value="">Choisir une pièce (optionnel)</option>
+          <option value="">Pièce : Automatique (variée)</option>
           <option value="living room">Salon</option>
           <option value="bedroom">Chambre</option>
           <option value="kitchen">Cuisine</option>
@@ -139,7 +164,7 @@
           <option value="reading nook">Coin lecture</option>
           <option value="studio">Atelier</option>
         </select>
-        <input id="decorVibe" class="decor-vibe" type="text" maxlength="240" placeholder="Ambiance (optionnel) : ex. murs rose poudré, esprit scandinave, vinyle vintage…">
+        <input id="decorVibe" class="decor-vibe" type="text" maxlength="200" placeholder="Style libre (optionnel) : ex. chambre scandinave, tons terracotta, vinyle vintage…">
         <div id="decorLoading" class="resize-loading hidden">
           <div class="progress-ring"></div>
           <p id="decorLoadingMsg">Génération du décor…</p>
@@ -199,14 +224,15 @@
     </div>
   </div>
 </div>
-
 <!-- Config injectée par le backend :
      - renderBase : URL du moteur de rendu (PC, via tunnel Cloudflare) — variable d'env RENDER_ENGINE_URL
-     - apiBase    : vide => même origine (ce backend sert collections + publish) -->
+     - apiBase    : vide => même origine (ce backend sert collections + publish)
+     - mode       : '' = create (publication classique), 'reimage' = refaire les images d'un produit -->
 <script>
   window.PUBLISHER_CONFIG = {
     renderBase: {{{ JSON.stringify(renderBase || '') }}},
-    apiBase: ''
+    apiBase: '',
+    mode: {{{ JSON.stringify(mode || '') }}}
   };
 </script>
 <script src="/publisher/app.js"></script>

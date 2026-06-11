@@ -2,10 +2,12 @@ export type ArtworkCategory = 'figuratif' | 'abstrait' | 'pop_art_street_art' | 
 
 export interface IProductPublisher {
   // Core generation methods
+  // existingContext : optionnel, mode « reimage » (produit existant dont on remplace les images)
   generateAlt(
     imageUrl: string,
     collectionTitle: string,
-    productType: string
+    productType: string,
+    existingContext?: { title: string; description: string }
   ): Promise<{ alt: string; filename: string }>
 
   generateHtmlDescription(

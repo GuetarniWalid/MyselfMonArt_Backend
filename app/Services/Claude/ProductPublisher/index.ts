@@ -14,15 +14,21 @@ export default class ProductPublisher extends Authentication implements IProduct
 
   /**
    * Generate alt text and filename for main artwork
+   * existingContext (optionnel, mode « reimage ») : titre/description du produit
+   * existant pour garder l'alt aligné avec son sujet — sans lui, comportement identique.
    */
   public async generateAlt(
     imageUrl: string,
     collectionTitle: string,
-    productType: string
+    productType: string,
+    existingContext?: { title: string; description: string }
   ): Promise<{ alt: string; filename: string }> {
     return this.retryOperation(async () => {
       const altGenerator = new AltGenerator(productType as 'poster' | 'painting' | 'tapestry')
-      const { responseFormat, systemPrompt } = altGenerator.prepareRequest(imageUrl)
+      const { responseFormat, systemPrompt } = altGenerator.prepareRequest(
+        imageUrl,
+        existingContext
+      )
       const jsonSchema: any = zodToJsonSchema(responseFormat, 'alt')
 
       // Ensure type field is present for Claude API
