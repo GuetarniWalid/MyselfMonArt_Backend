@@ -10,8 +10,15 @@ import Shopify from 'App/Services/Shopify'
  *    then the duplicate metaobject is deleted (status DRAFT as fallback if deletion fails).
  *
  * 2. FIX NOIR & BLANC TAXONOMY — the "Noir & Blanc" metaobject's color_taxonomy_reference
- *    points to Navy (wrong data: B&W artworks leak as "navy" into taxonomy consumers such
- *    as Google feeds, and S&D auto-grouped it under "Marine"). Repoint it to [Black, White].
+ *    pointed to Navy (wrong data: B&W artworks leaked as "navy" into taxonomy consumers;
+ *    Navy was a "parking" base so the value formed its own S&D group). Shopify REQUIRES at
+ *    least one base color (empty list and unset are both rejected), so the truthful value
+ *    is [Black, White]. CAVEAT: with that base, S&D AUTO grouping merges the value into the
+ *    Noir/Blanc groups — but "Noir & Blanc" is a DELIBERATE distinct facet (OR-combined
+ *    filters: white-dominant / black-dominant / B&W are three different intents). The
+ *    distinct facet must therefore be enforced in S&D itself (Manual grouping: keep the
+ *    B&W metaobject in its own group) or by filtering on a custom metaobject type — never
+ *    by reverting this reference to a lie.
  *
  *   node ace shopify:fix_color_data --dry-run
  *   node ace shopify:fix_color_data
@@ -27,7 +34,8 @@ export default class ShopifyFixColorData extends BaseCommand {
   private static CANONICAL_MARRON = 'gid://shopify/Metaobject/262968181083'
   private static CANONICAL_DORE_OR = 'gid://shopify/Metaobject/264048738651'
   private static NOIR_BLANC = 'gid://shopify/Metaobject/264624308571'
-  private static BLACK_WHITE_REFS = '["gid://shopify/TaxonomyValue/1","gid://shopify/TaxonomyValue/3"]'
+  // Truthful base colors (platform requires >= 1; see header caveat about S&D grouping).
+  private static NOIR_BLANC_REFS = '["gid://shopify/TaxonomyValue/1","gid://shopify/TaxonomyValue/3"]'
 
   public async run() {
     const shopify = new Shopify()
@@ -102,21 +110,21 @@ export default class ShopifyFixColorData extends BaseCommand {
       }
     }
 
-    // ---- 4. Fix Noir & Blanc taxonomy reference (Navy → Black + White)
+    // ---- 4. Fix Noir & Blanc taxonomy reference ([Black, White]; facet handled in S&D)
     const nb = metaobjects.find((m) => m.id === ShopifyFixColorData.NOIR_BLANC)
     const currentRef = nb?.fields?.find((f) => f.key === 'color_taxonomy_reference')?.value
     this.logger.info(`Noir & Blanc current color_taxonomy_reference: ${currentRef}`)
-    if (currentRef === ShopifyFixColorData.BLACK_WHITE_REFS) {
+    if (currentRef === ShopifyFixColorData.NOIR_BLANC_REFS) {
       this.logger.info('Already [Black, White] — nothing to do.')
     } else if (!this.dryRun) {
       const res = await shopify.metaobject.updateField(
         ShopifyFixColorData.NOIR_BLANC,
         'color_taxonomy_reference',
-        ShopifyFixColorData.BLACK_WHITE_REFS
+        ShopifyFixColorData.NOIR_BLANC_REFS
       )
       const errs = res.userErrors ?? []
       if (errs.length) this.logger.error(`Taxonomy fix failed: ${errs.map((e: any) => e.message).join('; ')}`)
-      else this.logger.success('Noir & Blanc taxonomy reference set to [Black, White]')
+      else this.logger.success('Noir & Blanc base color reference cleared (distinct facet restored)')
     }
 
     this.logger.info(this.dryRun ? 'Dry run complete — nothing written.' : 'Done.')
