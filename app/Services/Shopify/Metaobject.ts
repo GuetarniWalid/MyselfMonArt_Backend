@@ -57,6 +57,30 @@ export default class Metaobject extends Authentication {
     }
   }
 
+  /** Update a single field value on a metaobject (e.g. a color-pattern taxonomy reference). */
+  public async updateField(id: string, key: string, value: string) {
+    const mutation = `mutation UpdateMetaobjectField($id: ID!, $metaobject: MetaobjectUpdateInput!) {
+      metaobjectUpdate(id: $id, metaobject: $metaobject) {
+        metaobject { id handle }
+        userErrors { field message code }
+      }
+    }`
+    const data = await this.fetchGraphQL(mutation, { id, metaobject: { fields: [{ key, value }] } })
+    return data.metaobjectUpdate
+  }
+
+  /** Delete a metaobject (used to remove duplicate color entries after repointing products). */
+  public async delete(id: string) {
+    const mutation = `mutation DeleteMetaobject($id: ID!) {
+      metaobjectDelete(id: $id) {
+        deletedId
+        userErrors { field message code }
+      }
+    }`
+    const data = await this.fetchGraphQL(mutation, { id })
+    return data.metaobjectDelete
+  }
+
   public async createMediaMetaObject(mediaAlts: string[]) {
     const { query, variables } = this.getcreateMediaMetaObjectQuery(mediaAlts)
     const response = await this.fetchGraphQL(query, variables)
