@@ -21,9 +21,10 @@ const TARGET = {
   landscape: { ratio: '4:3' },
 } as const
 
-// IDs modèles SÛRS (ne pas utiliser 'gemini-3-pro-image' ni 'gemini-3.1-flash-image' : non fiables).
+// IDs modèles GA uniquement : Google éteint les alias '-preview' 3.x le 25/06/2026. Contrairement
+// au constat du 04/06, les ids GA sont fiables (re-testés en API directe le 12/06 + bench M1 CustomArt).
 const FLASH_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image'
-const PRO_MODEL = process.env.GEMINI_IMAGE_MODEL_HIGH || 'gemini-3-pro-image-preview'
+const PRO_MODEL = process.env.GEMINI_IMAGE_MODEL_HIGH || 'gemini-3-pro-image'
 
 // Vocabulaire d'insertion par PRODUIT : le support n'est PAS toujours un cadre.
 // - canvas   : toile tendue sur châssis (gallery-wrapped), AUCUN cadre -> sinon Gemini en invente un.
