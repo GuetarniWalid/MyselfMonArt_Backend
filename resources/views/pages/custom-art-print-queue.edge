@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FCFCFD">
+<title>MyselfMonArt · File print (poster perso)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/custom-art-teams/style.css">
+<link rel="stylesheet" href="/custom-art-print-queue/style.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◈</span>
+      <span>MyselfMonArt <em>File print — poster personnalisé</em></span>
+    </div>
+    <button id="refreshBtn" class="primary-btn small">↻ Rafraîchir</button>
+  </header>
+
+  <main class="content">
+
+    <section class="card">
+      <div class="card-head">
+        <h2 class="card-title">Commandes payées</h2>
+        <span id="countHint" class="hint">—</span>
+      </div>
+      <p class="card-note">
+        Chaque fichier d'impression est <strong>validé humainement</strong> avant la commande
+        sur le portail Picanova : ouvre le visuel à 100 %, vérifie le flocage (prénom/numéro)
+        et la netteté, puis <strong>Approuver</strong>. Une fois la commande passée chez
+        Picanova, marque-la <strong>Commandée</strong>.
+      </p>
+      <nav id="statusTabs" class="status-tabs" aria-label="Filtrer par statut"></nav>
+      <div id="queue" class="queue">
+        <p class="empty-row">Chargement…</p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Visionneuse zoom 100 % du fichier print -->
+  <div id="viewer" class="viewer hidden" role="dialog" aria-modal="true" aria-label="Fichier print à 100 %">
+    <div class="viewer-bar">
+      <span id="viewerTitle" class="viewer-title">—</span>
+      <button id="viewerZoom" class="ghost-btn small">Zoom 100 %</button>
+      <button id="viewerClose" class="primary-btn small">✕ Fermer</button>
+    </div>
+    <div id="viewerScroll" class="viewer-scroll">
+      <img id="viewerImg" alt="Fichier print" draggable="false">
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+</div>
+
+<script src="/custom-art-print-queue/app.js"></script>
+</body>
+</html>

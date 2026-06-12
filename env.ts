@@ -81,4 +81,42 @@ export default Env.rules({
   GEMINI_IMAGE_MODEL_HIGH: Env.schema.string.optional(),
   // Modèle texte de l'art-director (brief de scène du décor). Défaut : gemini-2.5-flash.
   GEMINI_TEXT_MODEL: Env.schema.string.optional(),
+  // --- CustomArt (poster personnalisé foot) — tout optionnel pour ne pas casser le boot ---
+  // Jeton API Replicate (provider Seedream/Qwen + upscale Real-ESRGAN).
+  REPLICATE_API_TOKEN: Env.schema.string.optional(),
+  // Clé fal.ai (alternative à Replicate, non branchée par défaut).
+  FAL_KEY: Env.schema.string.optional(),
+  // Cap coût global quotidien en euros (défaut 30) : au-delà, le studio répond « forte affluence ».
+  CUSTOM_ART_DAILY_COST_CAP_EUR: Env.schema.number.optional(),
+  // Chaîne complète de providers, entrées 'nom[:modèle]' séparées par des virgules
+  // (défaut bench M1 : gemini-3.1-flash-image -> gemini-3-pro-image -> gemini-2.5-flash-image).
+  CUSTOM_ART_PROVIDER_CHAIN: Env.schema.string.optional(),
+  // Rétro-compat : primaire/secours seuls ('gemini' | 'openai' | 'replicate').
+  CUSTOM_ART_PRIMARY_PROVIDER: Env.schema.string.optional(),
+  CUSTOM_ART_FALLBACK_PROVIDER: Env.schema.string.optional(),
+  // Modèle du juge vision (défaut : celui de la calibration bench).
+  CUSTOM_ART_JUDGE_MODEL: Env.schema.string.optional(),
+  // URL publique de l'image de référence scène/pose (figée J1).
+  CUSTOM_ART_SCENE_REF_URL: Env.schema.string.optional(),
+  // PSD des mises en situation post-reveal (chemins /mockups/... du moteur Photopea),
+  // séparés par des ';'. Vide = aucun rendu de mockup.
+  CUSTOM_ART_MOCKUP_PSDS: Env.schema.string.optional(),
+  // Tests locaux M9 UNIQUEMENT : saute l'appel Replicate (payant) de l'upscale print,
+  // le fichier est produit par interpolation sharp depuis la HD élue. JAMAIS true en prod.
+  CUSTOM_ART_SKIP_UPSCALE: Env.schema.boolean.optional(),
+  // Modèle Replicate de l'upscale print ('owner/name' ou 'owner/name:version' pour
+  // figer une version). Défaut : nightmareai/real-esrgan (Real-ESRGAN ×4).
+  CUSTOM_ART_UPSCALE_MODEL: Env.schema.string.optional(),
+  // Tests locaux M10 + charge M12 UNIQUEMENT : provider FACTICE (image statique du
+  // bench, zéro appel API payant, juge court-circuité). IGNORÉ en production.
+  CUSTOM_ART_FAKE_PROVIDER: Env.schema.boolean.optional(),
+  // Dossier des images servies par le provider factice. Vide = défaut
+  // scripts/bench/results/fiabilite-g31-v2/images (relatif à la racine du repo).
+  CUSTOM_ART_FAKE_IMAGES_DIR: Env.schema.string.optional(),
+  // Origin public de la boutique (https://www.myselfmonart.com) pour le CORS du studio.
+  STOREFRONT_URL: Env.schema.string.optional(),
+  // Lire l'IP client dans l'en-tête CF-Connecting-IP (chaîne Cloudflare -> nginx -> Adonis)
+  // pour le throttle et les caps anti-abus, tant que nginx ne ré-injecte pas la vraie IP
+  // dans X-Forwarded-For. Voir App/Services/ClientIp.
+  TRUST_CF_CONNECTING_IP: Env.schema.boolean.optional(),
 })

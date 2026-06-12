@@ -85,16 +85,22 @@ export default class Webhook extends Authentication {
   }
 
   public async createWebhookSubscription(
-    topic: 'PRODUCTS_UPDATE' | 'PRODUCTS_CREATE' | 'PRODUCTS_DELETE',
+    topic: 'PRODUCTS_UPDATE' | 'PRODUCTS_CREATE' | 'PRODUCTS_DELETE' | 'ORDERS_PAID',
     metafieldNamespaces: string[] = []
   ) {
     const { query, variables } = this.createWebhookSubscriptionQuery(topic, metafieldNamespaces)
     const response = await this.fetchGraphQL(query, variables)
+    const userErrors = response.webhookSubscriptionCreate?.userErrors || []
+    if (userErrors.length > 0) {
+      throw new Error(
+        `webhookSubscriptionCreate ${topic}: ${userErrors.map((e: any) => e.message).join(', ')}`
+      )
+    }
     return response.webhookSubscriptionCreate.webhookSubscription
   }
 
   private createWebhookSubscriptionQuery(
-    topic: 'PRODUCTS_UPDATE' | 'PRODUCTS_CREATE' | 'PRODUCTS_DELETE',
+    topic: 'PRODUCTS_UPDATE' | 'PRODUCTS_CREATE' | 'PRODUCTS_DELETE' | 'ORDERS_PAID',
     metafieldNamespaces: string[]
   ) {
     return {

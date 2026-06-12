@@ -146,3 +146,67 @@ Route.group(() => {
   Route.post('/clean-mockup', 'CleanMockupController.generate').middleware(['auth']) // démarre le job
   Route.get('/clean-mockup/result', 'CleanMockupController.result').middleware(['auth']) // état (polling)
 }).prefix('/api')
+
+// CustomArt (poster personnalisé foot) — API publique du studio, rate-limitée.
+// Génération asynchrone : POST /jobs répond immédiatement (jobId), le front polle
+// GET /jobs/:uuid (jamais d'attente synchrone : Cloudflare coupe à ~100s).
+// CORS : l'origin boutique est ajouté dans config/cors.ts (STOREFRONT_URL).
+Route.group(() => {
+  Route.get('/teams', 'CustomArtController.teams').middleware(['throttle:120,60'])
+  Route.post('/jobs', 'CustomArtController.create').middleware(['throttle:10,60'])
+  Route.get('/jobs/:uuid', 'CustomArtController.show').middleware(['throttle:120,60'])
+  // Preview watermarkée proxifiée (en-tête ACAO pour la texture WebGL du thème)
+  Route.get('/jobs/:uuid/preview/:n', 'CustomArtController.preview').middleware(['throttle:120,60'])
+  Route.post('/jobs/:uuid/reveal-next', 'CustomArtController.revealNext').middleware([
+    'throttle:20,60',
+  ])
+  Route.post('/jobs/:uuid/save', 'CustomArtController.save').middleware(['throttle:10,60'])
+}).prefix('/api/custom-art')
+
+// CustomArt — admin (auth existante) : stats squelette (jobs/jour, coûts, taux de pass)
+// + bibliothèque d'équipes (M4) : CRUD + upload des images de maillot de référence
+// + file de revue artiste (M5, décision §0.15) : jobs manual_review, relance, résultat manuel
+Route.group(() => {
+  Route.get('/stats', 'CustomArtController.adminStats')
+
+  Route.get('/teams', 'CustomArtTeamsAdminController.index')
+  Route.post('/teams', 'CustomArtTeamsAdminController.store')
+  Route.put('/teams/:id', 'CustomArtTeamsAdminController.update')
+  Route.post('/teams/:id/toggle-active', 'CustomArtTeamsAdminController.toggleActive')
+  Route.post('/teams/:id/kit-images', 'CustomArtTeamsAdminController.uploadKit')
+  Route.post('/teams/:id/kit-images/delete', 'CustomArtTeamsAdminController.deleteKit')
+
+  Route.get('/review', 'CustomArtReviewAdminController.index')
+  Route.get('/review/:uuid/photo', 'CustomArtReviewAdminController.photo')
+  Route.post('/review/:uuid/retry', 'CustomArtReviewAdminController.retry')
+  Route.post('/review/:uuid/result', 'CustomArtReviewAdminController.uploadResult')
+
+  // File print (M9, plan §9) : validation humaine de chaque fichier d'impression
+  // avant la commande manuelle sur le portail Picanova.
+  Route.get('/print-queue', 'CustomArtPrintAdminController.index')
+  Route.get('/print-queue/:id/file', 'CustomArtPrintAdminController.file')
+  Route.get('/print-queue/:id/download', 'CustomArtPrintAdminController.download')
+  Route.post('/print-queue/:id/approve', 'CustomArtPrintAdminController.approve')
+  Route.post('/print-queue/:id/regenerate', 'CustomArtPrintAdminController.regenerate')
+  Route.post('/print-queue/:id/ordered', 'CustomArtPrintAdminController.markOrdered')
+})
+  .prefix('/admin/custom-art')
+  .middleware(['auth'])
+
+// Page admin de la bibliothèque d'équipes (pattern /publisher : vue Edge + JS vanilla
+// dans public/custom-art-teams/ ; les fetch same-origin envoient le cookie de session).
+Route.get('/custom-art-teams', async ({ view }) => {
+  return view.render('pages/custom-art-teams')
+}).middleware(['auth'])
+
+// Page admin de la file de revue artiste (même pattern : Edge + JS vanilla dans
+// public/custom-art-review/). Lien envoyé dans l'email de notification manual_review.
+Route.get('/custom-art-review', async ({ view }) => {
+  return view.render('pages/custom-art-review')
+}).middleware(['auth'])
+
+// Page admin de la file print (même pattern : Edge + JS vanilla dans
+// public/custom-art-print-queue/). Lien envoyé dans les emails « fichier à valider ».
+Route.get('/custom-art-print-queue', async ({ view }) => {
+  return view.render('pages/custom-art-print-queue')
+}).middleware(['auth'])

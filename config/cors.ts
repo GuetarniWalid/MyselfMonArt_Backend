@@ -46,15 +46,19 @@ const corsConfig: CorsConfig = {
   |
   */
   origin: (requestOrigin) => {
-    // For development, allow all origins
+    // Développement : on REFLÈTE l'origin (true) au lieu du joker '*' — le studio
+    // CustomArt appelle l'API avec credentials:'include', et le navigateur refuse
+    // la combinaison « Access-Control-Allow-Origin: * » + credentials.
     if (Env.get('NODE_ENV') !== 'production') {
-      return '*'
+      return true
     }
 
     // For production, check against allowed origins
     const allowedOrigins = [
       Env.get('FRONTEND_URL'),
       Env.get('SHOPIFY_SHOP_URL'),
+      // Domaine public de la boutique (studio CustomArt : fetch cross-origin depuis le thème)
+      Env.get('STOREFRONT_URL'),
       Env.get('CHROME_EXTENSION_ID')
         ? `chrome-extension://${Env.get('CHROME_EXTENSION_ID')}`
         : null,

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FCFCFD">
+<title>MyselfMonArt · Revue artiste (poster perso)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/custom-art-teams/style.css">
+<link rel="stylesheet" href="/custom-art-review/style.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◈</span>
+      <span>MyselfMonArt <em>Revue artiste — poster personnalisé</em></span>
+    </div>
+    <button id="refreshBtn" class="primary-btn small">↻ Rafraîchir</button>
+  </header>
+
+  <main class="content">
+
+    <section class="card">
+      <div class="card-head">
+        <h2 class="card-title">Créations en attente de revue</h2>
+        <span id="countHint" class="hint">—</span>
+      </div>
+      <p class="card-note">
+        Jobs passés en <strong>manual_review</strong> : photo refusée par les filtres des modèles
+        (IMAGE_SAFETY) ou 2 rounds sans candidat validé par le juge. Promesse client :
+        aperçu sous 24 h. Relance avec un autre modèle, ou attache directement le rendu final.
+      </p>
+      <div id="queue" class="queue">
+        <p class="empty-row">Chargement…</p>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+</div>
+
+<script src="/custom-art-review/app.js"></script>
+</body>
+</html>

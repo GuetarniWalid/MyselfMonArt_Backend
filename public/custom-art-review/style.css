@@ -1,0 +1,40 @@
+/* ===== MyselfMonArt — file de revue artiste (poster perso foot, M5) =====
+   Complète /custom-art-teams/style.css (design system publisher, chargé avant). */
+
+.queue{display:grid;gap:var(--s4)}
+
+.review-card{
+  display:grid;gap:var(--s4);padding:var(--s4);
+  border:1px solid var(--border-soft);border-radius:var(--r-md);background:var(--surface-2);
+}
+@media(min-width:720px){
+  .review-card{grid-template-columns:120px 1fr;align-items:start}
+}
+
+.review-photo{width:120px;height:120px;border-radius:var(--r-md);object-fit:cover;
+  border:1px solid var(--border);background:var(--surface)}
+
+.review-main{display:grid;gap:var(--s3);min-width:0}
+.review-head{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s3);align-items:baseline}
+.review-title{font-size:17px;font-weight:600;letter-spacing:-.01em}
+.review-meta{font-size:13px;color:var(--muted)}
+.review-reason{
+  margin:0;padding:6px 10px;border-radius:var(--r-sm);font-size:13px;line-height:1.5;
+  background:var(--warn-weak);color:var(--warn);
+}
+
+.review-candidates{display:flex;gap:var(--s2);flex-wrap:wrap}
+.cand{position:relative}
+.cand img{width:84px;height:112px;border-radius:var(--r-sm);object-fit:cover;
+  border:1px solid var(--border-soft);background:var(--surface)}
+.cand .cand-score{
+  position:absolute;left:4px;bottom:4px;padding:1px 6px;border-radius:var(--pill);
+  font-size:11px;font-weight:600;background:rgba(28,32,36,.8);color:#fff;
+}
+
+.review-actions{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center}
+.review-actions select{
+  min-height:40px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--r-md);
+  font:500 14px/1.4 inherit;color:var(--text);background:var(--surface);max-width:100%;
+}
+.review-actions select:focus{outline:2px solid var(--accent);outline-offset:-1px}

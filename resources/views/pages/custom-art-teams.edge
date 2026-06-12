@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FCFCFD">
+<title>MyselfMonArt · Équipes (poster perso)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/custom-art-teams/style.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◈</span>
+      <span>MyselfMonArt <em>Équipes — poster personnalisé</em></span>
+    </div>
+    <button id="addBtn" class="primary-btn small">+ Ajouter une équipe</button>
+  </header>
+
+  <main class="content">
+
+    <section class="card">
+      <div class="card-head">
+        <h2 class="card-title">Bibliothèque d'équipes</h2>
+        <span id="countHint" class="hint">—</span>
+      </div>
+      <p class="card-note">
+        Les images de maillot (domicile) servent de références de génération : sans au moins une image,
+        l'équipe ne peut pas produire de tableau. Une équipe inactive n'apparaît plus dans le studio.
+      </p>
+      <div class="table-wrap">
+        <table class="teams-table">
+          <thead>
+            <tr>
+              <th>Équipe</th>
+              <th>Slug</th>
+              <th>Couleurs</th>
+              <th>Maillots</th>
+              <th>Statut</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="teamsBody">
+            <tr><td colspan="6" class="empty-row">Chargement…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Formulaire ajout / édition -->
+  <div id="formOverlay" class="overlay hidden">
+    <div class="form-card">
+      <h3 id="formTitle">Ajouter une équipe</h3>
+      <form id="teamForm" novalidate>
+        <div class="field">
+          <label for="fName">Nom</label>
+          <input type="text" id="fName" maxlength="100" placeholder="Ex : RC Lens" required>
+        </div>
+        <div class="field">
+          <label for="fSlug">Slug</label>
+          <input type="text" id="fSlug" maxlength="100" placeholder="rc-lens" pattern="[a-z0-9-]+" required>
+        </div>
+        <div class="field">
+          <label for="fAliases">Alias de recherche <span class="opt">(séparés par des virgules)</span></label>
+          <input type="text" id="fAliases" placeholder="lens, sang et or, rcl">
+        </div>
+        <div class="field colors-field">
+          <label>Couleurs du maillot domicile</label>
+          <div class="colors-row">
+            <label class="color-pick"><input type="color" id="fColorPrimary" value="#1c2024"> Principale</label>
+            <label class="color-pick"><input type="color" id="fColorSecondary" value="#ffffff"> Secondaire</label>
+          </div>
+        </div>
+        <div class="field">
+          <label for="fFidelityNotes">Notes de fidélité maillot <span class="opt">(injectées dans le prompt de génération et le juge)</span></label>
+          <textarea id="fFidelityNotes" rows="4" maxlength="2000"
+            placeholder="Éléments iconiques du maillot domicile + pièges. Ex : bande verticale centrale rouge bordée de blanc, sponsor sur la poitrine, blason côté cœur…"></textarea>
+        </div>
+        <div class="field" id="kitField">
+          <label>Images de maillot <span class="opt">(3 max, JPG/PNG/WEBP)</span></label>
+          <div id="kitList" class="kit-list"></div>
+          <input type="file" id="kitInput" accept="image/jpeg,image/png,image/webp" multiple hidden>
+          <button type="button" id="kitUploadBtn" class="ghost-btn">⬆ Ajouter des images</button>
+          <p id="kitHint" class="kit-hint hidden">Enregistre d'abord l'équipe pour pouvoir uploader ses maillots.</p>
+        </div>
+        <div class="field">
+          <label class="check-label"><input type="checkbox" id="fActive" checked> Équipe active (visible dans le studio)</label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" id="saveBtn" class="primary-btn">Enregistrer</button>
+          <button type="button" id="cancelBtn" class="ghost-btn">Fermer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+</div>
+
+<script src="/custom-art-teams/app.js"></script>
+</body>
+</html>

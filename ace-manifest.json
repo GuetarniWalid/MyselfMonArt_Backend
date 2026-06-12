@@ -34,7 +34,7 @@
           "name": "locales",
           "propertyName": "locales",
           "type": "string",
-          "description": "Comma-separated locales (default en,es,de)"
+          "description": "Comma-separated locales (default en,es,de,nl)"
         },
         {
           "name": "filter",
@@ -62,6 +62,48 @@
       "aliases": [],
       "flags": []
     },
+    "custom_art:register_orders_paid_webhook": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/CustomArtRegisterOrdersPaidWebhook",
+      "commandName": "custom_art:register_orders_paid_webhook",
+      "description": "Vérifie/crée l'abonnement webhook orders/paid vers le backend (idempotent)",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
+    "custom_art:remind_now": {
+      "settings": {
+        "loadApp": true
+      },
+      "commandPath": "./commands/CustomArtRemindNow",
+      "commandName": "custom_art:remind_now",
+      "description": "Scan immédiat des relances CustomArt « votre tableau vous attend » (M10)",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
+    "custom_art:seed_kits": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/CustomArtSeedKits",
+      "commandName": "custom_art:seed_kits",
+      "description": "Seed des réfs maillot (15 équipes) vers le storage + kit_ref_urls en DB",
+      "args": [],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "force",
+          "propertyName": "force",
+          "type": "boolean",
+          "description": "Remplace des kit_ref_urls déjà renseignées"
+        }
+      ]
+    },
     "delete:merchant_center_products": {
       "settings": {
         "loadApp": true,
@@ -70,18 +112,6 @@
       "commandPath": "./commands/DeleteMerchantCenterProducts",
       "commandName": "delete:merchant_center_products",
       "description": "Delete all products from Google Merchant Center",
-      "args": [],
-      "aliases": [],
-      "flags": []
-    },
-    "email:sync": {
-      "settings": {
-        "loadApp": true,
-        "stayAlive": false
-      },
-      "commandPath": "./commands/EmailSync",
-      "commandName": "email:sync",
-      "description": "Run one Gmail inbox sync for the SAV email channel (ingest new mail → triage → draft replies). First run only baselines the cursor.",
       "args": [],
       "aliases": [],
       "flags": []
@@ -270,6 +300,52 @@
       "aliases": [],
       "flags": []
     },
+    "shopify:backfill_colors_themes": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShopifyBackfillColorsThemes",
+      "commandName": "shopify:backfill_colors_themes",
+      "description": "Detect & set missing colors (shopify.color-pattern) and themes (shopify.theme) on artworks left without them by a daily variant-limit hit",
+      "args": [
+        {
+          "type": "spread",
+          "propertyName": "productIds",
+          "name": "productIds",
+          "required": false,
+          "description": "Product IDs (numeric or gid://) to backfill. With none, scans the store for paintings/posters missing colors or themes."
+        }
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "dry-run",
+          "propertyName": "dryRun",
+          "type": "boolean",
+          "description": "Only list the products that would be backfilled, without calling OpenAI or writing anything"
+        }
+      ]
+    },
+    "shopify:backfill_painting_color": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShopifyBackfillPaintingColor",
+      "commandName": "shopify:backfill_painting_color",
+      "description": "Create painting.color definition and mirror shopify.color-pattern into it on all products",
+      "args": [],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "dry-run",
+          "propertyName": "dryRun",
+          "type": "boolean",
+          "description": "Scan and report without writing"
+        }
+      ]
+    },
     "shopify:change_meta_objects_media_status": {
       "settings": {
         "loadApp": true,
@@ -329,6 +405,69 @@
       "args": [],
       "aliases": [],
       "flags": []
+    },
+    "shopify:finish_custom_product": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShopifyFinishCustomProduct",
+      "commandName": "shopify:finish_custom_product",
+      "description": "Finalise un produit poster personnalisé draft : options, 12 variantes (grille de prix), template personalized, catégorie et metafields",
+      "args": [],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "product",
+          "propertyName": "product",
+          "type": "string",
+          "description": "ID numérique du produit Shopify draft (ex: 10528685621595)"
+        },
+        {
+          "name": "grid",
+          "propertyName": "grid",
+          "type": "string",
+          "description": "Chemin du JSON de la grille de prix (12 combinaisons taille × cadre)"
+        }
+      ]
+    },
+    "shopify:fix_color_data": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShopifyFixColorData",
+      "commandName": "shopify:fix_color_data",
+      "description": "Merge duplicate color metaobjects (repoint products, delete dupes) and fix the Noir & Blanc taxonomy reference",
+      "args": [],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "dry-run",
+          "propertyName": "dryRun",
+          "type": "boolean",
+          "description": "Report what would change without writing"
+        }
+      ]
+    },
+    "shopify:fix_filter_formats": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShopifyFixFilterFormats",
+      "commandName": "shopify:fix_filter_formats",
+      "description": "Force-register canonical es/de/nl translations for the format/orientation filter values (Carré/Paysage/Portrait)",
+      "args": [],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "dry-run",
+          "propertyName": "dryRun",
+          "type": "boolean",
+          "description": "List format labels and targets without writing anything"
+        }
+      ]
     },
     "shopify:get_product_by_id": {
       "settings": {
@@ -399,6 +538,26 @@
       "commandName": "shopify:reset-likes",
       "description": "Reset likes.number metafield to zero on all artwork products",
       "args": [],
+      "aliases": [],
+      "flags": []
+    },
+    "shopify:resync_product_variants": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShopifyResyncProductVariants",
+      "commandName": "shopify:resync_product_variants",
+      "description": "Re-copy model data (options, variants, prices, metafields) onto artworks left with an incomplete variant matrix",
+      "args": [
+        {
+          "type": "spread",
+          "propertyName": "productIds",
+          "name": "productIds",
+          "required": false,
+          "description": "Product IDs (numeric or gid://) to resync. Defaults to the known-broken products."
+        }
+      ],
       "aliases": [],
       "flags": []
     },
@@ -476,7 +635,7 @@
           "propertyName": "locale",
           "name": "locale",
           "required": false,
-          "description": "Target language code (en, es, de)"
+          "description": "Target language code (en, es, de, nl)"
         }
       ],
       "aliases": [],
@@ -531,7 +690,7 @@
           "propertyName": "locale",
           "name": "locale",
           "required": false,
-          "description": "Target language code (en, es, de)"
+          "description": "Target language code (en, es, de, nl)"
         }
       ],
       "aliases": [],
@@ -578,6 +737,18 @@
       "commandPath": "./commands/ThemeAttribution",
       "commandName": "theme:attribution",
       "description": "Run theme detection on all painting products",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
+    "translate:menus": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/TranslateMenus",
+      "commandName": "translate:menus",
+      "description": "Translate all menu link titles into every active locale",
       "args": [],
       "aliases": [],
       "flags": []

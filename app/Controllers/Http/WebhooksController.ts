@@ -8,6 +8,12 @@ import Database from '@ioc:Adonis/Lucid/Database'
 import { logTaskBoundary } from 'App/Utils/Logs'
 import VideoStorage from 'App/Services/VideoStorage'
 import PublishAlertMailer from 'App/Services/PublishAlertMailer'
+import CustomArtJob from 'App/Models/CustomArtJob'
+import CustomArtOrder from 'App/Models/CustomArtOrder'
+import CustomArtTeam from 'App/Models/CustomArtTeam'
+import CustomArtStorage from 'App/Services/CustomArt/Storage'
+import PrintFileService from 'App/Services/CustomArt/PrintFileService'
+import OrderMailer, { OrderMailItem } from 'App/Services/CustomArt/OrderMailer'
 
 interface UpdateFailure {
   productId: string
@@ -15,6 +21,8 @@ interface UpdateFailure {
   error: string
   timestamp: Date
 }
+
+const JOB_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export default class WebhooksController {
   private static processingProducts = new Set<string>()
@@ -108,9 +116,13 @@ export default class WebhooksController {
 
       response.status(200).send({ message: 'Webhook received' })
 
+      // Payload complet requis par orders/paid (line items + properties) — capturé
+      // avant le setImmediate, le contexte HTTP n'étant plus garanti ensuite.
+      const payload = request.body()
+
       // Fire-and-forget: process asynchronously after responding
       setImmediate(() => {
-        this.processWebhookAsync(topic!, productId!).catch((error) => {
+        this.processWebhookAsync(topic!, productId!, payload).catch((error) => {
           console.error(`❌ Uncaught error in async webhook processing for ${productId}:`, error)
         })
       })
@@ -326,7 +338,7 @@ export default class WebhooksController {
    * Processes webhook in background after HTTP response sent.
    * Product is already in processingProducts Set (added in handle() before responding).
    */
-  private async processWebhookAsync(topic: string, id: string): Promise<void> {
+  private async processWebhookAsync(topic: string, id: string, payload?: any): Promise<void> {
     try {
       console.info(`🔄 Starting async processing for ${topic}: ${id}`)
 
@@ -341,6 +353,9 @@ export default class WebhooksController {
           break
         case 'products/delete':
           await this.handleProductDelete(id)
+          break
+        case 'orders/paid':
+          await this.handleOrderPaid(payload)
           break
         default:
           console.warn(`Unhandled webhook topic in async processing: ${topic}`)
@@ -422,6 +437,107 @@ export default class WebhooksController {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       console.error(`❌ Error checking video metafield for product ${id}:`, errorMessage)
+    }
+  }
+
+  /**
+   * orders/paid (M9, plan §9) : pour chaque line item portant la property cachée
+   * `_job_id` (création studio CustomArt), crée la ligne custom_art_orders en
+   * 'awaiting_file' puis lance — détaché — la préparation du fichier print
+   * (upscale Real-ESRGAN + gabarit Picanova, App/Services/CustomArt/PrintFileService).
+   *
+   * Idempotence à deux étages : WebhookLog (webhook_id unique, dédoublonné dans
+   * handle()) + contrainte unique (shopify_order_id, line_item_id) via firstOrCreate —
+   * une redélivraison Shopify ne crée ni doublon ni deuxième upscale.
+   * L'email client de confirmation n'est envoyé que si au moins une ligne vient
+   * d'être créée (jamais sur un rejeu).
+   */
+  private async handleOrderPaid(payload: any): Promise<void> {
+    const orderId = String(payload?.id || '')
+    if (!orderId) {
+      console.warn('orders/paid sans id — ignoré')
+      return
+    }
+
+    const lineItems: any[] = Array.isArray(payload?.line_items) ? payload.line_items : []
+    const matches: Array<{ lineItem: any; jobUuid: string }> = []
+    for (const lineItem of lineItems) {
+      const properties: any[] = Array.isArray(lineItem?.properties) ? lineItem.properties : []
+      const jobProp = properties.find(
+        (p) => p?.name === '_job_id' && typeof p?.value === 'string' && JOB_UUID_RE.test(p.value)
+      )
+      if (jobProp) matches.push({ lineItem, jobUuid: jobProp.value })
+    }
+    // Commande classique (tableaux catalogue) : rien à faire ici
+    if (matches.length === 0) return
+
+    const orderName: string | null = payload?.name || null
+    const customerEmail: string | null =
+      payload?.email || payload?.contact_email || payload?.customer?.email || null
+
+    console.info(
+      `🛒 orders/paid ${orderName || orderId}: ${matches.length} article(s) personnalisé(s)`
+    )
+
+    const createdItems: OrderMailItem[] = []
+    for (const { lineItem, jobUuid } of matches) {
+      const job = await CustomArtJob.findBy('uuid', jobUuid)
+      if (!job) {
+        console.error(`❌ orders/paid ${orderId}: job CustomArt introuvable (uuid=${jobUuid})`)
+        continue
+      }
+
+      // Idempotent : contrainte unique (shopify_order_id, line_item_id) + firstOrCreate
+      const order = await CustomArtOrder.firstOrCreate(
+        { shopifyOrderId: orderId, lineItemId: String(lineItem.id) },
+        {
+          jobId: job.id,
+          orderName,
+          customerEmail,
+          printStatus: 'awaiting_file',
+        }
+      )
+      if (!order.$isLocal) {
+        console.info(
+          `↩️  orders/paid ${orderId}: ligne ${lineItem.id} déjà enregistrée (rejeu) — préparation non relancée`
+        )
+        continue
+      }
+
+      console.info(
+        `📦 CustomArtOrder créé (commande ${orderName || orderId}, job ${job.uuid}) — préparation du fichier print lancée`
+      )
+
+      // Préparation du fichier print, détachée : ne bloque jamais le webhook.
+      // PrintFileService.prepare ne throw pas (échec -> print_error + email d'alerte).
+      setImmediate(() => {
+        PrintFileService.prepare(order.id).catch((error) => {
+          console.error(`❌ Préparation print commande ${orderId}:`, error?.message || error)
+        })
+      })
+
+      // Contenu de l'email de confirmation client (aperçu validé + mockups rendus)
+      const team = await CustomArtTeam.find(job.teamId)
+      const candidates = job.candidates || []
+      const chosen = job.chosenIndex !== null ? candidates[job.chosenIndex] : null
+      createdItems.push({
+        playerName: job.playerName,
+        playerNumber: job.playerNumber,
+        teamName: team?.name || 'votre équipe',
+        format: job.format,
+        frame: job.frame,
+        previewUrl: chosen?.previewPath ? CustomArtStorage.publicUrl(chosen.previewPath) : null,
+        mockupUrls: (job.mockups || [])
+          .filter((m) => m.status === 'done' && m.url)
+          .map((m) => m.url as string),
+      })
+    }
+
+    // Confirmation client (aperçu + mockups + délais) — uniquement sur création réelle
+    if (createdItems.length > 0 && customerEmail) {
+      await new OrderMailer()
+        .sendPaidConfirmation({ email: customerEmail, orderName, items: createdItems })
+        .catch(() => {})
     }
   }
 
