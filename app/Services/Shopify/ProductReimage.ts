@@ -22,7 +22,9 @@ export interface ReimageContext {
   orientation: ReimageOrientation | null
   productType: ReimageProductType | null
   collection: { id: string; title: string } | null
-  images: Array<{ id: string; url: string | null; alt: string | null }>
+  // url = vignette (grille de rendus) ; fullUrl = pleine résolution (l'œuvre sert de
+  // source aux rendus Photopea/IA côté front, une vignette serait inutilisable)
+  images: Array<{ id: string; url: string | null; fullUrl: string | null; alt: string | null }>
   hasVideo: boolean
 }
 
@@ -35,6 +37,9 @@ export interface ReplaceContext {
   collectionTitle: string
   onlineStoreUrl: string | null
   imageMediaIds: string[]
+  // alts existants par média : quand l'œuvre est CONSERVÉE (payload mixte), son alt
+  // n'est pas régénéré — il est relu ici pour servir de contexte aux alts des nouveaux mockups
+  imageMedia: Array<{ id: string; alt: string | null }>
   hasVideo: boolean
 }
 
@@ -102,7 +107,8 @@ export default class ProductReimage extends Authentication {
             mediaContentType
             ... on MediaImage {
               image {
-                url(transform: { maxWidth: 200, maxHeight: 200 })
+                thumb: url(transform: { maxWidth: 400, maxHeight: 400 })
+                full: url
               }
             }
           }
@@ -128,7 +134,8 @@ export default class ProductReimage extends Authentication {
       .filter((node) => node.mediaContentType === 'IMAGE')
       .map((node) => ({
         id: node.id,
-        url: node.image?.url || null,
+        url: node.image?.thumb || null,
+        fullUrl: node.image?.full || null,
         alt: node.alt || null,
       }))
 
@@ -177,6 +184,7 @@ export default class ProductReimage extends Authentication {
         media(first: 250) {
           nodes {
             id
+            alt
             mediaContentType
           }
         }
@@ -190,6 +198,7 @@ export default class ProductReimage extends Authentication {
 
     const mediaNodes: any[] = product.media?.nodes || []
     const collection = this.resolveCollection(product)
+    const imageNodes = mediaNodes.filter((node) => node.mediaContentType === 'IMAGE')
 
     return {
       id: product.id,
@@ -199,9 +208,8 @@ export default class ProductReimage extends Authentication {
       productType: this.normalizeProductType(product.artworkTypeMetafield?.value),
       collectionTitle: collection?.title || '',
       onlineStoreUrl: product.onlineStoreUrl || null,
-      imageMediaIds: mediaNodes
-        .filter((node) => node.mediaContentType === 'IMAGE')
-        .map((node) => node.id),
+      imageMediaIds: imageNodes.map((node) => node.id),
+      imageMedia: imageNodes.map((node) => ({ id: node.id, alt: node.alt || null })),
       hasVideo: mediaNodes.some((node) => node.mediaContentType !== 'IMAGE'),
     }
   }

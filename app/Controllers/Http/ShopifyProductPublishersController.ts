@@ -401,25 +401,39 @@ export default class ShopifyProductPublishersController {
       const checkedRequest = await request.validate(ReplaceProductImagesValidator)
 
       // Contrôles métier post-schema, AVANT tout appel IA payant (l'« afterValidation »
-      // du validator publish n'est pas un hook Adonis 5 et ne s'exécutait jamais) :
-      // exactement une image « original », un contexte pour chaque mockup.
-      const originalCount = checkedRequest.images.filter((i) => i.type === 'original').length
-      const mockupSansContexte = checkedRequest.images.findIndex(
-        (i) => i.type === 'mockup' && !i.mockupContext
+      // du validator publish n'est pas un hook Adonis 5 et ne s'exécutait jamais).
+      // Payload MIXTE : chaque entrée porte SOIT base64Image (nouvelle image) SOIT
+      // mediaId (média existant conservé) ; exactement une « original » ; un contexte
+      // pour chaque NOUVEAU mockup (les conservés gardent leur alt, pas d'IA).
+      const entries = checkedRequest.images
+      const malformed = entries.findIndex((i) => !i.base64Image === !i.mediaId)
+      const originalCount = entries.filter((i) => i.type === 'original').length
+      const mockupSansContexte = entries.findIndex(
+        (i) => i.type === 'mockup' && i.base64Image && !i.mockupContext
       )
-      if (originalCount !== 1 || mockupSansContexte !== -1) {
+      if (malformed !== -1 || originalCount !== 1 || mockupSansContexte !== -1) {
         return response.status(422).json({
           success: false,
           message: 'Validation failed',
           errors: {
             images: [
-              originalCount !== 1
-                ? 'Exactly one image must have type "original"'
-                : `Image at index ${mockupSansContexte} with type "mockup" must have a mockupContext`,
+              malformed !== -1
+                ? `Image at index ${malformed} must have exactly one of base64Image or mediaId`
+                : originalCount !== 1
+                  ? 'Exactly one image must have type "original"'
+                  : `Image at index ${mockupSansContexte} with type "mockup" must have a mockupContext`,
             ],
           },
         })
       }
+      // Découpage conservées / nouvelles. L'ordre du tableau `entries` est l'ordre
+      // final voulu sur la fiche produit (le reorder d'arrière-plan l'applique).
+      const keptIds = entries.filter((i) => i.mediaId).map((i) => i.mediaId!)
+      const newEntries = entries
+        .filter((i) => i.base64Image)
+        .map((i) => ({ base64Image: i.base64Image!, mockupContext: i.mockupContext, type: i.type }))
+      const originalEntry = entries.find((i) => i.type === 'original')!
+      const originalIsKept = Boolean(originalEntry.mediaId)
       const shopify = new Shopify()
       const reimage = new ProductReimage()
       const aiService = new ProductPublisher()
@@ -436,29 +450,60 @@ export default class ShopifyProductPublishersController {
       const collectionTitle = productContext.collectionTitle
       const oldImageMediaIds = productContext.imageMediaIds
 
-      // Sauvegarde locale des nouvelles images (Shopify les fetchera par URL),
-      // en réutilisant le composeur du publish.
-      productPublisher = new ShopifyProductPublisher({
-        images: checkedRequest.images,
-        ratio: checkedRequest.ratio,
-        productType,
-        // Pas de collection fournie par le client en mode reimage : seul le titre
-        // (relu du produit) sert de contexte IA, l'id n'est jamais réécrit.
-        parentCollection: { id: '', title: collectionTitle },
-      })
-      const originalImageUrls = await productPublisher.processAllImages()
-      const compressedMainArtworkDataUri = await productPublisher.getCompressedMainArtworkDataUri()
-      const originalImageIndex = productPublisher.getOriginalImageIndex()
+      // Les médias conservés doivent appartenir au produit (ids relus à l'instant),
+      // sans doublon — sinon le payload est périmé (produit modifié entre-temps) ou erroné.
+      const oldIdSet = new Set(oldImageMediaIds)
+      const unknownKept = keptIds.find((id) => !oldIdSet.has(id))
+      if (unknownKept || new Set(keptIds).size !== keptIds.length) {
+        return response.status(422).json({
+          success: false,
+          message: 'Validation failed',
+          errors: {
+            images: [
+              unknownKept
+                ? `Kept media ${unknownKept} does not belong to this product (refresh and retry)`
+                : 'Duplicate kept mediaId in payload',
+            ],
+          },
+        })
+      }
 
-      // Alt de l'oeuvre principale, aligné sur le produit existant (titre + description)
-      const { alt: mainArtworkAlt, filename: mainArtworkFilename } = await aiService.generateAlt(
-        compressedMainArtworkDataUri,
-        collectionTitle,
-        productType,
-        { title: productContext.title, description: productContext.descriptionText }
-      )
+      // Sauvegarde locale des NOUVELLES images uniquement (Shopify les fetchera par URL),
+      // en réutilisant le composeur du publish. Aucune nouvelle image (pure curation :
+      // suppression/réordonnancement) => pas de composeur du tout.
+      if (newEntries.length) {
+        productPublisher = new ShopifyProductPublisher({
+          images: newEntries,
+          ratio: checkedRequest.ratio,
+          productType,
+          // Pas de collection fournie par le client en mode reimage : seul le titre
+          // (relu du produit) sert de contexte IA, l'id n'est jamais réécrit.
+          parentCollection: { id: '', title: collectionTitle },
+        })
+      }
+      const originalImageUrls = productPublisher ? await productPublisher.processAllImages() : []
 
-      // Métadonnées mockups : données EXISTANTES du produit + alt fraîchement généré
+      // Alt de l'oeuvre principale : régénéré seulement si l'œuvre est NOUVELLE (base64,
+      // ancien front plein-remplacement). Œuvre CONSERVÉE (front v2) : alt existant relu
+      // du média — zéro appel IA, l'image ne bouge pas sur Shopify.
+      let mainArtworkAlt: string
+      let mainArtworkFilename: string | null = null
+      if (originalIsKept) {
+        mainArtworkAlt =
+          productContext.imageMedia.find((m) => m.id === originalEntry.mediaId)?.alt ||
+          productContext.title
+      } else {
+        const compressedMainArtworkDataUri =
+          await productPublisher!.getCompressedMainArtworkDataUri()
+        ;({ alt: mainArtworkAlt, filename: mainArtworkFilename } = await aiService.generateAlt(
+          compressedMainArtworkDataUri,
+          collectionTitle,
+          productType,
+          { title: productContext.title, description: productContext.descriptionText }
+        ))
+      }
+
+      // Métadonnées mockups : données EXISTANTES du produit + alt de l'œuvre
       const mockupMetadata = {
         mainAlt: mainArtworkAlt,
         description: productContext.descriptionText,
@@ -468,19 +513,21 @@ export default class ShopifyProductPublishersController {
         productType,
       }
 
-      // Médias à attacher, mêmes conventions que le publish : l'originale garde son
-      // alt/filename générés, le 1er mockup (fond blanc) réutilise l'alt de l'oeuvre,
+      // Médias à ATTACHER = les nouvelles images seulement, mêmes conventions que le
+      // publish : l'originale (si nouvelle) garde son alt/filename générés ; en plein-
+      // remplacement legacy le 1er mockup (fond blanc) réutilise l'alt de l'oeuvre ;
       // les autres mockups passent par l'IA contextuelle. Noms de fichiers régénérés.
+      const newOriginalIndex = newEntries.findIndex((i) => i.type === 'original')
       const mediaToAttach = await Promise.all(
         originalImageUrls.map(async (url, index) => {
-          if (index === originalImageIndex) {
+          if (index === newOriginalIndex) {
             return {
-              src: await productPublisher!.replaceSrcName(url, mainArtworkFilename),
+              src: await productPublisher!.replaceSrcName(url, mainArtworkFilename!),
               alt: mainArtworkAlt,
             }
           }
 
-          if (index === 0) {
+          if (keptIds.length === 0 && index === 0) {
             const filenameSlug = mainArtworkAlt
               .toLowerCase()
               .replace(/[^a-z0-9]+/g, '-')
@@ -493,7 +540,7 @@ export default class ShopifyProductPublishersController {
             }
           }
 
-          const mockupContext = productPublisher!.getMockupContext(index)
+          const mockupContext = newEntries[index].mockupContext!
           const { alt, filename } = await aiService.generateMockupAlt(mockupContext, mockupMetadata)
 
           return {
@@ -559,12 +606,17 @@ export default class ShopifyProductPublishersController {
         try {
           // Poll scopé sur les NOUVEAUX médias uniquement (le produit porte encore
           // les anciens à ce stade, le helper générique pourrait les confondre).
-          const { allReady, failedMedia: failedNewMedia } = await reimage.waitForNewMediaProcessing(
-            productContext.id,
-            newMediaIds,
-            30,
-            2000
-          )
+          // Pure curation (suppression/réordonnancement sans nouvelle image) : rien à poller.
+          let allReady = true
+          let failedNewMedia: string[] = []
+          if (newMediaIds.length) {
+            ;({ allReady, failedMedia: failedNewMedia } = await reimage.waitForNewMediaProcessing(
+              productContext.id,
+              newMediaIds,
+              30,
+              2000
+            ))
+          }
 
           if (failedNewMedia.length > 0) {
             // Un nouveau média a échoué : rollback complet, le produit reste intact.
@@ -613,10 +665,13 @@ export default class ShopifyProductPublishersController {
           }
 
           // Nouveaux médias READY : suppression définitive des anciens médias IMAGE
-          // (jamais les vidéos). deleteMedia média par média ; en cas d'échec (ex.
-          // fichier rattaché ailleurs), tentative de detach, sinon alerte e-mail.
+          // NON CONSERVÉS (jamais les vidéos, jamais les médias gardés par le payload
+          // mixte). deleteMedia média par média ; en cas d'échec (ex. fichier rattaché
+          // ailleurs), tentative de detach, sinon alerte e-mail.
+          const keptIdSet = new Set(keptIds)
+          const toDelete = oldImageMediaIds.filter((id) => !keptIdSet.has(id))
           const remainingOldIds: string[] = []
-          for (const mediaId of oldImageMediaIds) {
+          for (const mediaId of toDelete) {
             try {
               await shopify.product.deleteMedia(productContext.id, [mediaId])
             } catch (deleteError: any) {
@@ -645,16 +700,23 @@ export default class ShopifyProductPublishersController {
             }
           }
 
-          // Ordre final attendu : nouveaux médias dans l'ordre du payload
-          // ([mockup1, originale, mockup2…]), la vidéo éventuelle après.
+          // Ordre final attendu = l'ordre du payload ([mockup1, originale, mockup2…]),
+          // conservées et nouvelles intercalées, la vidéo éventuelle après. Les entrées
+          // mediaId mappent sur elles-mêmes, les base64 sur les médias fraîchement
+          // attachés (newMediaIds suit l'ordre d'attache = l'ordre payload).
           try {
+            const finalOrderIds: string[] = []
+            let newCursor = 0
+            for (const entry of entries) {
+              finalOrderIds.push(entry.mediaId || newMediaIds[newCursor++])
+            }
             const mediaNow = await reimage.listMedia(productContext.id)
             const currentIds = mediaNow.map((m) => m.id)
-            const needsReorder = newMediaIds.some((id, index) => currentIds[index] !== id)
+            const needsReorder = finalOrderIds.some((id, index) => currentIds[index] !== id)
             if (needsReorder) {
               await shopify.product.reorderMedia(
                 productContext.id,
-                newMediaIds.map((id, index) => ({ id, newPosition: String(index) }))
+                finalOrderIds.map((id, index) => ({ id, newPosition: String(index) }))
               )
             }
           } catch (reorderError: any) {
