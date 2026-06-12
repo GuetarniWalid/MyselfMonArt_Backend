@@ -125,19 +125,24 @@ Route.group(() => {
     'ShopifyProductPublishersController.reimageContext'
   ).middleware(['auth'])
 
-  // Redimensionnement intelligent d'une oeuvre vers un ratio cible (3:4 / 1:1 / 4:3) via gpt-image-2.
-  // Asynchrone (job + polling) car gpt-image-2 dépasse les ~100s que Cloudflare tolère (sinon 524).
-  // Auth obligatoire : ces routes déclenchent un appel OpenAI PAYANT -> jamais public (la page
+  // Redimensionnement intelligent d'une oeuvre vers un ratio cible (3:4 / 1:1 / 4:3) via Nano Banana 2.
+  // Asynchrone (job + polling) : on reste loin des ~100s que Cloudflare tolère (sinon 524).
+  // Auth obligatoire : ces routes déclenchent un appel Gemini PAYANT -> jamais public (la page
   // /publisher est déjà protégée, donc le cookie de session est envoyé sur ces fetch same-origin).
   Route.post('/resize-artwork', 'ResizeArtworkController.resize').middleware(['auth']) // démarre le job -> { jobId }
   Route.get('/resize-artwork/result', 'ResizeArtworkController.result').middleware(['auth']) // état du job (polling)
 
-  // Génération d'un DÉCOR IA (intérieur + cadre vide au bon ratio) via gpt-image-2.
-  // Asynchrone (job + polling) comme le resize. Auth obligatoire (appel OpenAI payant).
+  // Génération d'un DÉCOR IA (intérieur + cadre vide au bon ratio) via Nano Banana 2.
+  // Asynchrone (job + polling) comme le resize. Auth obligatoire (appel Gemini payant).
   Route.post('/generate-decor', 'DecorController.generate').middleware(['auth']) // démarre le job -> { jobId }
   Route.get('/generate-decor/result', 'DecorController.result').middleware(['auth']) // état du job (polling)
 
   // Insertion de l'oeuvre dans le décor validé via Nano Banana (Gemini). Async (job+polling), auth (payant).
   Route.post('/insert-artwork', 'InsertArtworkController.generate').middleware(['auth']) // démarre le job
   Route.get('/insert-artwork/result', 'InsertArtworkController.result').middleware(['auth']) // état (polling)
+
+  // Nettoyage d'un mockup importé (photo réelle -> marquages retirés, support vidé #ECECEC au
+  // ratio de l'œuvre, converti au type produit) via Nano Banana 2. Async (job+polling), auth (payant).
+  Route.post('/clean-mockup', 'CleanMockupController.generate').middleware(['auth']) // démarre le job
+  Route.get('/clean-mockup/result', 'CleanMockupController.result').middleware(['auth']) // état (polling)
 }).prefix('/api')

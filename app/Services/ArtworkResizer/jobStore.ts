@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto'
 import ArtworkResizer from './index'
 import DecorGenerator, { DecorOptions } from '../DecorGenerator'
 import ArtworkInserter, { InsertOptions } from '../ArtworkInserter'
+import MockupCleaner, { CleanOptions } from '../MockupCleaner'
 
 /**
  * Stockage de jobs de redimensionnement sur disque + exécution en arrière-plan.
@@ -220,6 +221,45 @@ export function startInsert(
       await finish(id, { status: 'error', error: mapResizeError(error) })
       Logger.error(
         'insert FAIL job=%s %ss: %s',
+        id,
+        Math.round((Date.now() - t0) / 1000),
+        (error && (error as any).message) || String(error)
+      )
+    }
+  })()
+  inflight.add(p)
+  p.finally(() => inflight.delete(p))
+}
+
+/**
+ * Lance le NETTOYAGE d'une photo de mockup importée (Nano Banana 2) en arrière-plan. Même réserve :
+ * NE PAS attendre dans le controller (le travail tourne détaché, le résultat est écrit dans le job).
+ */
+export function startClean(
+  id: string,
+  image: string,
+  target: Target,
+  opts: CleanOptions = {}
+): void {
+  if (inflight.size >= MAX_INFLIGHT) {
+    finish(id, {
+      status: 'error',
+      error: 'Service de génération occupé. Réessaie dans quelques secondes.',
+    }).catch(() => {})
+    Logger.warn('clean REFUSED job=%s (inflight=%s >= %s)', id, inflight.size, MAX_INFLIGHT)
+    return
+  }
+  const p = (async () => {
+    const t0 = Date.now()
+    try {
+      const cleaner = new MockupCleaner()
+      const out = await cleaner.clean(image, target, opts)
+      await finish(id, { status: 'done', image: out })
+      Logger.info('clean OK job=%s %ss', id, Math.round((Date.now() - t0) / 1000))
+    } catch (error) {
+      await finish(id, { status: 'error', error: mapResizeError(error) })
+      Logger.error(
+        'clean FAIL job=%s %ss: %s',
         id,
         Math.round((Date.now() - t0) / 1000),
         (error && (error as any).message) || String(error)
