@@ -10,7 +10,8 @@ import ArtworkInserter, { InsertOptions } from '../ArtworkInserter'
 /**
  * Stockage de jobs de redimensionnement sur disque + exécution en arrière-plan.
  *
- * POURQUOI : le redimensionnement haute qualité (gpt-image-2) prend ~120-180s.
+ * POURQUOI : un rendu haute qualité peut être long (jadis ~120-180 s sur gpt-image-2 ;
+ * encore des dizaines de secondes en 2K sur Gemini, et la marge ne coûte rien).
  * backend.myselfmonart.com est derrière Cloudflare, qui coupe toute requête dont
  * l'origine ne répond pas sous ~100s -> erreur 524. On NE PEUT donc PAS répondre
  * de façon synchrone. On lance le travail en arrière-plan et le front interroge
@@ -105,7 +106,7 @@ export async function cleanup(): Promise<void> {
 
 const inflight = new Set<Promise<void>>()
 // Plafond de jobs simultanés : garde-fou anti-emballement (double-clic, boucle abusive).
-// gpt-image-2 est payant et lourd (sharp + buffers) -> on refuse au-delà plutôt que de tout lancer.
+// La génération est payante et lourde (sharp + buffers) -> on refuse au-delà plutôt que de tout lancer.
 const MAX_INFLIGHT = 8
 
 /**
@@ -151,7 +152,7 @@ export function start(
 }
 
 /**
- * Lance la génération d'un DÉCOR (gpt-image-2) en arrière-plan. Même réserve que start() :
+ * Lance la génération d'un DÉCOR (Nano Banana 2/Gemini) en arrière-plan. Même réserve que start() :
  * NE PAS attendre (le travail tourne détaché, le résultat est écrit dans le fichier de job).
  */
 export function startDecor(
@@ -264,7 +265,7 @@ export function mapResizeError(error: any): string {
       code === 'moderation_blocked' ||
       code === 'content_policy_violation')
   ) {
-    return "L'image a été refusée par la modération d'OpenAI. Essaie avec une autre œuvre."
+    return "L'image a été refusée par la modération du service de génération. Essaie avec une autre œuvre."
   }
   if (status === 401 || status === 403) {
     return "Problème d'authentification avec le service de génération (clé API)."

@@ -71,10 +71,14 @@ export default Env.rules({
   CHROME_EXTENSION_ID: Env.schema.string(),
   // URL publique du moteur de rendu des mockups (PC exposé via tunnel Cloudflare). Optionnel.
   RENDER_ENGINE_URL: Env.schema.string.optional(),
-  // Modèle d'image OpenAI pour le redimensionnement d'oeuvre + génération de décor (défaut gpt-image-2). Optionnel.
-  OPENAI_IMAGE_MODEL: Env.schema.string.optional(),
-  // Modèle de vision OpenAI pour déduire le thème déco depuis l'oeuvre (défaut gpt-4o-2024-08-06). Optionnel.
-  OPENAI_VISION_MODEL: Env.schema.string.optional(),
-  // Qualité gpt-image-2 pour la génération de décor (défaut high). Optionnel.
-  OPENAI_DECOR_QUALITY: Env.schema.enum.optional(['low', 'medium', 'high', 'auto'] as const),
+  // --- Publisher / images IA : tout tourne sur Gemini (Nano Banana) depuis le 12/06/2026. ---
+  // Clé DÉDIÉE AI Studio (distincte de GOOGLE_API_KEY) ; lue via process.env dans les services,
+  // déclarée ici pour documentation. Requise en pratique pour décor, insertion et retaillage.
+  GEMINI_API_KEY: Env.schema.string.optional(),
+  // Modèle image standard (décor + insertion + retaillage). Défaut : gemini-3.1-flash-image (NB2).
+  GEMINI_IMAGE_MODEL: Env.schema.string.optional(),
+  // Modèle image « haute fidélité » (case à cocher de l'insertion). Défaut : gemini-3-pro-image.
+  GEMINI_IMAGE_MODEL_HIGH: Env.schema.string.optional(),
+  // Modèle texte de l'art-director (brief de scène du décor). Défaut : gemini-2.5-flash.
+  GEMINI_TEXT_MODEL: Env.schema.string.optional(),
 })

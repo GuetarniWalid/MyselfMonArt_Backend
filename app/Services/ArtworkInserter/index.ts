@@ -15,6 +15,9 @@ export interface InsertOptions {
 // forme (portrait/carré/paysage) : c'est la zone grise à remplir, PAS le ratio de l'image. `target` ne
 // sert donc plus qu'à valider l'entrée (un vieux décor sauvegardé non carré serait recadré en carré).
 const OUTPUT_ASPECT_RATIO = '1:1'
+// Sortie 2K (décision 12/06) : c'est l'image FINALE envoyée à Shopify -> zoom net en fiche produit.
+// Le décor 1K en entrée n'est pas un problème : le modèle re-rend toute la scène à 2K.
+const INSERT_IMAGE_SIZE = '2K'
 const TARGET = {
   portrait: { ratio: '3:4' },
   square: { ratio: '1:1' },
@@ -23,7 +26,9 @@ const TARGET = {
 
 // IDs modèles GA uniquement : Google éteint les alias '-preview' 3.x le 25/06/2026. Contrairement
 // au constat du 04/06, les ids GA sont fiables (re-testés en API directe le 12/06 + bench M1 CustomArt).
-const FLASH_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image'
+// Standard = NB2 (gemini-3.1-flash-image) depuis la migration du 12/06 — meilleure fidélité de
+// référence que 2.5 pour ~+3 ¢/image ; la case « haute fidélité » reste sur Pro.
+const FLASH_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image'
 const PRO_MODEL = process.env.GEMINI_IMAGE_MODEL_HIGH || 'gemini-3-pro-image'
 
 // Vocabulaire d'insertion par PRODUIT : le support n'est PAS toujours un cadre.
@@ -148,7 +153,11 @@ export default class ArtworkInserter {
       ],
       config: {
         responseModalities: ['IMAGE'],
-        imageConfig: { aspectRatio: OUTPUT_ASPECT_RATIO }, // décor carré -> sortie carrée, pas de reframing
+        // décor carré -> sortie carrée, pas de reframing. imageSize : génération 3.x seulement
+        // (un override env vers 2.5 resterait valide).
+        imageConfig: model.startsWith('gemini-3')
+          ? { aspectRatio: OUTPUT_ASPECT_RATIO, imageSize: INSERT_IMAGE_SIZE }
+          : { aspectRatio: OUTPUT_ASPECT_RATIO },
       },
     }
 
