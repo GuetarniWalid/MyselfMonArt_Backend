@@ -2,6 +2,7 @@ import Env from '@ioc:Adonis/Core/Env'
 import Database from '@ioc:Adonis/Lucid/Database'
 import Logger from '@ioc:Adonis/Core/Logger'
 import axios from 'axios'
+import sharp from 'sharp'
 import { DateTime } from 'luxon'
 import CustomArtJob, { CustomArtCandidate } from 'App/Models/CustomArtJob'
 import CustomArtTeam from 'App/Models/CustomArtTeam'
@@ -82,6 +83,12 @@ export default class CustomArtWorker {
   public static start(): void {
     if (CustomArtWorker.started) return
     CustomArtWorker.started = true
+    // Durcissement sharp/libvips en conteneur (SIGSEGV au premier job prod le 12/06,
+    // pendant la passe anatomie multi-crops du juge) : un seul thread vips par process
+    // cluster + cache d'opérations désactivé. Quelques % plus lent, mais stable sous
+    // PM2 multi-instances.
+    sharp.concurrency(1)
+    sharp.cache(false)
     Logger.info(
       'custom-art worker démarré (poll %sms, inflight max %s)',
       POLL_MS,
