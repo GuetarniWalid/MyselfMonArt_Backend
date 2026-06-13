@@ -129,6 +129,15 @@ export default class CustomArtJob extends BaseModel {
   public round: number
 
   /**
+   * Nombre de relances orphelines déjà subies (worker : un job coincé en
+   * generating/judging au-delà du seuil d'inactivité). Plafonné par MAX_RECOVERIES : au
+   * dernier dépassement, le job part en manual_review au lieu de repartir en pending —
+   * garde-fou anti-boucle si la génération/le jugement crashe le process (incident 13/06).
+   */
+  @column()
+  public recoveryCount: number
+
+  /**
    * Relance « création sauvegardée » (M10) : date d'envoi du rappel unique « votre
    * tableau vous attend » (20-28 h après création, session avec email, non acheté).
    * NULL = jamais relancé. Sert aussi de verrou anti-double envoi (claim conditionnel).

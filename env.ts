@@ -119,4 +119,8 @@ export default Env.rules({
   // pour le throttle et les caps anti-abus, tant que nginx ne ré-injecte pas la vraie IP
   // dans X-Forwarded-For. Voir App/Services/ClientIp.
   TRUST_CF_CONNECTING_IP: Env.schema.boolean.optional(),
+  // Kill-switch d'urgence du worker CustomArt : true = aucun job traité (le studio peut
+  // toujours créer des jobs, ils restent pending). Coupe instantanément toute dépense IA
+  // via env + restart, sans déploiement. Posé après l'incident coûts du 13/06.
+  CUSTOM_ART_WORKER_DISABLED: Env.schema.boolean.optional(),
 })

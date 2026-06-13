@@ -34,8 +34,13 @@ const PASS_MIN_KIT = 7
 // Estimation indicative €/jugement — couvre les 2 passes (rubrique + anatomie)
 export const JUDGE_EST_COST_EUR = 0.09
 
-// Modèle du juge : celui de la calibration bench, surchargeable par env
-const DEFAULT_JUDGE_MODEL = 'claude-opus-4-8'
+// Modèle du juge, surchargeable par CUSTOM_ART_JUDGE_MODEL.
+// La calibration bench (anatomie, fidélité maillot) a été faite sur claude-opus-4-8, mais
+// le coût Opus en entrée multi-images (photo + réfs + candidat + 4 crops × 2 passes) est
+// trop élevé pour de la notation à grande échelle (incident coûts 13/06). Défaut ramené à
+// Sonnet (vision forte, ~5× moins cher). ⚠️ Re-valider le gate anatomique sur Sonnet avant
+// gros volume ; repasser à Opus via CUSTOM_ART_JUDGE_MODEL si un écart qualité est constaté.
+const DEFAULT_JUDGE_MODEL = 'claude-sonnet-4-6'
 
 // Tailles d'image (bench config.judge) : candidat/réfs réduits, quadrants zoomés
 const JUDGE_IMAGE_MAX_PX = 896

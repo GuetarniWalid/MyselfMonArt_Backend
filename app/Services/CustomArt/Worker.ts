@@ -34,6 +34,13 @@ const ORPHAN_SCAN_MS = 60_000
 // Re-scan du backlog mockups Photopea (plan §8) : rattrape les mises en situation
 // laissées pending quand le moteur (PC) était down au moment du reveal
 const MOCKUP_BACKLOG_SCAN_MS = 60_000
+// Plafond de relances orphelines PAR JOB : au-delà, le job part en manual_review au lieu
+// de repartir en pending. Garde-fou anti-boucle infinie si un job crashe systématiquement
+// le process (SIGSEGV libvips non rattrapable par try/catch) — incident coûts 13/06.
+const MAX_RECOVERIES = 1
+// Plafond de coût quotidien (€) si CUSTOM_ART_DAILY_COST_CAP_EUR absent — disjoncteur du
+// worker (en plus du cap à la création de job dans le contrôleur).
+const DAILY_COST_CAP_FALLBACK = 30
 
 interface JobInputs {
   photoBuffer: Buffer
@@ -82,6 +89,30 @@ export default class CustomArtWorker {
 
   public static start(): void {
     if (CustomArtWorker.started) return
+
+    // Kill-switch d'urgence (env + restart, sans déploiement) : coupe tout traitement de
+    // job. Posé suite à l'incident coûts du 13/06 (juge Opus en boucle).
+    if (Env.get('CUSTOM_ART_WORKER_DISABLED')) {
+      Logger.warn(
+        'custom-art worker DÉSACTIVÉ (CUSTOM_ART_WORKER_DISABLED=true) — aucun job traité'
+      )
+      return
+    }
+
+    // Une SEULE instance lance le worker. En PM2 cluster (instances:'max'), AppProvider
+    // démarrerait sinon une boucle + un re-scan d'orphelins par CPU (~12). Le claim DB est
+    // déjà atomique (pas de double génération), mais inutile de multiplier les re-scans —
+    // c'est ce qui a amplifié la boucle du 13/06. NODE_APP_INSTANCE est posé par PM2
+    // ('0' = première instance) ; absent hors PM2 (dev) -> on démarre.
+    const pm2Instance = process.env.NODE_APP_INSTANCE
+    if (pm2Instance !== undefined && pm2Instance !== '0') {
+      Logger.info(
+        'custom-art worker non démarré sur cette instance (NODE_APP_INSTANCE=%s)',
+        pm2Instance
+      )
+      return
+    }
+
     CustomArtWorker.started = true
     // Durcissement sharp/libvips en conteneur (SIGSEGV au premier job prod le 12/06,
     // pendant la passe anatomie multi-crops du juge) : un seul thread vips par process
@@ -100,25 +131,42 @@ export default class CustomArtWorker {
   }
 
   /**
-   * Re-scan (boot + périodique) : les jobs coincés en generating/judging repartent en
-   * pending. Seuil d'ancienneté sur updated_at : un job traité activement par une autre
-   * instance (cluster) est sauvegardé à chaque transition, donc jamais assez vieux ici.
+   * Re-scan (boot + périodique) : les jobs coincés en generating/judging sont relancés —
+   * MAIS avec un plafond PAR JOB (MAX_RECOVERIES). Au-delà, le job part en manual_review
+   * (terminal) au lieu de repartir en pending : un job qui crashe systématiquement le
+   * process (SIGSEGV libvips, non rattrapable par le try/catch de process()) ne peut plus
+   * boucler indéfiniment et re-facturer génération + jugement (incident coûts 13/06).
+   *
+   * UPDATE atomique unique (CASE MySQL) -> sûr en cluster : `recovery_count` est incrémenté
+   * et le statut basculé en une seule requête, quel que soit le nombre d'instances.
+   * Seuil d'ancienneté sur updated_at : un job traité activement par un sibling est sauvé
+   * à chaque transition, donc jamais assez vieux pour être volé ici.
    */
   private static async recoverOrphans(): Promise<void> {
     const staleBefore = DateTime.now()
       .minus({ minutes: ORPHAN_MIN_AGE_MIN })
       .toSQL({ includeOffset: false }) as string
-    const recovered = affectedRows(
-      await Database.from('custom_art_jobs')
-        .whereIn('status', ['generating', 'judging'])
-        .where('updated_at', '<', staleBefore)
-        .update({ status: 'pending', updated_at: new Date() })
+    const result = await Database.rawQuery(
+      `UPDATE custom_art_jobs
+       SET recovery_count = recovery_count + 1,
+           status = IF(recovery_count + 1 > :max, 'manual_review', 'pending'),
+           error = IF(recovery_count + 1 > :max, :reason, error),
+           updated_at = NOW()
+       WHERE status IN ('generating', 'judging') AND updated_at < :stale`,
+      {
+        max: MAX_RECOVERIES,
+        reason:
+          'Génération interrompue plusieurs fois (incident technique). Notre équipe la réalise à la main.',
+        stale: staleBefore,
+      }
     )
+    const recovered = result?.[0]?.affectedRows ?? 0
     if (recovered > 0) {
       Logger.warn(
-        'custom-art: %s job(s) orphelin(s) relancé(s) (inactifs > %s min)',
+        'custom-art: %s job(s) orphelin(s) traité(s) (inactifs > %s min ; >%s relances -> manual_review)',
         recovered,
-        ORPHAN_MIN_AGE_MIN
+        ORPHAN_MIN_AGE_MIN,
+        MAX_RECOVERIES
       )
     }
   }
@@ -176,9 +224,57 @@ export default class CustomArtWorker {
     }
   }
 
+  /**
+   * Disjoncteur de dépense : somme des coûts des jobs du jour vs plafond quotidien
+   * (CUSTOM_ART_DAILY_COST_CAP_EUR). Bloque le worker AVANT de générer/juger un job — en
+   * plus du cap à la création de job dans le contrôleur — pour qu'aucun emballement (boucle
+   * orpheline résiduelle, afflux) ne dépasse durablement le plafond. Best-effort : en cas
+   * d'erreur DB on n'empêche pas le traitement (le cap contrôleur reste la 1re barrière).
+   */
+  private static async dailyCostExceeded(): Promise<boolean> {
+    try {
+      const cap = Number(Env.get('CUSTOM_ART_DAILY_COST_CAP_EUR')) || DAILY_COST_CAP_FALLBACK
+      const startOfDay = DateTime.now().startOf('day').toSQL({ includeOffset: false }) as string
+      const rows = await Database.from('custom_art_jobs')
+        .where('created_at', '>=', startOfDay)
+        .select('costs')
+      const total = rows.reduce((sum, r) => {
+        try {
+          const c = typeof r.costs === 'string' ? JSON.parse(r.costs) : r.costs
+          return sum + (c?.totalEur || 0)
+        } catch {
+          return sum
+        }
+      }, 0)
+      if (total >= cap) {
+        Logger.warn(
+          'custom-art DISJONCTEUR coût: %s€ >= %s€ — traitement suspendu',
+          total.toFixed(2),
+          cap
+        )
+        return true
+      }
+      return false
+    } catch {
+      return false
+    }
+  }
+
   private static async process(job: CustomArtJob): Promise<void> {
     const t0 = Date.now()
     try {
+      // Disjoncteur de dépense : si le plafond du jour est atteint, on ne génère/juge pas
+      // (le job bascule en revue manuelle plutôt que d'alimenter une dérive de coûts).
+      if (await CustomArtWorker.dailyCostExceeded()) {
+        await CustomArtWorker.toManualReview(
+          job,
+          '',
+          'Plafond de coût quotidien atteint — bascule en revue manuelle.',
+          t0
+        )
+        return
+      }
+
       const inputs = await CustomArtWorker.loadInputs(job)
 
       // Chaîne de providers : imposée depuis la file admin (« relancer avec X »), sinon
