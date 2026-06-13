@@ -493,8 +493,15 @@ export default class CustomArtWorker {
     const judge = new JudgeService()
     const existing = job.candidates || []
 
-    const judged = await Promise.all(
-      produced.map(async ({ result, provider }, i) => {
+    // Jugement SÉQUENTIEL (un candidat à la fois). En parallèle (Promise.all), les 3
+    // jugements lançaient ~3 pipelines libvips/sharp concurrentes (resize + 4 crops
+    // chacune) dans le process applicatif -> SIGSEGV natif non rattrapable (incident
+    // 13/06, le bench standalone les enchaînait et ne plantait pas). En série : une seule
+    // pipeline à la fois, stable. Quelques dizaines de secondes de plus par job (acceptable).
+    const judged: CustomArtCandidate[] = []
+    for (let i = 0; i < produced.length; i++) {
+      {
+        const { result, provider } = produced[i]
         const buffer = result.imageBuffer as Buffer
         const index = existing.length + i
 
@@ -549,9 +556,9 @@ export default class CustomArtWorker {
           verdicts: { ...verdict.verdicts, reason: verdict.reason },
           rank: 0, // recalculé sur l'ensemble juste après
         }
-        return candidate
-      })
-    )
+        judged.push(candidate)
+      }
+    }
 
     job.candidates = [...existing, ...judged]
   }
