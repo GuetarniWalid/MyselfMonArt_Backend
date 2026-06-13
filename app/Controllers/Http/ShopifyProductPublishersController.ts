@@ -5,68 +5,39 @@ import ShopifyProductPublisher from 'App/Services/ShopifyProductPublisher'
 import ProductPublisher from 'App/Services/Claude/ProductPublisher'
 import ProductReimage from 'App/Services/Shopify/ProductReimage'
 import PublishAlertMailer from 'App/Services/PublishAlertMailer'
+import IdempotencyStore from 'App/Services/IdempotencyStore'
 import { CreateProduct } from 'Types/Product'
 import Shopify from 'App/Services/Shopify'
 
 export default class ShopifyProductPublishersController {
-  // In-memory idempotency. A publish is slow (AI + Shopify) and can exceed the
-  // proxy/CDN timeout (~100s → 524), so the browser sees a failure even though the
-  // product was already created server-side. The user then re-clicks → duplicate
-  // products. We dedup by a client-provided idempotency key: an in-flight key
-  // returns "pending"; a completed key returns the already-created product instead
-  // of creating a new one.
-  private static readonly inFlightKeys = new Set<string>()
-  private static readonly completedKeys = new Map<string, { result: any; at: number }>()
-  private static readonly COMPLETED_TTL_MS = 10 * 60 * 1000
-
-  private static rememberCompleted(key: string, result: any) {
-    const now = Date.now()
-    ShopifyProductPublishersController.completedKeys.set(key, { result, at: now })
-    // Opportunistic cleanup of stale entries
-    ShopifyProductPublishersController.completedKeys.forEach((v, k) => {
-      if (now - v.at > ShopifyProductPublishersController.COMPLETED_TTL_MS) {
-        ShopifyProductPublishersController.completedKeys.delete(k)
-      }
-    })
-  }
-
-  // Idempotence du mode « reimage » (remplacement des images d'un produit existant).
-  // Maps SÉPARÉES de la publication ; clé scopée produit : `${productId}:${idempotencyKey}`.
-  private static readonly reimageInFlightKeys = new Set<string>()
-  private static readonly reimageCompletedKeys = new Map<string, { result: any; at: number }>()
-  // Verrou par produit : deux remplacements simultanés du MÊME produit avec des clés
-  // différentes (double onglet) s'entrelaceraient — chacun snapshote les « anciens »
-  // médias et supprimerait ceux de l'autre. Un seul remplacement à la fois par produit.
-  private static readonly reimageInFlightProducts = new Set<string>()
-
-  private static rememberReimageCompleted(key: string, result: any) {
-    const now = Date.now()
-    ShopifyProductPublishersController.reimageCompletedKeys.set(key, { result, at: now })
-    // Opportunistic cleanup of stale entries
-    ShopifyProductPublishersController.reimageCompletedKeys.forEach((v, k) => {
-      if (now - v.at > ShopifyProductPublishersController.COMPLETED_TTL_MS) {
-        ShopifyProductPublishersController.reimageCompletedKeys.delete(k)
-      }
-    })
-  }
+  // Idempotence PARTAGÉE entre workers (cluster PM2) via une table MySQL — cf. IdempotencyStore.
+  // Une publication est lente (IA + Shopify) et peut dépasser le délai du proxy/CDN (~100s → 524) :
+  // le navigateur voit un échec alors que le produit est déjà créé côté serveur, l'utilisateur
+  // re-clique → doublon. Avant, des Map statiques EN MÉMOIRE dédupliquaient — mais en mode cluster
+  // (`instances:'max'`) chaque worker a les siennes : un re-clic load-balancé vers un autre worker
+  // ne voyait pas la clé et republiait. Le store en base rend la réservation atomique entre TOUS
+  // les workers (clé en cours → « pending » ; clé terminée → renvoie le produit déjà créé).
+  private idem = new IdempotencyStore()
 
   public async publishOnShopify({ request, response }: HttpContextContract) {
     const idempotencyKey: string | undefined = request.input('idempotencyKey')
+    const idemKey = idempotencyKey ? `publish:${idempotencyKey}` : null
 
-    // Idempotency guard (synchronous check + add, before any await)
-    if (idempotencyKey) {
-      const done = ShopifyProductPublishersController.completedKeys.get(idempotencyKey)
-      if (done) {
-        return { ...done.result, deduped: true }
+    // Garde d'idempotence PARTAGÉE entre workers : réservation atomique via la table MySQL
+    // (la contrainte UNIQUE arbitre les requêtes concurrentes, quel que soit le worker touché).
+    if (idemKey) {
+      const begun = await this.idem.begin(idemKey)
+      if (begun.state === 'done') {
+        return { ...begun.result, deduped: true }
       }
-      if (ShopifyProductPublishersController.inFlightKeys.has(idempotencyKey)) {
+      if (begun.state === 'pending') {
         return {
           success: true,
           pending: true,
           message: 'Publication déjà en cours, patiente un instant puis vérifie ta boutique.',
         }
       }
-      ShopifyProductPublishersController.inFlightKeys.add(idempotencyKey)
+      // 'acquired' : c'est à CE worker de faire la publication.
     }
 
     let productPublisher: ShopifyProductPublisher | null = null
@@ -233,8 +204,8 @@ export default class ShopifyProductPublishersController {
         success: true,
         data: { link: productCreated.onlineStoreUrl },
       }
-      if (idempotencyKey) {
-        ShopifyProductPublishersController.rememberCompleted(idempotencyKey, result)
+      if (idemKey) {
+        await this.idem.complete(idemKey, result)
       }
 
       // Finish in the background: wait for Shopify to fetch + process the media, THEN
@@ -269,6 +240,8 @@ export default class ShopifyProductPublishersController {
 
       return result
     } catch (error) {
+      // Échec avant la fin : on libère la réservation pour qu'un nouvel essai puisse repartir.
+      if (idemKey) await this.idem.release(idemKey)
       console.error('Product publisher error details:', {
         code: error.code,
         message: error.message,
@@ -291,9 +264,8 @@ export default class ShopifyProductPublishersController {
         error: error.message || 'An unexpected error occurred',
       })
     } finally {
-      if (idempotencyKey) {
-        ShopifyProductPublishersController.inFlightKeys.delete(idempotencyKey)
-      }
+      // La réservation n'est PAS supprimée ici : complete() (succès) la passe en « done » pour
+      // dédupliquer les re-clics ; release() (échec, dans le catch) l'a déjà supprimée.
       // On success, cleanup is deferred to the background task (it must run after
       // Shopify has fetched the media). Only clean up here when we did NOT background,
       // i.e. an error happened before the product was published.
@@ -358,40 +330,43 @@ export default class ShopifyProductPublishersController {
   public async replaceImages({ request, response }: HttpContextContract) {
     const idempotencyKey: string | undefined = request.input('idempotencyKey')
     const requestProductId: string | undefined = request.input('productId')
-    // Clé scopée produit : deux produits différents ne se bloquent pas entre eux.
+    // Réservations PARTAGÉES entre workers (cluster). Deux clés distinctes :
+    //  - scopedKey   : dédup des re-clics (renvoie le résultat déjà produit) ;
+    //  - productKey  : verrou par produit — empêche DEUX remplacements simultanés du même produit
+    //    (sinon chacun snapshote puis supprime les médias de l'autre = corruption). Per-worker en
+    //    mémoire avant, donc inopérant en cluster ; désormais arbitré par MySQL pour TOUS les workers.
     const scopedKey =
-      idempotencyKey && requestProductId ? `${requestProductId}:${idempotencyKey}` : null
+      idempotencyKey && requestProductId ? `reimage:${requestProductId}:${idempotencyKey}` : null
+    const productKey = requestProductId ? `reimage_product:${requestProductId}` : null
 
-    // Garde d'idempotence (synchrone, avant tout await)
+    // Garde de dédup (re-clic avec la même clé)
     if (scopedKey) {
-      const done = ShopifyProductPublishersController.reimageCompletedKeys.get(scopedKey)
-      if (done) {
-        return { ...done.result, deduped: true }
+      const begun = await this.idem.begin(scopedKey)
+      if (begun.state === 'done') {
+        return { ...begun.result, deduped: true }
       }
-      if (ShopifyProductPublishersController.reimageInFlightKeys.has(scopedKey)) {
+      if (begun.state === 'pending') {
         return {
           success: true,
           pending: true,
           message: 'Remplacement déjà en cours, patiente un instant puis vérifie ta boutique.',
         }
       }
-      ShopifyProductPublishersController.reimageInFlightKeys.add(scopedKey)
     }
 
-    if (requestProductId) {
-      if (ShopifyProductPublishersController.reimageInFlightProducts.has(requestProductId)) {
-        // Une autre clé travaille déjà sur ce produit : on libère la clé qu'on vient
-        // de poser (elle ne démarrera jamais) et on répond comme un « déjà en cours ».
-        if (scopedKey) {
-          ShopifyProductPublishersController.reimageInFlightKeys.delete(scopedKey)
-        }
+    // Verrou par produit : un seul remplacement à la fois par produit.
+    if (productKey) {
+      const lock = await this.idem.begin(productKey)
+      if (lock.state !== 'acquired') {
+        // Un autre remplacement travaille déjà sur ce produit : on libère la clé scopée qu'on
+        // vient de réserver (elle ne démarrera jamais) et on répond « déjà en cours ».
+        if (scopedKey) await this.idem.release(scopedKey)
         return {
           success: true,
           pending: true,
           message: 'Un remplacement est déjà en cours sur ce produit, patiente un instant.',
         }
       }
-      ShopifyProductPublishersController.reimageInFlightProducts.add(requestProductId)
     }
 
     let productPublisher: ShopifyProductPublisher | null = null
@@ -659,7 +634,7 @@ export default class ShopifyProductPublishersController {
               console.error('[Reimage] alert mail failed:', mailError?.message)
             }
             if (scopedKey) {
-              ShopifyProductPublishersController.rememberReimageCompleted(scopedKey, result)
+              await this.idem.complete(scopedKey, result)
             }
             return
           }
@@ -724,7 +699,7 @@ export default class ShopifyProductPublishersController {
           }
 
           if (scopedKey) {
-            ShopifyProductPublishersController.rememberReimageCompleted(scopedKey, result)
+            await this.idem.complete(scopedKey, result)
           }
         } catch (bgError: any) {
           console.error('[Reimage] background error:', bgError?.message)
@@ -743,14 +718,11 @@ export default class ShopifyProductPublishersController {
           } catch (cleanupError: any) {
             console.error('[Reimage] background cleanup error:', cleanupError?.message)
           }
-          // La clé reste « en cours » pendant tout l'arrière-plan : un re-clic pendant
-          // le nettoyage répond pending au lieu de relancer un remplacement complet.
-          if (scopedKey) {
-            ShopifyProductPublishersController.reimageInFlightKeys.delete(scopedKey)
-          }
-          if (requestProductId) {
-            ShopifyProductPublishersController.reimageInFlightProducts.delete(requestProductId)
-          }
+          // Fin de l'arrière-plan : on libère le verrou produit. La clé scopée n'est libérée que
+          // si elle est restée « pending » (chemin d'échec) ; sur les chemins de succès complete()
+          // l'a passée en « done » -> release() est un no-op et la dédup des re-clics persiste.
+          if (scopedKey) await this.idem.release(scopedKey)
+          if (productKey) await this.idem.release(productKey)
         }
       })()
 
@@ -777,15 +749,12 @@ export default class ShopifyProductPublishersController {
         error: error.message || 'An unexpected error occurred',
       })
     } finally {
-      // Quand le traitement part en arrière-plan, c'est lui qui libère la clé et
-      // nettoie les fichiers locaux (après que Shopify a fetché les médias).
+      // Quand le traitement part en arrière-plan, c'est LUI qui libère les réservations et nettoie
+      // les fichiers locaux. Sinon (échec ou retour anticipé synchrone), on libère ici pour qu'un
+      // nouvel essai puisse repartir.
       if (!backgrounded) {
-        if (scopedKey) {
-          ShopifyProductPublishersController.reimageInFlightKeys.delete(scopedKey)
-        }
-        if (requestProductId) {
-          ShopifyProductPublishersController.reimageInFlightProducts.delete(requestProductId)
-        }
+        if (scopedKey) await this.idem.release(scopedKey)
+        if (productKey) await this.idem.release(productKey)
         if (productPublisher) {
           await productPublisher.cleanupSavedImages()
         }
