@@ -40,7 +40,7 @@ export default class WatermarkService {
       for (let x = -width; x < width * 2; x += stepX) {
         texts.push(
           `<text x="${x}" y="${y}" font-size="${fontSize}" ` +
-            `font-family="Arial, Helvetica, sans-serif" font-weight="bold" ` +
+            `font-family="DejaVu Sans, sans-serif" font-weight="bold" ` +
             `fill="rgba(255,255,255,0.16)" stroke="rgba(0,0,0,0.08)" stroke-width="1">` +
             `${WATERMARK_TEXT}</text>`
         )

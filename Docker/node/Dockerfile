@@ -30,8 +30,13 @@ ENV TZ=Europe/Paris
 # Installez dockerize pour attendre que la base de données soit prête
 ENV DOCKERIZE_VERSION=v0.7.0
 
+# ⚠️ fontconfig + ttf-dejavu : REQUIS pour le filigrane des aperçus (sharp/libvips ->
+# librsvg/pango rend le texte du watermark). Sans police installée, le rendu de texte
+# segfaulte (SIGSEGV) -> cause racine de l'incident custom-art du 13-14/06. fc-cache
+# construit le cache de polices à l'image (évite tout coût/risque au runtime).
 RUN apk update --no-cache \
-    && apk add --no-cache wget openssl tzdata ffmpeg \
+    && apk add --no-cache wget openssl tzdata ffmpeg fontconfig ttf-dejavu \
+    && fc-cache -f \
     && wget -O - https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz | tar xzf - -C /usr/local/bin \
     && apk del wget \
     && cp /usr/share/zoneinfo/$TZ /etc/localtime \
