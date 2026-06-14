@@ -7,6 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import JudgeService, { DEFAULT_JUDGE_MODEL, JudgeResult } from './JudgeService'
+import WatermarkService from './WatermarkService'
 
 export interface JudgeInput {
   candidateBuffer: Buffer
@@ -16,6 +17,12 @@ export interface JudgeInput {
   playerName: string
   playerNumber: number
   fidelityNotes?: string | null
+}
+
+/** Verdict + aperçu watermarké, tous deux produits hors du process principal en prod. */
+export interface JudgeOutcome {
+  verdict: JudgeResult
+  preview: Buffer
 }
 
 // Délai max d'un jugement (2 passes Opus multi-images) avant de tuer l'enfant.
@@ -33,7 +40,7 @@ const JUDGE_TIMEOUT_MS = 180_000
  * machine de dev (hors conteneur) ne reproduit pas le crash.
  */
 export default class JudgeRunner {
-  public async judge(input: JudgeInput): Promise<JudgeResult> {
+  public async judge(input: JudgeInput): Promise<JudgeOutcome> {
     const model = Env.get('CUSTOM_ART_JUDGE_MODEL') || DEFAULT_JUDGE_MODEL
     const childJs = path.join(__dirname, 'judge-child.js')
 
@@ -45,37 +52,41 @@ export default class JudgeRunner {
       .then(() => true)
       .catch(() => false)
 
-    let result: JudgeResult
+    let outcome: JudgeOutcome
     const viaChild = childExists
     if (childExists) {
       // Tout échec ici (SIGSEGV de l'enfant, timeout, output absent) est propagé au worker,
       // qui marque le candidat non-pass et continue — le process principal survit.
-      result = await this.judgeInChild(childJs, model, input)
+      outcome = await this.judgeInChild(childJs, model, input)
     } else {
+      // DEV (hors conteneur) : juge + aperçu en in-process (pas de crash sur la machine dev).
       const anthropic = new Anthropic({ apiKey: Env.get('ANTHROPIC_API_KEY') })
-      result = await new JudgeService(anthropic).judge({ ...input, model })
+      const verdict = await new JudgeService(anthropic).judge({ ...input, model })
+      const preview = await WatermarkService.makePreview(input.candidateBuffer)
+      outcome = { verdict, preview }
     }
 
+    const { verdict } = outcome
     Logger.info(
       'custom-art judge pass=%s score=%s suspicion=%s bras=%s mains=%s text="%s"%s (%s)',
-      result.pass,
-      result.score,
-      result.suspicion,
-      result.verdicts?.armsVisible,
-      result.verdicts?.handsVisible,
-      result.verdicts?.textRead,
+      verdict.pass,
+      verdict.score,
+      verdict.suspicion,
+      verdict.verdicts?.armsVisible,
+      verdict.verdicts?.handsVisible,
+      verdict.verdicts?.textRead,
       viaChild ? '' : ' [in-process]',
-      String(result.reason || '').slice(0, 120)
+      String(verdict.reason || '').slice(0, 120)
     )
-    return result
+    return outcome
   }
 
-  /** Écrit les images en fichiers temporaires, lance l'enfant, lit le résultat, nettoie. */
+  /** Écrit les images en fichiers temp, lance l'enfant, lit verdict + aperçu, nettoie. */
   private async judgeInChild(
     childJs: string,
     model: string,
     input: JudgeInput
-  ): Promise<JudgeResult> {
+  ): Promise<JudgeOutcome> {
     const dir = path.join(os.tmpdir(), `ca-judge-${randomUUID()}`)
     await fs.mkdir(dir, { recursive: true })
     try {
@@ -91,6 +102,7 @@ export default class JudgeRunner {
       }
       const inputPath = path.join(dir, 'input.json')
       const outputPath = path.join(dir, 'output.json')
+      const previewPath = path.join(dir, 'preview.jpg')
       await fs.writeFile(
         inputPath,
         JSON.stringify({
@@ -105,19 +117,27 @@ export default class JudgeRunner {
         })
       )
 
-      await this.runChild(childJs, inputPath, outputPath)
-      const raw = await fs.readFile(outputPath, 'utf8')
-      return JSON.parse(raw) as JudgeResult
+      await this.runChild(childJs, inputPath, outputPath, previewPath)
+      const [raw, preview] = await Promise.all([
+        fs.readFile(outputPath, 'utf8'),
+        fs.readFile(previewPath),
+      ])
+      return { verdict: JSON.parse(raw) as JudgeResult, preview }
     } finally {
       await fs.rm(dir, { recursive: true, force: true }).catch(() => {})
     }
   }
 
-  private runChild(childJs: string, inputPath: string, outputPath: string): Promise<void> {
+  private runChild(
+    childJs: string,
+    inputPath: string,
+    outputPath: string,
+    previewPath: string
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       execFile(
         process.execPath, // le même binaire node
-        [childJs, inputPath, outputPath],
+        [childJs, inputPath, outputPath, previewPath],
         {
           env: { ...process.env, ANTHROPIC_API_KEY: Env.get('ANTHROPIC_API_KEY') as string },
           timeout: JUDGE_TIMEOUT_MS,

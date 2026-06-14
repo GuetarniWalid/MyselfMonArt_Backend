@@ -509,14 +509,18 @@ export default class CustomArtWorker {
         const buffer = result.imageBuffer as Buffer
         const index = existing.length + i
 
-        let verdict
+        let verdict: any
+        // L'aperçu watermarké est produit DANS l'enfant (zéro sharp côté worker sur le chemin
+        // réel) ; null si le juge enfant a crashé (candidat non-pass, jamais révélé).
+        let preview: Buffer | null = null
         if (fakeProviderEnabled()) {
-          // Mode factice (M10) : jugement court-circuité, verdict « pass » sans appel
-          // Claude (payant). Score légèrement dégressif -> classement déterministe.
+          // Mode factice (M10/M12) : jugement court-circuité, verdict « pass » sans appel
+          // Claude (payant). Petites images statiques du bench -> aperçu en main process OK.
           verdict = CustomArtWorker.fakeVerdict(index)
+          preview = await WatermarkService.makePreview(buffer)
         } else {
           try {
-            verdict = await judge.judge({
+            const outcome = await judge.judge({
               candidateBuffer: buffer,
               photoBuffer: inputs.photoBuffer,
               kitRefBuffers: inputs.kitRefBuffers,
@@ -525,9 +529,12 @@ export default class CustomArtWorker {
               playerNumber: job.playerNumber,
               fidelityNotes: inputs.fidelityNotes,
             })
+            verdict = outcome.verdict
+            preview = outcome.preview
             job.addCost('judge', JUDGE_EST_COST_EUR, 'claude')
           } catch (error) {
-            // Juge indisponible : candidat conservé mais non-pass (sécurité qualité)
+            // Juge enfant crashé/indisponible : candidat conservé mais non-pass (sécurité
+            // qualité). Le worker survit (process enfant isolé) et passe au candidat suivant.
             Logger.error('custom-art judge KO uuid=%s: %s', job.uuid, (error as any)?.message)
             verdict = {
               scores: {},
@@ -540,12 +547,13 @@ export default class CustomArtWorker {
           }
         }
 
-        // HD privé (jamais d'URL publique avant achat) + preview watermarkée publique
+        // HD privé (jamais d'URL publique avant achat) + preview watermarkée publique.
         const path = `custom-art/jobs/${job.uuid}/candidate-${index}.jpg`
         const previewPath = `custom-art/jobs/${job.uuid}/preview-${index}.jpg`
         await CustomArtStorage.put(path, buffer, { isPublic: false })
-        const preview = await WatermarkService.makePreview(buffer)
-        await CustomArtStorage.put(previewPath, preview, { isPublic: true })
+        if (preview) {
+          await CustomArtStorage.put(previewPath, preview, { isPublic: true })
+        }
 
         const candidate: CustomArtCandidate = {
           path,
