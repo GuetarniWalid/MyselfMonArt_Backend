@@ -1,9 +1,12 @@
-import Env from '@ioc:Adonis/Core/Env'
-import Logger from '@ioc:Adonis/Core/Logger'
+// ⚠️ MODULE PUR (aucune dépendance @ioc/Adonis) : il est chargé À LA FOIS dans le process
+// applicatif (dev) ET dans un PROCESS ENFANT autonome (prod, voir judge-child.ts +
+// JudgeRunner.ts). L'isolation en child process protège le worker d'un SIGSEGV natif
+// intermittent (sharp/libvips + SDK natifs dans le process chargé — incident 13/06) : un
+// crash ne tue alors que l'enfant, le worker le rattrape. Ne RIEN importer de @ioc ici.
+import Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import sharp from 'sharp'
-import Authentication from 'App/Services/Claude/Authentication'
 import { COMMON_FIDELITY_NOTES } from './prompt'
 import { kitViewLabelFr } from './kits'
 
@@ -40,7 +43,7 @@ export const JUDGE_EST_COST_EUR = 0.09
 // re-jugement (job crashé re-relancé sans fin) — corrigée par le plafond de relances,
 // l'instance unique, le disjoncteur de coût et le kill-switch du Worker, pas en baissant
 // le modèle. Opus reste donc le défaut.
-const DEFAULT_JUDGE_MODEL = 'claude-opus-4-8'
+export const DEFAULT_JUDGE_MODEL = 'claude-opus-4-8'
 
 // Tailles d'image (bench config.judge) : candidat/réfs réduits, quadrants zoomés
 const JUDGE_IMAGE_MAX_PX = 896
@@ -272,7 +275,11 @@ export interface JudgeResult {
   reason: string
 }
 
-export default class JudgeService extends Authentication {
+export default class JudgeService {
+  // Le client Anthropic est INJECTÉ (pas lu via @ioc) : le worker le construit depuis Env,
+  // le process enfant le construit depuis process.env.ANTHROPIC_API_KEY.
+  constructor(private anthropic: Anthropic) {}
+
   public async judge(input: {
     candidateBuffer: Buffer
     photoBuffer: Buffer
@@ -283,8 +290,10 @@ export default class JudgeService extends Authentication {
     playerNumber: number
     /** Notes de fidélité maillot de l'équipe (calibrent kit_fidelity), null si absentes */
     fidelityNotes?: string | null
+    /** Modèle Claude du juge — résolu par l'appelant (Env override ou DEFAULT_JUDGE_MODEL) */
+    model: string
   }): Promise<JudgeResult> {
-    const model = Env.get('CUSTOM_ART_JUDGE_MODEL') || DEFAULT_JUDGE_MODEL
+    const model = input.model || DEFAULT_JUDGE_MODEL
 
     // Passe 1 — rubrique générale : photo source, réfs maillot annoncées FACE/DOS,
     // candidat en DERNIER (ordre du bench).
@@ -384,16 +393,8 @@ export default class JudgeService extends Authentication {
           100
       ) / 100
 
-    Logger.info(
-      'custom-art judge pass=%s score=%s suspicion=%s bras=%s mains=%s text="%s" (%s)',
-      pass,
-      score,
-      suspicion,
-      armsVisible,
-      handsVisible,
-      verdicts.textRead,
-      reason.slice(0, 120)
-    )
+    // (Le résumé est loggé par l'appelant JudgeRunner à partir du résultat retourné —
+    // ce module pur ne dépend pas du Logger Adonis.)
 
     return {
       scores: {
@@ -624,14 +625,14 @@ Décris exactement ce qui est VISIBLE, pas ce qui serait anatomiquement attendu 
 
         if (error.status === 429) {
           const retryAfter = parseInt(error.headers?.['retry-after'] || delayMs.toString())
-          Logger.warn('custom-art judge rate limited, retry dans %sms', retryAfter)
+          console.error(`custom-art judge rate limited, retry dans ${retryAfter}ms`)
           await new Promise((resolve) => setTimeout(resolve, retryAfter))
           continue
         }
 
         if (error.status === 529) {
           const backoff = delayMs * Math.pow(2, attempt - 1)
-          Logger.warn('custom-art judge overloaded (529), retry dans %sms', backoff)
+          console.error(`custom-art judge overloaded (529), retry dans ${backoff}ms`)
           await new Promise((resolve) => setTimeout(resolve, backoff))
           continue
         }

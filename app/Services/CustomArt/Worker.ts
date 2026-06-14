@@ -11,7 +11,8 @@ import CustomArtStorage from './Storage'
 import { affectedRows } from './db'
 import MockupRenderer from './MockupRenderer'
 import WatermarkService from './WatermarkService'
-import JudgeService, { JUDGE_EST_COST_EUR } from './JudgeService'
+import { JUDGE_EST_COST_EUR } from './JudgeService'
+import JudgeRunner from './JudgeRunner'
 import ReviewMailer from './ReviewMailer'
 import { buildMasterPrompt } from './prompt'
 import { resolveProviderChain, resolveForcedProvider, fakeProviderEnabled } from './providers'
@@ -490,7 +491,10 @@ export default class CustomArtWorker {
     inputs: JobInputs,
     produced: Array<{ result: GenerateResult; provider: CustomArtProvider }>
   ): Promise<void> {
-    const judge = new JudgeService()
+    // JudgeRunner = jugement isolé en process enfant (anti-SIGSEGV, voir JudgeRunner.ts) :
+    // si le jugement d'un candidat crashe l'enfant, l'erreur est rattrapée plus bas
+    // (verdict non-pass) et le worker survit — pas de job coincé, pas de boucle.
+    const judge = new JudgeRunner()
     const existing = job.candidates || []
 
     // Jugement SÉQUENTIEL (un candidat à la fois). En parallèle (Promise.all), les 3
