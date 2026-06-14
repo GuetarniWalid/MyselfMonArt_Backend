@@ -17,7 +17,7 @@ const INSTAGRAM_SCOPES = [
 ]
 
 export default class SocialAuthsController {
-  public async index({ ally, auth, response }: HttpContextContract) {
+  public async index({ ally, auth, response, session }: HttpContextContract) {
     const google = ally.use('google')
     if (google.accessDenied()) {
       return 'Access was denied'
@@ -41,7 +41,10 @@ export default class SocialAuthsController {
     )
 
     await auth.use('web').login(user)
-    return response.redirect('/')
+    // Revient à la page demandée avant le login (lien d'un email admin par ex.), sinon accueil.
+    const intended = session?.pull('intended_url')
+    const target = typeof intended === 'string' && intended.startsWith('/') ? intended : '/'
+    return response.redirect(target)
   }
 
   public async redirectToGoogle({ response }: HttpContextContract) {

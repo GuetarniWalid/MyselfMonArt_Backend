@@ -61,16 +61,31 @@ export default class AuthMiddleware {
    * Handle request
    */
   public async handle(
-    { auth }: HttpContextContract,
+    ctx: HttpContextContract,
     next: () => Promise<void>,
     customGuards: (keyof GuardsList)[]
   ) {
+    const { auth, request, session } = ctx
     /**
      * Uses the user defined guards or the default guard mentioned in
      * the config file
      */
     const guards = customGuards.length ? customGuards : [auth.name]
-    await this.authenticate(auth, guards)
+    try {
+      await this.authenticate(auth, guards)
+    } catch (error) {
+      // Mémorise la page demandée AVANT de rediriger vers le login Google, pour y revenir
+      // après connexion (sinon SocialAuthsController renvoie toujours à l'accueil) :
+      // ainsi les liens des emails admin (file de revue / file print) atterrissent au bon
+      // endroit même quand la session a expiré. Uniquement pour une navigation HTML (pas XHR).
+      if (request.method() === 'GET' && request.accepts(['html'])) {
+        const target = request.url(true)
+        if (target.startsWith('/') && !target.startsWith('/login')) {
+          session?.put('intended_url', target)
+        }
+      }
+      throw error
+    }
     await next()
   }
 }
