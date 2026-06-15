@@ -188,7 +188,7 @@ function registerTools(server, shopifyClient) {
   )
   server.tool(
     'updateProduct',
-    'Update an existing product (title, description, tags, status, vendor, productType) and/or its SEO meta title/description',
+    'Update an existing product (title, description, tags, status, vendor, productType, templateSuffix, taxonomy category) and/or its SEO meta title/description',
     {
       id: z.string().describe('The product ID to update'),
       title: z.string().optional(),
@@ -197,6 +197,18 @@ function registerTools(server, shopifyClient) {
       productType: z.string().optional(),
       tags: z.array(z.string()).optional(),
       status: z.enum(['ACTIVE', 'DRAFT', 'ARCHIVED']).optional(),
+      templateSuffix: z
+        .string()
+        .optional()
+        .describe(
+          'Theme template suffix (e.g. "personalized" renders templates/product.personalized.json). Pass "" to reset to the default product template. Omit to leave unchanged.'
+        ),
+      category: z
+        .string()
+        .optional()
+        .describe(
+          'Shopify Standard Product Taxonomy category GID (e.g. gid://shopify/TaxonomyCategory/ae-2-1). Omit to leave unchanged.'
+        ),
       seoTitle: z
         .string()
         .optional()
@@ -214,6 +226,11 @@ function registerTools(server, shopifyClient) {
         if (input.description) {
           input.descriptionHtml = input.description
           delete input.description
+        }
+        // ProductInput.templateSuffix : "" signifie "revenir au template par défaut",
+        // Shopify attend null dans ce cas
+        if (input.templateSuffix === '') {
+          input.templateSuffix = null
         }
         // Only build input.seo if at least one SEO field was provided, so we
         // never overwrite the existing SEO override when it's left untouched.
@@ -248,6 +265,205 @@ function registerTools(server, shopifyClient) {
             {
               type: 'text',
               text: `Error updating product: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'createProductOptions',
+    'Create product options (e.g. "Tailles", "Cadres") with their values on an existing product via productOptionsCreate. Option names and values are matched EXACTLY (case-sensitive) by the storefront picker. Default variantStrategy LEAVE_AS_IS does not touch existing variants (pair with createProductVariantsBulk to build the matrix); CREATE lets Shopify auto-generate every combination.',
+    {
+      productId: z.string().describe('The product ID (e.g., gid://shopify/Product/123)'),
+      options: z
+        .array(
+          z.object({
+            name: z.string().describe('Option name, exact case (e.g. "Tailles")'),
+            values: z
+              .array(z.string())
+              .min(1)
+              .describe('Option values, exact case (e.g. ["30x40 cm", "60x80 cm"])'),
+          })
+        )
+        .min(1)
+        .max(3)
+        .describe('1 to 3 options (Shopify limit), in display order'),
+      variantStrategy: z
+        .enum(['LEAVE_AS_IS', 'CREATE'])
+        .optional()
+        .default('LEAVE_AS_IS')
+        .describe(
+          'LEAVE_AS_IS (default): variants untouched. CREATE: auto-create the full combination matrix.'
+        ),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.createProductOptions(
+          args.productId,
+          args.options,
+          args.variantStrategy
+        )
+        if (result.data.productOptionsCreate.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error creating product options: ${JSON.stringify(result.data.productOptionsCreate.userErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result.data.productOptionsCreate.product, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error creating product options: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'createProductVariantsBulk',
+    'Create multiple variants on a product in one call via productVariantsBulkCreate. Each variant maps option values (must already exist via createProductOptions or on the product) to a price. Use strategy REMOVE_STANDALONE_VARIANT to replace the single "Default Title" variant when populating a fresh option matrix. Inventory defaults: not tracked, policy CONTINUE (print-on-demand).',
+    {
+      productId: z.string().describe('The product ID (e.g., gid://shopify/Product/123)'),
+      variants: z
+        .array(
+          z.object({
+            price: z.string().describe('Variant price as a string, e.g. "34.90"'),
+            compareAtPrice: z
+              .string()
+              .optional()
+              .describe('Optional compare-at (barred) price, e.g. "49.90"'),
+            optionValues: z
+              .array(
+                z.object({
+                  optionName: z.string().describe('Option name, exact case (e.g. "Tailles")'),
+                  name: z.string().describe('Option value, exact case (e.g. "30x40 cm")'),
+                })
+              )
+              .min(1)
+              .describe('One entry per product option'),
+            inventoryPolicy: z
+              .enum(['DENY', 'CONTINUE'])
+              .optional()
+              .default('CONTINUE')
+              .describe('CONTINUE (default) keeps selling when out of stock'),
+          })
+        )
+        .min(1)
+        .max(100)
+        .describe('1 to 100 variants per call (Shopify bulk limit)'),
+      strategy: z
+        .enum(['DEFAULT', 'REMOVE_STANDALONE_VARIANT'])
+        .optional()
+        .default('DEFAULT')
+        .describe(
+          'REMOVE_STANDALONE_VARIANT deletes the lone "Default Title" variant when the matrix is created'
+        ),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.createProductVariantsBulk(
+          args.productId,
+          args.variants,
+          args.strategy
+        )
+        if (result.data.productVariantsBulkCreate.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error creating product variants: ${JSON.stringify(result.data.productVariantsBulkCreate.userErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result.data.productVariantsBulkCreate.productVariants, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error creating product variants: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'updateProductVariantPrices',
+    'Update the price (and optionally compareAtPrice) of existing variants in a single call via productVariantsBulkUpdate. Get the variant GIDs from getProduct -> variants.',
+    {
+      productId: z.string().describe('The product ID (e.g., gid://shopify/Product/123)'),
+      variants: z
+        .array(
+          z.object({
+            id: z.string().describe('Variant GID (gid://shopify/ProductVariant/...)'),
+            price: z.string().describe('New price as a string, e.g. "34.90"'),
+            compareAtPrice: z
+              .string()
+              .optional()
+              .describe('Optional new compare-at (barred) price. Omit to leave unchanged.'),
+          })
+        )
+        .min(1)
+        .max(100)
+        .describe('1 to 100 variants per call (Shopify bulk limit)'),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.updateProductVariantPrices(args.productId, args.variants)
+        if (result.data.productVariantsBulkUpdate.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error updating variant prices: ${JSON.stringify(result.data.productVariantsBulkUpdate.userErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result.data.productVariantsBulkUpdate.productVariants, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error updating variant prices: ${error.message}`,
             },
           ],
           isError: true,
@@ -1698,7 +1914,7 @@ function registerTools(server, shopifyClient) {
   // Metaobject Tools (GraphQL exclusive)
   server.tool(
     'listMetaobjects',
-    'List metaobjects',
+    'List metaobject INSTANCES of a given type (the records, not the schema — use listMetaobjectDefinitions for the field model).',
     {
       type: z.string().describe('The metaobject type'),
       limit: z.number().optional().default(10),
@@ -1738,7 +1954,7 @@ function registerTools(server, shopifyClient) {
   )
   server.tool(
     'createMetaobject',
-    'Create a metaobject',
+    'Create a metaobject INSTANCE (a record whose `type` definition must already exist). If the type has no definition yet, create it first with createMetaobjectDefinition; use listMetaobjectDefinitions / getMetaobjectDefinition to discover the exact field keys.',
     {
       type: z.string().describe('The metaobject type'),
       fields: z.array(
@@ -1776,6 +1992,263 @@ function registerTools(server, shopifyClient) {
             {
               type: 'text',
               text: `Error creating metaobject: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  // Metaobject DEFINITION Tools (the field schema / "model" behind each metaobject type)
+  server.tool(
+    'listMetaobjectDefinitions',
+    'List metaobject DEFINITIONS (the schemas/models): each type, its field keys/types, and the number of instances. Check this before createMetaobjectDefinition (duplicate types error) or to discover the field keys needed by createMetaobject.',
+    {
+      limit: z.number().optional().default(50),
+      cursor: z.string().optional(),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.getMetaobjectDefinitions(args)
+        const definitions = result.data.metaobjectDefinitions.edges.map((edge) => edge.node)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  definitions,
+                  pageInfo: result.data.metaobjectDefinitions.pageInfo,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error fetching metaobject definitions: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'getMetaobjectDefinition',
+    'Get a single metaobject DEFINITION by its type, including the full field schema (keys, names, field types, required flags, validations). Use it to learn the exact field keys before calling createMetaobject.',
+    {
+      type: z.string().describe('The metaobject definition type (e.g. "color_swatch")'),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.getMetaobjectDefinitionByType(args.type)
+        if (!result.data.metaobjectDefinitionByType) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `No metaobject definition found for type "${args.type}". Create it with createMetaobjectDefinition.`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result.data.metaobjectDefinitionByType, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error fetching metaobject definition: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'createMetaobjectDefinition',
+    'Create a metaobject DEFINITION — the field schema / "model" that must exist before createMetaobject can add instances of that type (maps to metaobjectDefinitionCreate). The `type` is a permanent unique identifier (e.g. "color_swatch"); each field has a key, a name and a Shopify field type. Common field types: single_line_text_field, multi_line_text_field, number_integer, number_decimal, boolean, color, url, date, date_time, json, rich_text_field, dimension, money, file_reference, product_reference, collection_reference, metaobject_reference, and their list.* variants (e.g. list.single_line_text_field).',
+    {
+      type: z
+        .string()
+        .describe('Permanent unique type identifier (e.g. "color_swatch"). Cannot be changed later.'),
+      name: z.string().describe('Human-readable display name (e.g. "Color swatch")'),
+      description: z.string().optional().describe('Administrative description of the definition'),
+      displayNameKey: z
+        .string()
+        .optional()
+        .describe('Key of the field to use as the display name for instances'),
+      fieldDefinitions: z
+        .array(
+          z.object({
+            key: z.string().describe('Unique field key (e.g. "hex")'),
+            name: z.string().describe('Field display name (e.g. "Hex")'),
+            type: z
+              .string()
+              .describe('Shopify field type, e.g. "single_line_text_field", "color", "number_integer", "file_reference"'),
+            description: z.string().optional(),
+            required: z.boolean().optional().default(false),
+            validations: z
+              .array(z.object({ name: z.string(), value: z.string() }))
+              .optional()
+              .describe('Field validations, e.g. [{ name: "regex", value: "^#([A-Fa-f0-9]{6})$" }]'),
+          })
+        )
+        .min(1)
+        .describe('Field definitions — the "columns" of the model'),
+      storefrontAccess: z
+        .enum(['NONE', 'PUBLIC_READ'])
+        .optional()
+        .describe('Storefront read access for instances (PUBLIC_READ to render them in the theme)'),
+      translatable: z
+        .boolean()
+        .optional()
+        .describe('Enable the translatable capability so field values can be translated per locale'),
+      publishable: z
+        .boolean()
+        .optional()
+        .describe('Enable the publishable capability (gives instances a draft/active status)'),
+    },
+    async (args) => {
+      try {
+        const { storefrontAccess, translatable, publishable, ...rest } = args
+        const params = { ...rest }
+        if (storefrontAccess !== undefined) {
+          params.access = { storefront: storefrontAccess }
+        }
+        if (translatable !== undefined || publishable !== undefined) {
+          params.capabilities = {}
+          if (translatable !== undefined) params.capabilities.translatable = { enabled: translatable }
+          if (publishable !== undefined) params.capabilities.publishable = { enabled: publishable }
+        }
+        const result = await shopifyClient.createMetaobjectDefinition(params)
+        const payload = result.data.metaobjectDefinitionCreate
+        if (payload.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error creating metaobject definition: ${JSON.stringify(payload.userErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(payload.metaobjectDefinition, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error creating metaobject definition: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'updateMetaobjectDefinition',
+    'Update an existing metaobject DEFINITION (metaobjectDefinitionUpdate): rename it, change displayNameKey, or add/update/delete fields. Field changes are operations: `addFields` creates new fields, `updateFields` renames/modifies existing ones (matched by key), `deleteFieldKeys` removes them. Get the id from listMetaobjectDefinitions / getMetaobjectDefinition.',
+    {
+      id: z
+        .string()
+        .describe('The metaobject definition GID (gid://shopify/MetaobjectDefinition/...)'),
+      name: z.string().optional().describe('New display name'),
+      description: z.string().optional(),
+      displayNameKey: z.string().optional(),
+      addFields: z
+        .array(
+          z.object({
+            key: z.string(),
+            name: z.string(),
+            type: z.string().describe('Shopify field type, e.g. "single_line_text_field"'),
+            description: z.string().optional(),
+            required: z.boolean().optional().default(false),
+            validations: z.array(z.object({ name: z.string(), value: z.string() })).optional(),
+          })
+        )
+        .optional()
+        .describe('New field definitions to create'),
+      updateFields: z
+        .array(
+          z.object({
+            key: z.string().describe('Key of the existing field to update'),
+            name: z.string().optional(),
+            description: z.string().optional(),
+            required: z.boolean().optional(),
+            validations: z.array(z.object({ name: z.string(), value: z.string() })).optional(),
+          })
+        )
+        .optional()
+        .describe('Existing fields to modify (matched by key)'),
+      deleteFieldKeys: z
+        .array(z.string())
+        .optional()
+        .describe('Keys of fields to remove from the definition'),
+    },
+    async (args) => {
+      try {
+        const { id, addFields, updateFields, deleteFieldKeys, ...rest } = args
+        const params = { ...rest }
+        const fieldDefinitions = [
+          ...(addFields || []).map((field) => ({ create: field })),
+          ...(updateFields || []).map((field) => ({ update: field })),
+          ...(deleteFieldKeys || []).map((key) => ({ delete: { key } })),
+        ]
+        if (fieldDefinitions.length > 0) {
+          params.fieldDefinitions = fieldDefinitions
+        }
+        const result = await shopifyClient.updateMetaobjectDefinition(id, params)
+        const payload = result.data.metaobjectDefinitionUpdate
+        if (payload.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error updating metaobject definition: ${JSON.stringify(payload.userErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(payload.metaobjectDefinition, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error updating metaobject definition: ${error.message}`,
             },
           ],
           isError: true,

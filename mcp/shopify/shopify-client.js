@@ -412,6 +412,11 @@ export class ShopifyClient {
             id
             title
             handle
+            templateSuffix
+            category {
+              id
+              fullName
+            }
             seo {
               title
               description
@@ -425,6 +430,102 @@ export class ShopifyClient {
       }
     `
     return this.graphql(mutation, { input: { ...input, id } })
+  }
+  // Product options & variants operations
+  async createProductOptions(productId, options, variantStrategy = 'LEAVE_AS_IS') {
+    const mutation = `
+      mutation createProductOptions($productId: ID!, $options: [OptionCreateInput!]!, $variantStrategy: ProductOptionCreateVariantStrategy) {
+        productOptionsCreate(productId: $productId, options: $options, variantStrategy: $variantStrategy) {
+          product {
+            id
+            options {
+              id
+              name
+              position
+              optionValues {
+                id
+                name
+              }
+            }
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `
+    const variables = {
+      productId,
+      options: options.map((option) => ({
+        name: option.name,
+        values: option.values.map((name) => ({ name })),
+      })),
+      variantStrategy,
+    }
+    return this.graphql(mutation, variables)
+  }
+  async createProductVariantsBulk(productId, variants, strategy = 'DEFAULT') {
+    const mutation = `
+      mutation createProductVariantsBulk($productId: ID!, $variants: [ProductVariantsBulkInput!]!, $strategy: ProductVariantsBulkCreateStrategy) {
+        productVariantsBulkCreate(productId: $productId, variants: $variants, strategy: $strategy) {
+          productVariants {
+            id
+            title
+            price
+            selectedOptions {
+              name
+              value
+            }
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `
+    const variables = {
+      productId,
+      variants: variants.map((variant) => ({
+        price: variant.price,
+        optionValues: variant.optionValues,
+        // Print-on-demand friendly defaults: no stock tracking, keep selling
+        inventoryItem: { tracked: variant.tracked ?? false },
+        inventoryPolicy: variant.inventoryPolicy || 'CONTINUE',
+        ...(variant.compareAtPrice !== undefined && { compareAtPrice: variant.compareAtPrice }),
+      })),
+      strategy,
+    }
+    return this.graphql(mutation, variables)
+  }
+  async updateProductVariantPrices(productId, variants) {
+    const mutation = `
+      mutation updateProductVariantPrices($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+        productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+          productVariants {
+            id
+            title
+            price
+            compareAtPrice
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `
+    const variables = {
+      productId,
+      variants: variants.map((variant) => ({
+        id: variant.id,
+        price: variant.price,
+        ...(variant.compareAtPrice !== undefined && { compareAtPrice: variant.compareAtPrice }),
+      })),
+    }
+    return this.graphql(mutation, variables)
   }
   // Order operations
   async getOrders(params) {
@@ -1671,6 +1772,151 @@ export class ShopifyClient {
       fields: params.fields,
     }
     return this.graphql(mutation, { metaobject })
+  }
+  // Metaobject DEFINITION operations (the field schema / "model", distinct from instances)
+  async getMetaobjectDefinitions(params) {
+    const query = `
+      query getMetaobjectDefinitions($first: Int!, $after: String) {
+        metaobjectDefinitions(first: $first, after: $after) {
+          edges {
+            cursor
+            node {
+              id
+              type
+              name
+              description
+              displayNameKey
+              metaobjectsCount
+              fieldDefinitions {
+                key
+                name
+                required
+                type {
+                  name
+                  category
+                }
+              }
+            }
+          }
+          pageInfo {
+            hasNextPage
+            hasPreviousPage
+            endCursor
+          }
+        }
+      }
+    `
+    const variables = {
+      first: params.limit || 50,
+      after: params.cursor,
+    }
+    return this.graphql(query, variables)
+  }
+  async getMetaobjectDefinitionByType(type) {
+    const query = `
+      query getMetaobjectDefinitionByType($type: String!) {
+        metaobjectDefinitionByType(type: $type) {
+          id
+          type
+          name
+          description
+          displayNameKey
+          metaobjectsCount
+          fieldDefinitions {
+            key
+            name
+            description
+            required
+            type {
+              name
+              category
+            }
+            validations {
+              name
+              type
+              value
+            }
+          }
+        }
+      }
+    `
+    return this.graphql(query, { type })
+  }
+  async createMetaobjectDefinition(params) {
+    const mutation = `
+      mutation createMetaobjectDefinition($definition: MetaobjectDefinitionCreateInput!) {
+        metaobjectDefinitionCreate(definition: $definition) {
+          metaobjectDefinition {
+            id
+            type
+            name
+            displayNameKey
+            fieldDefinitions {
+              key
+              name
+              required
+              type {
+                name
+                category
+              }
+            }
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `
+    const definition = {
+      type: params.type,
+      name: params.name,
+      fieldDefinitions: params.fieldDefinitions,
+    }
+    if (params.description !== undefined) definition.description = params.description
+    if (params.displayNameKey !== undefined) definition.displayNameKey = params.displayNameKey
+    if (params.access !== undefined) definition.access = params.access
+    if (params.capabilities !== undefined) definition.capabilities = params.capabilities
+    return this.graphql(mutation, { definition })
+  }
+  async updateMetaobjectDefinition(id, params) {
+    const mutation = `
+      mutation updateMetaobjectDefinition($id: ID!, $definition: MetaobjectDefinitionUpdateInput!) {
+        metaobjectDefinitionUpdate(id: $id, definition: $definition) {
+          metaobjectDefinition {
+            id
+            type
+            name
+            displayNameKey
+            fieldDefinitions {
+              key
+              name
+              required
+              type {
+                name
+                category
+              }
+            }
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `
+    const definition = {}
+    if (params.name !== undefined) definition.name = params.name
+    if (params.description !== undefined) definition.description = params.description
+    if (params.displayNameKey !== undefined) definition.displayNameKey = params.displayNameKey
+    if (params.access !== undefined) definition.access = params.access
+    if (params.capabilities !== undefined) definition.capabilities = params.capabilities
+    if (params.resetFieldOrder !== undefined) definition.resetFieldOrder = params.resetFieldOrder
+    // fieldDefinitions here are operation wrappers: { create }, { update }, { delete }
+    if (params.fieldDefinitions !== undefined) definition.fieldDefinitions = params.fieldDefinitions
+    return this.graphql(mutation, { id, definition })
   }
   // Markets operations
   async getMarkets(params) {
