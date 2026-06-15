@@ -1910,10 +1910,18 @@ function onDragMove(e) {
   drag.lastX = e.clientX
   drag.lastY = e.clientY
   if (!drag.armed) {
-    // pas encore armé : un déplacement = intention de scroll/tap -> on abandonne (pan-y scrolle)
-    if (Math.abs(e.clientX - drag.startX) + Math.abs(e.clientY - drag.startY) > MOVE_SLOP)
+    // en deçà du seuil : intention pas encore tranchée -> on attend
+    if (Math.abs(e.clientX - drag.startX) + Math.abs(e.clientY - drag.startY) <= MOVE_SLOP) return
+    // SOURIS : un déplacement franc EST le glisser (aucun scroll natif à voler à la souris) -> on arme
+    // tout de suite, sans appui long. TACTILE : avant l'armement (appui long), un déplacement = scroll
+    // de la liste -> on rend la main à la page.
+    if (drag.pointerType === 'mouse') {
+      armDrag()
+      if (!drag) return // armDrag a pu abandonner (cellule détachée entre-temps)
+    } else {
       cancelDrag()
-    return
+      return
+    }
   }
   e.preventDefault() // armé : on prend la main (le touchmove non-passif bloque déjà le scroll natif)
   drag.moved = true
@@ -2135,6 +2143,7 @@ function attachDrag(cell, res) {
       cell,
       res,
       pointerId: e.pointerId,
+      pointerType: e.pointerType,
       startX: e.clientX,
       startY: e.clientY,
       lastX: e.clientX,
@@ -2154,9 +2163,12 @@ function attachDrag(cell, res) {
       raf: 0,
       timer: null,
     }
-    drag.timer = setTimeout(() => {
-      if (drag) armDrag()
-    }, ARM_MS)
+    // Tactile/stylet : armement par appui long (350 ms) pour départager le glisser d'un scroll de liste.
+    // Souris : pas de timer — un déplacement franc arme le glisser (cf. onDragMove), un simple clic agrandit.
+    if (e.pointerType !== 'mouse')
+      drag.timer = setTimeout(() => {
+        if (drag) armDrag()
+      }, ARM_MS)
     document.addEventListener('pointermove', onDragMove, { passive: false })
     document.addEventListener('pointerup', endDrag)
     document.addEventListener('pointercancel', cancelDrag)
