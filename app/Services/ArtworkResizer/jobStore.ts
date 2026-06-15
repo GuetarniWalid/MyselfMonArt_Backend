@@ -272,6 +272,10 @@ export function startClean(
 
 // Traduit une erreur OpenAI/Gemini/réseau en message clair pour l'utilisateur.
 export function mapResizeError(error: any): string {
+  // Un service peut fournir un message utilisateur DÉJÀ finalisé (FR, actionnable) : on le respecte tel
+  // quel plutôt que de le ré-écraser par un générique (ex. l'insertion qui détaille la raison du refus).
+  if (error?.userMessage) return String(error.userMessage)
+
   const status = error?.status || error?.response?.status
   const code = error?.code || error?.error?.code || ''
   const msg = (error?.message || '').toLowerCase()

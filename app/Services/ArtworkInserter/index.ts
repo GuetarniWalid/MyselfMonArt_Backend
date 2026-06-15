@@ -30,6 +30,12 @@ const TARGET = {
 // référence que 2.5 pour ~+3 ¢/image ; la case « haute fidélité » reste sur Pro.
 const FLASH_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image'
 const PRO_MODEL = process.env.GEMINI_IMAGE_MODEL_HIGH || 'gemini-3-pro-image'
+// Modèle de SECOURS quand le modèle principal renvoie une réponse SANS image. Les modèles gemini-3.x
+// REFUSENT en entrée toute image de référence contenant une PERSONNE (filtre anti face-swap :
+// blockReason=OTHER, échec en ~2s — confirmé le 15/06). gemini-2.5-flash-image a un filtre d'entrée
+// moins strict et accepte les œuvres figuratives (ex. un footballer) : c'est le filet anti-refus.
+// cf. CustomArt/providers/GeminiProvider (acceptsPersonRefs = !model.startsWith('gemini-3')).
+const FALLBACK_MODEL = process.env.GEMINI_IMAGE_MODEL_FALLBACK || 'gemini-2.5-flash-image'
 
 // Vocabulaire d'insertion par PRODUIT : le support n'est PAS toujours un cadre.
 // - canvas   : toile tendue sur châssis (gallery-wrapped), AUCUN cadre -> sinon Gemini en invente un.
@@ -114,14 +120,59 @@ function parseImage(input: string): { mimeType: string; data: string } {
   return { mimeType: 'image/jpeg', data: input.includes(',') ? input.split(',')[1] : input }
 }
 
+// Filtres de sécurité CONFIGURABLES desserrés au maximum autorisé. N.B. : certains blocs (sécurité
+// « personnes » des modèles 3.x, CSAM…) ne sont PAS débrayables côté API — d'où le filet par modèle
+// (FALLBACK_MODEL). Inoffensif quand rien n'est bloqué (vérifié en repro le 15/06).
+const SAFETY_SETTINGS = [
+  'HARM_CATEGORY_HARASSMENT',
+  'HARM_CATEGORY_HATE_SPEECH',
+  'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+  'HARM_CATEGORY_DANGEROUS_CONTENT',
+  'HARM_CATEGORY_CIVIC_INTEGRITY',
+].map((category) => ({ category, threshold: 'BLOCK_NONE' }))
+
+// imageConfig selon le modèle : imageSize 2K n'existe que sur la génération 3.x ; 2.5 le rejette.
+function imageConfigFor(model: string) {
+  return model.startsWith('gemini-3')
+    ? { aspectRatio: OUTPUT_ASPECT_RATIO, imageSize: INSERT_IMAGE_SIZE }
+    : { aspectRatio: OUTPUT_ASPECT_RATIO }
+}
+
+// Extrait une raison LISIBLE d'une réponse Gemini SANS image (le SDK ne jette pas : il renvoie un 200
+// vide). Sans ça on était aveugle (« Rendu vide » générique). Expose blockReason du prompt, finishReason
+// du candidat, catégories de safetyRatings déclenchées, et tout texte de refus renvoyé.
+function describeRefusal(rsp: any): string {
+  const blockReason = rsp?.promptFeedback?.blockReason
+  const finishReason = rsp?.candidates?.[0]?.finishReason
+  const ratings = rsp?.candidates?.[0]?.safetyRatings || rsp?.promptFeedback?.safetyRatings || []
+  const flagged = ratings
+    .filter(
+      (r: any) => r?.blocked || (r?.probability && !['NEGLIGIBLE', 'LOW'].includes(r.probability))
+    )
+    .map((r: any) => `${r.category}:${r.probability}${r.blocked ? '/blocked' : ''}`)
+  const textPart = (rsp?.candidates?.[0]?.content?.parts || [])
+    .map((p: any) => p?.text)
+    .filter(Boolean)
+    .join(' ')
+    .slice(0, 200)
+  const bits: string[] = []
+  if (blockReason) bits.push(`blockReason=${blockReason}`)
+  if (finishReason && finishReason !== 'STOP') bits.push(`finishReason=${finishReason}`)
+  if (flagged.length) bits.push(`safety=[${flagged.join(',')}]`)
+  if (textPart) bits.push(`text="${textPart}"`)
+  return bits.length ? bits.join(' ') : 'réponse vide sans raison explicite'
+}
+
 /**
  * Insère l'oeuvre dans le cadre vide du décor via Nano Banana (Gemini image), 2 images en entrée.
  * Génératif (re-synthèse de la zone du cadre) : fidélité "commerciale + re-roll", pas pixel-perfect.
  * Retourne un data URI JPEG.
  */
 export default class ArtworkInserter {
-  // Clé Gemini DÉDIÉE (AI Studio), distincte de GOOGLE_API_KEY (projet sans l'API Gemini).
-  // Lue via process.env pour ne pas dépendre de env.ts.
+  // Clé Gemini DÉDIÉE (AI Studio), distincte de GOOGLE_API_KEY (projet sans l'API Gemini, qui 403).
+  // Lue via process.env pour ne pas dépendre de env.ts. NB : le SDK loggue « Both GOOGLE_API_KEY and
+  // GEMINI_API_KEY are set. Using GOOGLE_API_KEY. » — message TROMPEUR : la clé passée en option ci-
+  // dessous gagne (vérifié le 15/06 : ai.apiKey == GEMINI_API_KEY, et le rendu marche). À ignorer.
   private ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
 
   public async insert(
@@ -144,45 +195,69 @@ export default class ArtworkInserter {
     const decor = parseImage(decorInput)
     const artwork = parseImage(artworkInput)
 
-    const req: any = {
-      model,
-      contents: [
-        { text: prompt },
-        { inlineData: { mimeType: decor.mimeType, data: decor.data } }, // IMAGE 1 = décor (scène)
-        { inlineData: { mimeType: artwork.mimeType, data: artwork.data } }, // IMAGE 2 = oeuvre
-      ],
-      config: {
-        responseModalities: ['IMAGE'],
-        // décor carré -> sortie carrée, pas de reframing. imageSize : génération 3.x seulement
-        // (un override env vers 2.5 resterait valide).
-        imageConfig: model.startsWith('gemini-3')
-          ? { aspectRatio: OUTPUT_ASPECT_RATIO, imageSize: INSERT_IMAGE_SIZE }
-          : { aspectRatio: OUTPUT_ASPECT_RATIO },
-      },
-    }
-
-    // Garde-fou timeout (le SDK peut ne pas en exposer) : on borne l'appel sous le TTL job (15 min).
-    const rsp: any = await Promise.race([
-      this.ai.models.generateContent(req),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('Gemini timeout')), 580000)),
-    ])
+    // Chaîne de modèles : on tente le principal (3.x, meilleure fidélité + sortie 2K), puis on RETOMBE
+    // sur un modèle au filtre d'entrée moins strict s'il renvoie une réponse SANS image. Cas typique :
+    // une œuvre FIGURATIVE (une personne) que gemini-3.x refuse en entrée, alors que gemini-2.5-flash-image
+    // l'accepte. Sans ce filet, l'insertion échouait systématiquement (ex. un poster de footballer).
+    const chain = FALLBACK_MODEL && FALLBACK_MODEL !== model ? [model, FALLBACK_MODEL] : [model]
 
     let outB64: string | null = null
     let outMime = 'image/png'
-    const parts = rsp?.candidates?.[0]?.content?.parts || []
-    for (const part of parts) {
-      if (part?.inlineData?.data) {
-        outB64 = part.inlineData.data
-        outMime = part.inlineData.mimeType || outMime
-        break
+    let usedModel = model
+    let lastDetail = 'inconnu'
+
+    for (const m of chain) {
+      const req: any = {
+        model: m,
+        contents: [
+          { text: prompt },
+          { inlineData: { mimeType: decor.mimeType, data: decor.data } }, // IMAGE 1 = décor (scène)
+          { inlineData: { mimeType: artwork.mimeType, data: artwork.data } }, // IMAGE 2 = oeuvre
+        ],
+        config: {
+          responseModalities: ['IMAGE'],
+          imageConfig: imageConfigFor(m), // décor carré -> sortie carrée (2K sur 3.x uniquement)
+          safetySettings: SAFETY_SETTINGS, // desserre les filtres configurables
+        },
       }
-    }
-    if (!outB64) {
-      // aucune image -> refus modération Google ou réponse vide
-      throw new Error('Rendu vide ou refusé par la modération (réessaie ou change d’œuvre).')
+
+      // Garde-fou timeout (le SDK peut ne pas en exposer) : on borne l'appel sous le TTL job (15 min).
+      const rsp: any = await Promise.race([
+        this.ai.models.generateContent(req),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Gemini timeout')), 580000)),
+      ])
+
+      const parts = rsp?.candidates?.[0]?.content?.parts || []
+      for (const part of parts) {
+        if (part?.inlineData?.data) {
+          outB64 = part.inlineData.data
+          outMime = part.inlineData.mimeType || outMime
+          usedModel = m
+          break
+        }
+      }
+      if (outB64) break
+      // Réponse sans image -> refus modération Google ou réponse vide. On journalise la VRAIE raison
+      // (blockReason/finishReason/safety/text) puis on tente le modèle suivant de la chaîne.
+      lastDetail = describeRefusal(rsp)
+      Logger.warn('insert REFUS model=%s product=%s (%s)', m, product, lastDetail)
     }
 
-    Logger.info('insert OK model=%s product=%s mime=%s', model, product, outMime)
+    if (!outB64) {
+      // Tous les modèles ont renvoyé une réponse sans image. L'œuvre s'insère pourtant dans d'autres
+      // décors : on guide vers le bon levier (régénérer le décor) et on porte le message jusqu'au front.
+      const err: any = new Error(
+        `Insertion refusée par la modération du modèle (${lastDetail}). ` +
+          'Régénère un nouveau décor puis relance l’insertion.'
+      )
+      err.userMessage = err.message
+      throw err
+    }
+
+    if (usedModel !== model) {
+      Logger.info('insert FALLBACK %s -> %s (le principal a refusé l’entrée)', model, usedModel)
+    }
+    Logger.info('insert OK model=%s product=%s mime=%s', usedModel, product, outMime)
     const jpeg = await sharp(Buffer.from(outB64, 'base64'))
       .jpeg({ quality: 92, progressive: true, mozjpeg: true })
       .toBuffer()
