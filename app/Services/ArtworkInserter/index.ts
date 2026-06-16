@@ -259,11 +259,17 @@ export default class ArtworkInserter {
     }
 
     if (!outB64) {
-      // Tous les modèles ont renvoyé une réponse sans image. L'œuvre s'insère pourtant dans d'autres
-      // décors : on guide vers le bon levier (régénérer le décor) et on porte le message jusqu'au front.
+      // Tous les modèles ont renvoyé une réponse sans image. La CAUSE oriente le conseil :
+      // - PROHIBITED_CONTENT / SAFETY (filtre de SORTIE non débrayable) = c'est le CONTENU généré qui est
+      //   bloqué, presque toujours l'ŒUVRE (visage/personne réelle, marque, contenu sensible). Régénérer le
+      //   décor n'y change RIEN -> on oriente vers une autre œuvre ou un mockup PSD (sans IA).
+      // - sinon (refus d'entrée OTHER, vide sans raison…) : régénérer le décor reste la bonne piste.
+      const contentBlocked = /PROHIBITED_CONTENT|SAFETY|HARM_CATEGORY/i.test(lastDetail)
+      const guidance = contentBlocked
+        ? "Cette ŒUVRE est bloquée par la modération du modèle (souvent un visage ou une personne réelle, une marque, ou un contenu sensible) — régénérer le décor n'y changera rien. Essaie une autre œuvre, ou crée le mockup via un template PSD (sans IA) pour celle-ci."
+        : 'Régénère un nouveau décor puis relance l’insertion.'
       const err: any = new Error(
-        `Insertion refusée par la modération du modèle (${lastDetail}). ` +
-          'Régénère un nouveau décor puis relance l’insertion.'
+        `Insertion refusée par la modération du modèle (${lastDetail}). ${guidance}`
       )
       err.userMessage = err.message
       throw err
