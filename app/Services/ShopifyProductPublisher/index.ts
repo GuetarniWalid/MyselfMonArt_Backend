@@ -1,9 +1,9 @@
-import type { ExtensionRequest, Ratio, ImageType, ProductType } from 'Types/ShopifyProductPublisher'
+import type { ExtensionRequest, Ratio, ProductType } from 'Types/ShopifyProductPublisher'
 import ImageComposer from './ImageComposer'
 
 export default class ShopifyProductPublisher {
   private imageComposer: ImageComposer
-  private images: Array<{ base64Image: string; mockupContext?: string; type: ImageType }>
+  private images: ExtensionRequest['images']
   private ratio: Ratio
   private productType: ProductType
   private parentCollection: { id: string; title: string }

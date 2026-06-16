@@ -1,1 +1,5 @@
 build
+# Front Publisher GÉNÉRÉ (miroir byte-identique de extension-Midjourney/webapp/public via
+# webapp/sync-prod.js). Prettier ne doit PAS le reformater, sinon il diverge de la source dev
+# et casse la parité que le script de synchro garantit.
+public/publisher

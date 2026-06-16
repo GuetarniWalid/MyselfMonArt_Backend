@@ -102,41 +102,71 @@ export default class ShopifyProductPublishersController {
       // Build media array with AI-powered alt text generation
       // Use original high-quality images for Shopify (not compressed)
       // All images are sent to Shopify in the same order as received from extension
-      product.media = await Promise.all(
-        originalImageUrls.map(async (url, index) => {
-          // Original artwork: Uses its generated alt and filename
-          if (index === originalImageIndex) {
-            return {
-              src: await productPublisher!.replaceSrcName(url, mainArtworkFilename),
-              alt: mainArtworkAlt,
-            }
-          }
+      //
+      // Passe-partout (poster) : les jumeaux matés (passePartout=true) sont ajoutés EN FIN de
+      // tableau et RÉUTILISENT l'alt/le filename de leur mockup source (suffixe « passe-partout »,
+      // zéro appel IA). On procède en 2 passes : (1) les mockups normaux (alt IA, indexés par
+      // clientId), (2) les jumeaux (lookup du clientId source). L'ordre final reste celui du payload.
+      const imageMetas = checkedRequest.images
+      const PP_ALT_SUFFIX = ' — passe-partout blanc'
+      const PP_FILENAME_SUFFIX = '-passe-partout'
+      const mediaByIndex: Array<{ src: string; alt: string } | null> = new Array(
+        originalImageUrls.length
+      ).fill(null)
+      const altByClientId = new Map<string, { alt: string; filename: string }>()
 
-          // First mockup (index 0): White background mockup - uses original artwork's alt
-          if (index === 0) {
+      // Passe 1 : tout SAUF les jumeaux passe-partout
+      await Promise.all(
+        originalImageUrls.map(async (url, index) => {
+          const meta = imageMetas[index]
+          if (meta?.passePartout) return // -> passe 2
+
+          let alt: string
+          let filename: string
+          if (index === originalImageIndex) {
+            // Original artwork: Uses its generated alt and filename
+            alt = mainArtworkAlt
+            filename = mainArtworkFilename
+          } else if (index === 0) {
+            // First mockup (index 0): White background mockup - uses original artwork's alt.
             // Generate filename slug from alt text (not using mainArtworkFilename to avoid duplicates)
-            const filenameSlug = mainArtworkAlt
+            alt = mainArtworkAlt
+            filename = mainArtworkAlt
               .toLowerCase()
               .replace(/[^a-z0-9]+/g, '-')
               .replace(/^-|-$/g, '')
               .substring(0, 80)
-
-            return {
-              src: await productPublisher!.replaceSrcName(url, filenameSlug),
-              alt: mainArtworkAlt,
-            }
+          } else {
+            // Other mockups: AI-powered contextual generation
+            const mockupContext = productPublisher!.getMockupContext(index)
+            ;({ alt, filename } = await aiService.generateMockupAlt(mockupContext, mockupMetadata))
           }
 
-          // Other mockups: AI-powered contextual generation
-          const mockupContext = productPublisher!.getMockupContext(index)
-          const { alt, filename } = await aiService.generateMockupAlt(mockupContext, mockupMetadata)
-
-          return {
+          mediaByIndex[index] = {
             src: await productPublisher!.replaceSrcName(url, filename),
-            alt: alt,
+            alt,
+          }
+          if (meta?.clientId) altByClientId.set(meta.clientId, { alt, filename })
+        })
+      )
+
+      // Passe 2 : jumeaux passe-partout (réutilisent l'alt/filename du mockup source, pas d'IA)
+      await Promise.all(
+        originalImageUrls.map(async (url, index) => {
+          const meta = imageMetas[index]
+          if (!meta?.passePartout) return
+          const base = (meta.passePartoutOf && altByClientId.get(meta.passePartoutOf)) || {
+            alt: mainArtworkAlt,
+            filename: mainArtworkFilename,
+          }
+          mediaByIndex[index] = {
+            src: await productPublisher!.replaceSrcName(url, base.filename + PP_FILENAME_SUFFIX),
+            alt: base.alt + PP_ALT_SUFFIX,
           }
         })
       )
+
+      product.media = mediaByIndex.filter((m): m is { src: string; alt: string } => m !== null)
 
       product.title = title
       product.descriptionHtml = descriptionHtml
@@ -406,7 +436,14 @@ export default class ShopifyProductPublishersController {
       const keptIds = entries.filter((i) => i.mediaId).map((i) => i.mediaId!)
       const newEntries = entries
         .filter((i) => i.base64Image)
-        .map((i) => ({ base64Image: i.base64Image!, mockupContext: i.mockupContext, type: i.type }))
+        .map((i) => ({
+          base64Image: i.base64Image!,
+          mockupContext: i.mockupContext,
+          type: i.type,
+          clientId: i.clientId,
+          passePartout: i.passePartout,
+          passePartoutOf: i.passePartoutOf,
+        }))
       const originalEntry = entries.find((i) => i.type === 'original')!
       const originalIsKept = Boolean(originalEntry.mediaId)
       const shopify = new Shopify()
@@ -492,37 +529,69 @@ export default class ShopifyProductPublishersController {
       // publish : l'originale (si nouvelle) garde son alt/filename générés ; en plein-
       // remplacement legacy le 1er mockup (fond blanc) réutilise l'alt de l'oeuvre ;
       // les autres mockups passent par l'IA contextuelle. Noms de fichiers régénérés.
+      // 2 passes comme le publish : (1) mockups normaux (alt IA, indexés par clientId),
+      // (2) jumeaux passe-partout qui réutilisent l'alt/le filename de leur mockup source
+      // (suffixe « passe-partout », zéro IA). En reimage, un jumeau ne référence QUE des
+      // mockups (re)générés cette session — donc des entrées NOUVELLES (base64) portant un clientId.
+      const PP_ALT_SUFFIX = ' — passe-partout blanc'
+      const PP_FILENAME_SUFFIX = '-passe-partout'
+      const slugFromAlt = (s: string) =>
+        s
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '')
+          .substring(0, 80)
       const newOriginalIndex = newEntries.findIndex((i) => i.type === 'original')
-      const mediaToAttach = await Promise.all(
+      const attachByIndex: Array<{ src: string; alt: string } | null> = new Array(
+        originalImageUrls.length
+      ).fill(null)
+      const reimageAltByClientId = new Map<string, { alt: string; filename: string }>()
+
+      // Passe 1 : tout SAUF les jumeaux passe-partout
+      await Promise.all(
         originalImageUrls.map(async (url, index) => {
+          const entry = newEntries[index]
+          if (entry.passePartout) return // -> passe 2
+
+          let alt: string
+          let filename: string
           if (index === newOriginalIndex) {
-            return {
-              src: await productPublisher!.replaceSrcName(url, mainArtworkFilename!),
-              alt: mainArtworkAlt,
-            }
+            alt = mainArtworkAlt
+            filename = mainArtworkFilename!
+          } else if (keptIds.length === 0 && index === 0) {
+            alt = mainArtworkAlt
+            filename = slugFromAlt(mainArtworkAlt)
+          } else {
+            const mockupContext = entry.mockupContext!
+            ;({ alt, filename } = await aiService.generateMockupAlt(mockupContext, mockupMetadata))
           }
 
-          if (keptIds.length === 0 && index === 0) {
-            const filenameSlug = mainArtworkAlt
-              .toLowerCase()
-              .replace(/[^a-z0-9]+/g, '-')
-              .replace(/^-|-$/g, '')
-              .substring(0, 80)
-
-            return {
-              src: await productPublisher!.replaceSrcName(url, filenameSlug),
-              alt: mainArtworkAlt,
-            }
-          }
-
-          const mockupContext = newEntries[index].mockupContext!
-          const { alt, filename } = await aiService.generateMockupAlt(mockupContext, mockupMetadata)
-
-          return {
+          attachByIndex[index] = {
             src: await productPublisher!.replaceSrcName(url, filename),
             alt,
           }
+          if (entry.clientId) reimageAltByClientId.set(entry.clientId, { alt, filename })
         })
+      )
+
+      // Passe 2 : jumeaux passe-partout
+      await Promise.all(
+        originalImageUrls.map(async (url, index) => {
+          const entry = newEntries[index]
+          if (!entry.passePartout) return
+          const base = (entry.passePartoutOf && reimageAltByClientId.get(entry.passePartoutOf)) || {
+            alt: mainArtworkAlt,
+            filename: mainArtworkFilename || slugFromAlt(mainArtworkAlt),
+          }
+          attachByIndex[index] = {
+            src: await productPublisher!.replaceSrcName(url, base.filename + PP_FILENAME_SUFFIX),
+            alt: base.alt + PP_ALT_SUFFIX,
+          }
+        })
+      )
+
+      const mediaToAttach = attachByIndex.filter(
+        (m): m is { src: string; alt: string } => m !== null
       )
 
       // Attache des nouveaux médias dans l'ordre du payload. En cas d'échec en cours

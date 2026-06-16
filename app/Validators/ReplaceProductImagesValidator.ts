@@ -17,6 +17,11 @@ export default class ReplaceProductImagesValidator {
         mediaId: schema.string.optional({}, [rules.regex(/^gid:\/\/shopify\/MediaImage\/\d+$/)]),
         mockupContext: schema.string.optional({}, [rules.minLength(5), rules.maxLength(200)]),
         type: schema.enum(['mockup', 'original'] as const),
+        // Passe-partout (poster) : clientId stable par mockup ; sur le jumeau maté,
+        // passePartout=true + passePartoutOf=<clientId du mockup source> -> alt/filename réutilisés.
+        clientId: schema.string.optional({}, [rules.maxLength(64)]),
+        passePartout: schema.boolean.optional(),
+        passePartoutOf: schema.string.optional({}, [rules.maxLength(64)]),
       })
     ),
     ratio: schema.enum(['portrait', 'landscape', 'square'] as const),
