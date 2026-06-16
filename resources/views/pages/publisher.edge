@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/publisher/style.css?v=21ceebc14a">
+<link rel="stylesheet" href="/publisher/style.css?v=35ddfb8739">
 </head>
 <body>
 <div class="app">
@@ -101,6 +101,14 @@
       </div>
       <div id="resultsGrid" class="results-grid"></div>
       <p id="resultsEmpty" class="empty">Touchez un mockup ci-dessus pour générer votre premier rendu.</p>
+      <!-- 2e rangée : jumeaux « passe-partout » (bords blancs) — posters uniquement -->
+      <div id="ppSection" class="pp-section hidden">
+        <div class="pp-head">
+          <h3 class="card-subtitle">Passe-partout · bords blancs</h3>
+          <span class="hint">Touchez un rendu pour l'agrandir</span>
+        </div>
+        <div id="ppGrid" class="results-grid"></div>
+      </div>
     </section>
 
   </main>
@@ -282,6 +290,6 @@
     mode: {{{ JSON.stringify(mode || '') }}}
   };
 </script>
-<script src="/publisher/app.js?v=acedfe0a11"></script>
+<script src="/publisher/app.js?v=91d1b5f7f6"></script>
 </body>
 </html>
