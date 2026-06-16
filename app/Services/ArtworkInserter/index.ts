@@ -8,6 +8,10 @@ type Product = 'canvas' | 'poster' | 'tapestry'
 export interface InsertOptions {
   product?: Product
   fidelity?: 'standard' | 'high' // 'high' = Nano Banana Pro (meilleur sur le texte, ~3x plus cher)
+  // Jumeau « passe-partout » : l'œuvre fournie inclut DÉJÀ une marge blanche imprimée (mat). Le prompt
+  // poster standard dit « NO mat / fill edge-to-edge » -> le modèle RECADRE et fait disparaître la marge.
+  // Avec mat=true on bascule sur des clauses qui PRÉSERVENT la bordure blanche (cf. buildInsertionPrompt).
+  mat?: boolean
 }
 
 // Le DÉCOR est désormais TOUJOURS CARRÉ (cf. DecorGenerator) -> la sortie d'insertion est elle aussi
@@ -96,22 +100,33 @@ const SUPPORT: Record<
 
 // Prompt d'insertion PRODUIT-AWARE : place l'oeuvre dans la surface vide grise du bon support
 // (toile nue / poster encadré / tapisserie), fidèlement, sans rien toucher d'autre dans la pièce.
-function buildInsertionPrompt(product: Product): string {
+// mat=true (jumeau passe-partout) : l'œuvre fournie a DÉJÀ une marge blanche imprimée -> on remplace
+// les clauses anti-mat du support par des clauses qui la conservent (le poster standard la supprimait).
+function buildInsertionPrompt(product: Product, mat = false): string {
   const s = SUPPORT[product]
-  return `You are compositing two images. The FIRST image is an interior photograph that contains ONE empty ${s.surface}, with a flat light-grey (#ECECEC) ${s.face}. The SECOND image is an artwork.
+  const fitClause = mat
+    ? 'IMPORTANT — the SECOND image ALREADY INCLUDES a clean, even, printed WHITE border (a passe-partout / mat) around the central artwork. Treat the WHOLE second image — white border INCLUDED — as a single printed sheet and place that whole sheet flat into the grey area, filling it edge-to-edge. The white margin MUST stay clearly visible as an EVEN white band on all four sides between the support and the inner artwork. Do NOT crop it out, do NOT trim or zoom past it, and do NOT enlarge only the inner artwork to cover the white border — keep the white mat exactly as in the second image.'
+    : s.fitClause
+  const supportRule = mat
+    ? `${s.supportRule} The WHITE margin around the artwork is a printed mat (passe-partout) that is PART of the SECOND image — KEEP it intact and even; it is NOT a second frame and must NOT be removed.`
+    : s.supportRule
+  const negative = mat
+    ? 'keep the even WHITE passe-partout margin around the artwork exactly as in the second image — never remove, crop or cover it'
+    : s.negative
+  return `You are compositing two images. The FIRST image is an interior photograph that contains ONE empty ${s.surface}, with a flat light-grey (#ECECEC) ${s.face}. The SECOND image is an artwork${mat ? ' that already includes a printed white passe-partout border (mat) around it' : ''}.
 
 Task: place the SECOND image (the artwork) so it fills EXACTLY the empty light-grey ${s.face} of the existing support in the FIRST image, as if it were the real ${s.mounted}.
 
 Hard rules:
 - Keep the artwork 100% identical to the SECOND image: same colors, same patterns, same composition, same brush/print texture, and reproduce any text or signature exactly, character-for-character, with the same fonts and layout. Do NOT redraw, restyle, re-illustrate, crop, mirror, or re-interpret the artwork.
-- Only fit the artwork to the grey ${s.face}. Match its perspective, scale and corners so the artwork sits flat with correct foreshortening, edge to edge, with no leftover grey band. ${s.fitClause}
+- Only fit the artwork to the grey ${s.face}. Match its perspective, scale and corners so the artwork sits flat with correct foreshortening, edge to edge, with no leftover grey band. ${fitClause}
 - SURFACE TEXTURE (important): ${s.texture}
 - CONTACT SHADOW, NOT FLOATING (important): match how the support actually sits in the FIRST image. If it HANGS ON A WALL, it sits flat and CLOSE against the wall (only a few centimetres deep): cast only a SMALL, soft, TIGHT contact shadow hugging its edges — a thin shadow just under the top edge and along the side away from the light source — so it clearly reads as mounted ON the wall. If it RESTS, LEANS or STANDS on a surface (table, shelf, console, mantel, easel or floor), cast the contact shadow where it meets that surface — pooling at its BASE and along its leaning edge — consistent with that surface and the light. In every case it must read as physically supported, never floating like a button, and NEVER with a large, soft, detached drop shadow or a wide gap of shadow.
 - Adapt ONLY global lighting to the room: apply the same soft light direction already present, so it looks naturally lit. The support is MATTE (no glass, no sheen): do NOT add any glossy reflection, specular highlight or glare — keep its surface matte. Do not alter the artwork's own colors or content.
-- SUPPORT TYPE (critical): ${s.supportRule}
+- SUPPORT TYPE (critical): ${supportRule}
 - Keep EVERYTHING ELSE in the FIRST image exactly the same: walls, furniture, floor, decor, the support itself, lighting and camera. Change nothing outside the grey ${s.face}.
 
-Output: a single photorealistic image, same framing and aspect ratio as the FIRST image, high fidelity, ${s.negative}, no text added, no watermark.`
+Output: a single photorealistic image, same framing and aspect ratio as the FIRST image, high fidelity, ${negative}, no text added, no watermark.`
 }
 
 function parseImage(input: string): { mimeType: string; data: string } {
@@ -190,7 +205,7 @@ export default class ArtworkInserter {
     // Le support dicte le prompt : un canvas est une toile NUE (pas de cadre), à préciser à l'insertion.
     const product: Product =
       opts.product === 'poster' ? 'poster' : opts.product === 'tapestry' ? 'tapestry' : 'canvas'
-    const prompt = buildInsertionPrompt(product)
+    const prompt = buildInsertionPrompt(product, opts.mat)
 
     const decor = parseImage(decorInput)
     const artwork = parseImage(artworkInput)

@@ -12,12 +12,12 @@ export default class InsertArtworkController {
    */
   public async generate({ request, response }: HttpContextContract) {
     try {
-      const { decor, artwork, target, product, fidelity } = await request.validate(
+      const { decor, artwork, target, product, fidelity, mat } = await request.validate(
         InsertArtworkRequestValidator
       )
       const jobId = randomUUID()
       await ResizeJobs.create(jobId)
-      ResizeJobs.startInsert(jobId, decor, artwork, target, { product, fidelity }) // détaché : surtout PAS de await
+      ResizeJobs.startInsert(jobId, decor, artwork, target, { product, fidelity, mat }) // détaché : surtout PAS de await
       Logger.info(
         'insert START job=%s target=%s fidelity=%s',
         jobId,

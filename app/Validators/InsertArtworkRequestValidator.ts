@@ -10,6 +10,7 @@ export default class InsertArtworkRequestValidator {
     target: schema.enum(['portrait', 'square', 'landscape'] as const),
     product: schema.enum.optional(['canvas', 'poster', 'tapestry'] as const),
     fidelity: schema.enum.optional(['standard', 'high'] as const), // high = Nano Banana Pro
+    mat: schema.boolean.optional(), // jumeau passe-partout : œuvre déjà mat-ée -> prompt qui garde la marge blanche
   })
 
   public messages: CustomMessages = {
