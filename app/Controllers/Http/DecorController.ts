@@ -12,12 +12,13 @@ export default class DecorController {
    */
   public async generate({ request, response }: HttpContextContract) {
     try {
-      const { image, target, product, roomType, theme } = await request.validate(
+      const { image, target, product, roomType, theme, scene } = await request.validate(
         GenerateDecorRequestValidator
       )
       const jobId = randomUUID()
       await ResizeJobs.create(jobId)
-      ResizeJobs.startDecor(jobId, image, target, { product, roomType, theme }) // détaché : surtout PAS de await
+      // scene fourni -> on rejoue ce brief tel quel (famille de ratios) ; image ignorée par le décor.
+      ResizeJobs.startDecor(jobId, image || '', target, { product, roomType, theme, scene }) // détaché : surtout PAS de await
       Logger.info('decor START job=%s target=%s product=%s', jobId, target, product || 'canvas')
       return { success: true, data: { jobId } }
     } catch (error) {
@@ -49,17 +50,15 @@ export default class DecorController {
     }
     const job = await ResizeJobs.read(id)
     if (!job) {
-      return response
-        .status(404)
-        .json({
-          success: false,
-          status: 'not_found',
-          message: 'Session de génération expirée. Relance.',
-        })
+      return response.status(404).json({
+        success: false,
+        status: 'not_found',
+        message: 'Session de génération expirée. Relance.',
+      })
     }
     if (job.status === 'done') {
       ResizeJobs.remove(id).catch(() => {})
-      return { success: true, status: 'done', data: { image: job.image } }
+      return { success: true, status: 'done', data: { image: job.image, scene: job.scene } }
     }
     if (job.status === 'error') {
       ResizeJobs.remove(id).catch(() => {})

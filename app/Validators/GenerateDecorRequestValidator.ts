@@ -5,11 +5,12 @@ export default class GenerateDecorRequestValidator {
   constructor(protected ctx: HttpContextContract) {}
 
   public schema = schema.create({
-    image: schema.string(), // l'oeuvre (data URI/base64) : sert à déduire le thème + le ratio
+    image: schema.string.optional(), // l'oeuvre (data URI/base64) ; en pratique ignorée par le décor (cadre VIDE)
     target: schema.enum(['portrait', 'square', 'landscape'] as const),
     product: schema.enum.optional(['canvas', 'poster', 'tapestry'] as const), // défaut canvas (toile)
     roomType: schema.string.optional(), // ex: living room, bedroom, kitchen
     theme: schema.string.optional(), // override manuel du thème ; sinon dérivé de l'oeuvre
+    scene: schema.string.optional(), // brief art-director déjà composé -> rejoué tel quel (familles de ratios)
   })
 
   public messages: CustomMessages = {

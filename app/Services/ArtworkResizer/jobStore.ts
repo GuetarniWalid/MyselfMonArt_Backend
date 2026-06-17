@@ -24,6 +24,7 @@ type Status = 'pending' | 'done' | 'error'
 interface Job {
   status: Status
   image?: string
+  scene?: string // décor uniquement : brief art-director utilisé (rejoué pour les autres ratios)
   error?: string
   createdAt: number
 }
@@ -75,7 +76,7 @@ export async function remove(id: string): Promise<void> {
 
 async function finish(
   id: string,
-  patch: { status: Status; image?: string; error?: string }
+  patch: { status: Status; image?: string; scene?: string; error?: string }
 ): Promise<void> {
   try {
     const raw = await fs.readFile(file(id), 'utf8').catch(() => null)
@@ -174,8 +175,8 @@ export function startDecor(
     const t0 = Date.now()
     try {
       const generator = new DecorGenerator()
-      const decor = await generator.generate(artwork, target, opts)
-      await finish(id, { status: 'done', image: decor })
+      const { image, scene } = await generator.generate(artwork, target, opts)
+      await finish(id, { status: 'done', image, scene })
       Logger.info('decor OK job=%s %ss', id, Math.round((Date.now() - t0) / 1000))
     } catch (error) {
       await finish(id, { status: 'error', error: mapResizeError(error) })

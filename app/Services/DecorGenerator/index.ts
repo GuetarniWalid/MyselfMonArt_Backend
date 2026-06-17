@@ -9,6 +9,7 @@ export interface DecorOptions {
   roomType?: string // pièce choisie au menu (ex: living room, bedroom) ; préfixée au souhait `theme`
   product?: Product
   theme?: string // souhait libre ; avec roomType, compose la scène — au moins l'un des deux requis
+  scene?: string // brief art-director DÉJÀ composé : si fourni, on le rejoue tel quel (familles de ratios)
 }
 
 // L'IMAGE générée est TOUJOURS CARRÉE — exigence métier : la PHOTO du décor est carrée quelle que
@@ -75,7 +76,7 @@ export default class DecorGenerator {
     _artworkInput: string,
     target: Target,
     opts: DecorOptions = {}
-  ): Promise<string> {
+  ): Promise<{ image: string; scene: string }> {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error('Génération indisponible : clé Gemini (GEMINI_API_KEY) non configurée.')
     }
@@ -85,23 +86,29 @@ export default class DecorGenerator {
     const product: Product =
       opts.product === 'poster' ? 'poster' : opts.product === 'tapestry' ? 'tapestry' : 'canvas'
 
-    // INPUT OBLIGATOIRE : la PIÈCE choisie (menu) et/ou le TEXTE libre — au moins l'un des deux.
-    // La pièce est une CONTRAINTE PRIORITAIRE (de confiance, valeur du menu, neutralisée par sécurité) :
-    // l'art-director DOIT camper cette pièce ; le texte libre ne fait que l'habiller (style/ambiance).
-    const room = (opts.roomType || '')
-      .replace(/[^a-zA-Z \-]/g, '')
-      .trim()
-      .slice(0, 40)
-    const desc = (opts.theme || '').trim().slice(0, 400)
-    if (!room && !desc) {
-      throw new Error(
-        'Décris le décor que tu veux ou choisis une pièce (au moins l’un des deux est requis).'
-      )
+    // SCÈNE : soit on REJOUE un brief déjà composé (familles de ratios — les 3 orientations d'un même
+    // décor partagent la même direction artistique, seul le cadre change de forme), soit l'art-director
+    // en compose une à partir de la PIÈCE (menu) et/ou du TEXTE libre — au moins l'un des deux requis.
+    // La pièce est une CONTRAINTE PRIORITAIRE (de confiance, valeur du menu, neutralisée par sécurité).
+    const reused = (opts.scene || '').trim()
+    let scene: string
+    if (reused.length >= 12) {
+      scene = reused.slice(0, 900)
+    } else {
+      const room = (opts.roomType || '')
+        .replace(/[^a-zA-Z \-]/g, '')
+        .trim()
+        .slice(0, 40)
+      const desc = (opts.theme || '').trim().slice(0, 400)
+      if (!room && !desc) {
+        throw new Error(
+          'Décris le décor que tu veux ou choisis une pièce (au moins l’un des deux est requis).'
+        )
+      }
+      // L'art-director traduit le souhait en scène concrète. Température élevée -> chaque génération
+      // (et chaque "Régénérer") propose une variante différente. La PIÈCE (si choisie) prime sur le texte.
+      scene = await this.artDirect(desc, room)
     }
-
-    // L'art-director traduit le souhait en scène concrète. Température élevée -> chaque génération
-    // (et chaque "Régénérer") propose une variante différente. La PIÈCE (si choisie) prime sur le texte.
-    const scene = await this.artDirect(desc, room)
     Logger.info('decor scene: %s', scene.slice(0, 140))
 
     const prompt = buildDecorPrompt(scene, t.ratio, t.orientation, product)
@@ -141,7 +148,8 @@ export default class DecorGenerator {
     const jpeg = await sharp(Buffer.from(outB64, 'base64'))
       .jpeg({ quality: 90, progressive: true, mozjpeg: true })
       .toBuffer()
-    return `data:image/jpeg;base64,${jpeg.toString('base64')}`
+    // On renvoie AUSSI le `scene` : le front le mémorise pour générer les autres ratios à l'identique.
+    return { image: `data:image/jpeg;base64,${jpeg.toString('base64')}`, scene }
   }
 
   /**
