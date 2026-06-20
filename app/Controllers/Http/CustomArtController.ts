@@ -309,6 +309,107 @@ export default class CustomArtController {
   }
 
   /**
+   * GET /api/custom-art/jobs/last — Reprise « mon dernier job » (A2 du studio).
+   *
+   * Renvoie le dernier job EXPLOITABLE de la session courante, pour ré-afficher le reveal
+   * (ou l'écran artiste) quand le visiteur revient SANS lien ?ca_job ni reveal local
+   * (cache vidé, reveal local périmé > 3 j) mais que le back-end connaît encore sa session.
+   *
+   * LECTURE SEULE, aucun effet de bord :
+   *  - résout via callerSession (cookie / header) — JAMAIS resolveSession (qui minterait une
+   *    session + poserait un cookie) ;
+   *  - n'appelle JAMAIS checkCaps : aucun décompte d'essai, aucun cap ;
+   *  - session inconnue ou rien à reprendre => 204 (JAMAIS 401/403/429 : le thème lit tout
+   *    403 comme le cap « e-mail requis » -> on recréerait le paradoxe qu'on corrige).
+   *
+   * Statuts renvoyés (le plus récent parmi les statuts reprenables) :
+   *  - ready                  => le front ré-affiche le reveal (session valide => actions actives) ;
+   *  - manual_review / failed => écran artiste « déjà pris en charge » ;
+   *  - pending/generating/judging/expired => exclus (=> 204) : pas de polling cross-session,
+   *    et un job purgé n'est plus productible.
+   */
+  public async last(ctx: HttpContextContract) {
+    const { response } = ctx
+    // Réponse propre à la session : jamais mise en cache (CDN / navigateur)
+    response.header('Cache-Control', 'private, no-store')
+
+    const session = await this.callerSession(ctx)
+    if (!session) return response.noContent() // 204 — aucune session connue
+
+    // Dernier job reprenable. On borne aux statuts exploitables : ainsi un reveal-next ayant
+    // créé un nouveau 'pending' derrière ne masque pas le 'ready' encore utile.
+    const job = await CustomArtJob.query()
+      .where('session_id', session.id)
+      .whereIn('status', ['ready', 'manual_review', 'failed'])
+      .orderBy('id', 'desc') // récence ; couvert par l'index (session_id, created_at)
+      .first()
+    if (!job) return response.noContent() // 204 — rien à reprendre
+
+    const createdAt = job.createdAt ? job.createdAt.toISO() : null
+    // Plancher de purge si non commandé (J+30, cf. PurgeCustomArt.UNPURCHASED_RETENTION_DAYS).
+    const expiresAt = job.createdAt ? job.createdAt.plus({ days: 30 }).toISO() : null
+
+    if (job.status === 'failed') {
+      return {
+        success: true,
+        data: {
+          uuid: job.uuid,
+          status: 'failed',
+          message: job.error || 'La génération a échoué. Réessaie.',
+          createdAt,
+          expiresAt,
+        },
+      }
+    }
+    if (job.status === 'manual_review') {
+      return {
+        success: true,
+        data: {
+          uuid: job.uuid,
+          status: 'manual_review',
+          message: MANUAL_REVIEW_MESSAGE,
+          createdAt,
+          expiresAt,
+        },
+      }
+    }
+
+    // status === 'ready'
+    const candidates = job.candidates || []
+    const chosen = job.chosenIndex !== null ? candidates[job.chosenIndex] : null
+    const preview = chosen ? this.previewUrl(job, chosen) : null
+    if (!preview) return response.noContent() // ready sans aperçu affichable (chosenIndex null) => 204
+
+    // teamName lisible pour l'affichage panier (relation belongsTo déjà sur le modèle).
+    await job.load('team')
+
+    return {
+      success: true,
+      data: {
+        uuid: job.uuid,
+        status: 'ready',
+        progress: 100,
+        // URL proxifiée backend (en-tête ACAO) : même helper que show(), texture WebGL OK
+        preview,
+        revealed: job.revealedCount,
+        // Runner-ups déjà jugés, révélables instantanément via reveal-next (session valide)
+        remainingReveals: Math.max(0, candidates.length - job.revealedCount),
+        playerName: job.playerName,
+        playerNumber: job.playerNumber,
+        teamId: job.teamId,
+        teamName: job.team ? job.team.name : null,
+        format: job.format,
+        frame: job.frame,
+        // Propre à la session : pré-remplit le formulaire « Sauvegarder » (jamais affiché).
+        email: session.email || null,
+        createdAt,
+        expiresAt,
+        mockups: (job.mockups || []).map((m) => ({ psd: m.psd, status: m.status, url: m.url })),
+      },
+    }
+  }
+
+  /**
    * GET /api/custom-art/jobs/:uuid/preview/:n — preview watermarkée du candidat révélé n
    * (0-based, ordre de classement), proxifiée depuis le storage avec l'en-tête
    * Access-Control-Allow-Origin : le visualiseur WebGL du thème charge l'image en

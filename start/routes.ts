@@ -154,6 +154,8 @@ Route.group(() => {
 Route.group(() => {
   Route.get('/teams', 'CustomArtController.teams').middleware(['throttle:120,60'])
   Route.post('/jobs', 'CustomArtController.create').middleware(['throttle:10,60'])
+  // Reprise « mon dernier job » (A2) — DOIT précéder /jobs/:uuid, sinon ':uuid' capterait 'last'
+  Route.get('/jobs/last', 'CustomArtController.last').middleware(['throttle:120,60'])
   Route.get('/jobs/:uuid', 'CustomArtController.show').middleware(['throttle:120,60'])
   // Preview watermarkée proxifiée (en-tête ACAO pour la texture WebGL du thème)
   Route.get('/jobs/:uuid/preview/:n', 'CustomArtController.preview').middleware(['throttle:120,60'])
