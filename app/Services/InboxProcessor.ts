@@ -5,8 +5,11 @@ import Conversation, { ConversationChannel } from 'App/Models/Conversation'
 import ConversationMessage from 'App/Models/ConversationMessage'
 import ConversationAgent from './ConversationAgent'
 import MetaReplySender from './MetaReplySender'
+import EmailReplySender from './EmailReplySender'
 import EscalationMailer from './EscalationMailer'
 import IgAuthentication from './Instagram/Authentication'
+import Gmail from './Gmail'
+import EmailTriage from './EmailTriage'
 
 const MAX_ATTEMPTS = 3
 const REPLY_WINDOW_HOURS = 24
@@ -72,6 +75,39 @@ export default class InboxProcessor {
         await conversation.save()
       }
 
+      // Email-only triage gate: classify cheaply (Haiku) before spending the
+      // full SAV agent — skip noise, escalate pro solicitations, engage clients.
+      if (inbox.channel === 'email') {
+        const triage = await new EmailTriage().classify(
+          (inbox.rawPayload as any)?.subject ?? '',
+          text,
+          inbox.externalUserId ?? ''
+        )
+        if (triage.action === 'skip') {
+          await this.finalize(inbox, 'skipped', `triage: ${triage.category}`)
+          console.info(`🗂️  Email inbox=${inbox.id} skipped by triage (${triage.category})`)
+          return
+        }
+        if (triage.action === 'escalate') {
+          // Non-SAV solicitation (backlink / pro): flag for a human, no auto-draft.
+          conversation.status = 'escalated'
+          conversation.escalatedAt = DateTime.now()
+          conversation.escalationReason = `triage_${triage.category}`.slice(0, 190)
+          const meta = conversation.metadata ?? {}
+          meta.escalation_summary =
+            `Email classé "${triage.category}" de ${inbox.externalUserId ?? '?'} ` +
+            `(objet: ${(inbox.rawPayload as any)?.subject ?? ''}). À traiter manuellement. ` +
+            `Extrait: ${text.slice(0, 200)}`
+          conversation.metadata = meta
+          await conversation.save()
+          await this.finalize(inbox, 'escalated', `triage: ${triage.category}`)
+          await this.notifyEscalationIfNeeded(conversation, null)
+          console.info(`🚩 Email inbox=${inbox.id} escalated by triage (${triage.category})`)
+          return
+        }
+        // 'engage' → fall through to the normal SAV flow.
+      }
+
       // Persist the incoming user turn first so the history table is the
       // source of truth even if the agent crashes later.
       await ConversationMessage.create({
@@ -120,6 +156,51 @@ export default class InboxProcessor {
           toolCalls: result.toolCalls,
           costCents: this.estimateCostCents(result.tokensIn, result.tokensOut),
         })
+
+        // Email channel: draft-first. Create a Gmail draft in the original
+        // thread for human review instead of auto-sending, then stop here.
+        if (inbox.channel === 'email') {
+          const payload = inbox.rawPayload as any
+          try {
+            const emailSender = new EmailReplySender()
+            const draft = await emailSender.createDraftReply(
+              {
+                to: inbox.externalUserId!,
+                subject: payload?.subject ?? '',
+                threadId: payload?.threadId,
+                rfcMessageId: payload?.rfcMessageId ?? null,
+                references: payload?.references ?? null,
+              },
+              replyText,
+              result.cards,
+              result.cta ?? null
+            )
+            console.info(
+              `📝 Email DRAFT created for ${inbox.externalUserId} inbox=${inbox.id} ` +
+                `draft=${draft.draftId ?? '?'}`
+            )
+          } catch (draftErr: any) {
+            console.error(
+              `❌ Email draft creation failed for inbox=${inbox.id}:`,
+              draftErr?.message
+            )
+            await this.finalize(inbox, 'failed', `draft error: ${draftErr?.message}`)
+            await this.notifyEscalationIfNeeded(conversation, replyText)
+            return
+          }
+
+          // The reply is a draft awaiting review (never auto-sent in this phase).
+          // Mark 'escalated' if the agent flagged it so it surfaces as needing
+          // attention; otherwise 'drafted'.
+          const escalatedNow = (conversation.status as string) === 'escalated'
+          await this.finalize(
+            inbox,
+            escalatedNow ? 'escalated' : 'drafted',
+            escalatedNow ? conversation.escalationReason ?? null : null
+          )
+          await this.notifyEscalationIfNeeded(conversation, replyText)
+          return
+        }
 
         try {
           const sender = new MetaReplySender()
@@ -210,7 +291,7 @@ export default class InboxProcessor {
 
   private async finalize(
     inbox: InboxMessage,
-    status: 'replied' | 'escalated' | 'failed' | 'skipped',
+    status: 'replied' | 'escalated' | 'failed' | 'skipped' | 'drafted',
     note: string | null
   ): Promise<void> {
     inbox.status = status
@@ -233,12 +314,19 @@ export default class InboxProcessor {
 
   private extractText(inbox: InboxMessage): string | null {
     const payload = inbox.rawPayload as any
+    if (inbox.channel === 'email') {
+      const body = payload?.body
+      return typeof body === 'string' && body.trim().length > 0 ? body.trim() : null
+    }
     const text = payload?.message?.text
     if (typeof text === 'string' && text.trim().length > 0) return text.trim()
     return null
   }
 
   private async isOwnMessage(inbox: InboxMessage): Promise<boolean> {
+    if (inbox.channel === 'email') {
+      return (inbox.externalUserId ?? '').toLowerCase() === Gmail.businessEmail()
+    }
     if (inbox.channel !== 'instagram') return false
     try {
       if (!InboxProcessor.cachedSelfIgId) {
@@ -256,6 +344,8 @@ export default class InboxProcessor {
   }
 
   private isOutsideReplyWindow(inbox: InboxMessage): boolean {
+    // Email has no platform reply window (Gmail threading handles staleness).
+    if (inbox.channel === 'email') return false
     const ts = (inbox.rawPayload as any)?.timestamp
     if (!ts) return false
     const ageMs = Date.now() - Number(ts)

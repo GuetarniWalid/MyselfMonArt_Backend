@@ -2,7 +2,7 @@ import { DateTime } from 'luxon'
 import { BaseModel, column, hasMany, HasMany } from '@ioc:Adonis/Lucid/Orm'
 import ConversationMessage from 'App/Models/ConversationMessage'
 
-export type ConversationChannel = 'instagram' | 'messenger'
+export type ConversationChannel = 'instagram' | 'messenger' | 'email'
 export type ConversationStatus = 'active' | 'escalated' | 'closed'
 
 export default class Conversation extends BaseModel {

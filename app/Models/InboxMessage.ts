@@ -1,8 +1,17 @@
 import { DateTime } from 'luxon'
 import { BaseModel, column } from '@ioc:Adonis/Lucid/Orm'
 
-export type InboxChannel = 'instagram' | 'messenger'
-export type InboxStatus = 'pending' | 'processing' | 'replied' | 'escalated' | 'failed' | 'skipped'
+export type InboxChannel = 'instagram' | 'messenger' | 'email'
+// 'drafted' = email channel only: a reply was generated and saved as a Gmail
+// draft awaiting human review (draft-first phase), not auto-sent to the client.
+export type InboxStatus =
+  | 'pending'
+  | 'processing'
+  | 'replied'
+  | 'escalated'
+  | 'failed'
+  | 'skipped'
+  | 'drafted'
 
 export default class InboxMessage extends BaseModel {
   public static table = 'inbox_messages'

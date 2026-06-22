@@ -21,7 +21,11 @@ dotenv.config({ path: '../../.env' })
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET
 const REDIRECT_URI = 'http://localhost:3000/oauth2callback'
-const SCOPES = ['https://www.googleapis.com/auth/gmail.send']
+// gmail.modify est le scope unique qui couvre l'ensemble des besoins du canal
+// SAV email : lecture de l'inbox + history, gestion des labels (anti-réingestion),
+// création de brouillons, envoi (bascule auto future) et users.watch (push Pub/Sub).
+// L'ancien token n'avait que gmail.send → re-consentement obligatoire.
+const SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
 
 // Escape HTML to prevent XSS
 function escapeHtml(str) {
@@ -57,7 +61,9 @@ async function main() {
   console.log('\n1. Ouvrez cette URL dans votre navigateur:\n')
   console.log(authUrl)
   console.log('\n2. Connectez-vous avec le compte team@myselfmonart.com')
-  console.log("3. Autorisez l'application à envoyer des emails")
+  console.log("3. Autorisez l'application (lecture, gestion des labels, brouillons, envoi)")
+  console.log('   ⚠️  Si Google affiche un avertissement "application non vérifiée" :')
+  console.log('       cliquez "Paramètres avancés" puis "Accéder à l\'application".')
   console.log('\nEn attente de la redirection...\n')
 
   // Create a temporary server to handle the OAuth callback
