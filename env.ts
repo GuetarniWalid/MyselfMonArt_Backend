@@ -123,4 +123,16 @@ export default Env.rules({
   // toujours créer des jobs, ils restent pending). Coupe instantanément toute dépense IA
   // via env + restart, sans déploiement. Posé après l'incident coûts du 13/06.
   CUSTOM_ART_WORKER_DISABLED: Env.schema.boolean.optional(),
+  // --- Canal SAV e-mail (Gmail) — tout optionnel : la feature reste dormante tant que
+  // EMAIL_CHANNEL_ENABLED n'est pas vrai (webhook 204, tâches no-op). ---
+  // Interrupteur maître du canal e-mail. Faux/absent = aucune ingestion ni réponse.
+  EMAIL_CHANNEL_ENABLED: Env.schema.boolean.optional(),
+  // Refresh token OAuth offline (scope gmail.modify) du compte SAV — obtenu via mcp/gmail/setup-oauth.
+  GMAIL_REFRESH_TOKEN: Env.schema.string.optional(),
+  // Topic Pub/Sub Google ciblé par users.watch pour la notification push (renouvelé chaque jour).
+  GMAIL_PUBSUB_TOPIC: Env.schema.string.optional(),
+  // Secret partagé attendu dans ?token= du webhook POST /webhooks/email (vérifié hors développement).
+  GMAIL_PUBSUB_VERIFICATION_TOKEN: Env.schema.string.optional(),
+  // Adresse e-mail de la boîte SAV : sert à ignorer ses propres messages (anti-boucle).
+  BUSINESS_EMAIL: Env.schema.string.optional(),
 })

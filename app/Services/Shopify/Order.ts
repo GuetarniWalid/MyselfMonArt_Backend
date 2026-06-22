@@ -7,6 +7,7 @@ export interface OrderTracking {
 }
 
 export interface OrderStatus {
+  id: string // Shopify order GID — needed for mutations (e.g. address update)
   name: string
   createdAt: string
   fulfillmentStatus: string
@@ -46,6 +47,7 @@ export default class Order extends Authentication {
       orders(first: 1, query: $q, sortKey: CREATED_AT, reverse: true) {
         edges {
           node {
+            id
             name
             createdAt
             statusPageUrl
@@ -70,6 +72,7 @@ export default class Order extends Authentication {
     }
 
     return {
+      id: node.id,
       name: node.name,
       createdAt: node.createdAt,
       fulfillmentStatus: node.displayFulfillmentStatus,
@@ -78,6 +81,50 @@ export default class Order extends Authentication {
       tracking,
       countryCode: node.shippingAddress?.countryCodeV2 ?? null,
       statusPageUrl: node.statusPageUrl ?? null,
+    }
+  }
+
+  /**
+   * Update an order's shipping address. ONLY safe before fulfillment — the
+   * caller (updateOrderAddress tool) is responsible for identity verification
+   * and the not-yet-shipped check. Performs the orderUpdate mutation and
+   * surfaces Shopify userErrors as a thrown error.
+   */
+  public async updateShippingAddress(
+    orderId: string,
+    address: {
+      address1: string
+      address2?: string
+      city: string
+      provinceCode?: string
+      countryCode: string
+      zip: string
+      firstName?: string
+      lastName?: string
+    }
+  ): Promise<void> {
+    const gid = orderId.startsWith('gid://') ? orderId : `gid://shopify/Order/${orderId}`
+    const shippingAddress: Record<string, string> = {
+      address1: address.address1,
+      city: address.city,
+      countryCode: address.countryCode,
+      zip: address.zip,
+    }
+    if (address.address2) shippingAddress.address2 = address.address2
+    if (address.provinceCode) shippingAddress.provinceCode = address.provinceCode
+    if (address.firstName) shippingAddress.firstName = address.firstName
+    if (address.lastName) shippingAddress.lastName = address.lastName
+
+    const mutation = `mutation OrderUpdate($input: OrderInput!) {
+      orderUpdate(input: $input) {
+        order { id }
+        userErrors { field message }
+      }
+    }`
+    const data = await this.fetchGraphQL(mutation, { input: { id: gid, shippingAddress } })
+    const errors = data.orderUpdate?.userErrors
+    if (errors && errors.length) {
+      throw new Error(errors[0].message ?? 'orderUpdate failed')
     }
   }
 }

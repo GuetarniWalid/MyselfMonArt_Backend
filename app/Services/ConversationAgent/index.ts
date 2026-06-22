@@ -58,7 +58,7 @@ export default class ConversationAgent extends Authentication {
       const response = await this.anthropic.messages.create({
         model: Env.get('CLAUDE_MODEL'),
         max_tokens: 2048,
-        system: buildSystemPrompt(),
+        system: buildSystemPrompt(conversation.channel),
         tools: toolDefinitions as any,
         ...(isFinalIteration ? { tool_choice: { type: 'none' as const } } : {}),
         messages: messages as any,

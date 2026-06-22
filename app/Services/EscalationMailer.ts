@@ -6,6 +6,7 @@ import type ConversationMessage from 'App/Models/ConversationMessage'
 const CHANNEL_LABEL: Record<string, string> = {
   instagram: 'Instagram DM',
   messenger: 'Facebook Messenger',
+  email: 'Email',
 }
 
 // DigitalOcean blocks outbound SMTP on the droplet, so we send transactional
@@ -121,6 +122,9 @@ export default class EscalationMailer {
     }
     if (conversation.channel === 'messenger') {
       return `https://business.facebook.com/latest/inbox`
+    }
+    if (conversation.channel === 'email') {
+      return `https://mail.google.com/mail/u/0/#all/${conversation.externalThreadId}`
     }
     return null
   }

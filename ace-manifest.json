@@ -116,6 +116,18 @@
       "aliases": [],
       "flags": []
     },
+    "email:sync": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/EmailSync",
+      "commandName": "email:sync",
+      "description": "Run one Gmail inbox sync for the SAV email channel (ingest new mail → triage → draft replies). First run only baselines the cursor.",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
     "image:rename": {
       "settings": {
         "loadApp": true,
