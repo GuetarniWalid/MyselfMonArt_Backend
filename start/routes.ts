@@ -153,6 +153,9 @@ Route.group(() => {
 // CORS : l'origin boutique est ajouté dans config/cors.ts (STOREFRONT_URL).
 Route.group(() => {
   Route.get('/teams', 'CustomArtController.teams').middleware(['throttle:120,60'])
+  // Juge « photo-check » : valide la photo TÔT (avant POST /jobs), sans session, par IP.
+  // Verdict mis en cache par hash → 1 photo unique = 1 appel LLM max.
+  Route.post('/photo-check', 'CustomArtController.photoCheck').middleware(['throttle:30,60'])
   Route.post('/jobs', 'CustomArtController.create').middleware(['throttle:10,60'])
   // Reprise « mon dernier job » (A2) — DOIT précéder /jobs/:uuid, sinon ':uuid' capterait 'last'
   Route.get('/jobs/last', 'CustomArtController.last').middleware(['throttle:120,60'])

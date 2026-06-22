@@ -96,6 +96,9 @@ export default Env.rules({
   CUSTOM_ART_FALLBACK_PROVIDER: Env.schema.string.optional(),
   // Modèle du juge vision (défaut : celui de la calibration bench).
   CUSTOM_ART_JUDGE_MODEL: Env.schema.string.optional(),
+  // Modèle CHEAP du juge « photo-check » (validation de la photo client avant génération).
+  // Gemini Flash multimodal (vision + JSON structuré). Défaut : gemini-2.5-flash.
+  CUSTOM_ART_PHOTO_CHECK_MODEL: Env.schema.string.optional(),
   // URL publique de l'image de référence scène/pose (figée J1).
   CUSTOM_ART_SCENE_REF_URL: Env.schema.string.optional(),
   // PSD des mises en situation post-reveal (chemins /mockups/... du moteur Photopea),

@@ -11,6 +11,8 @@ import CustomArtSession from 'App/Models/CustomArtSession'
 import CustomArtTeam from 'App/Models/CustomArtTeam'
 import CustomArtJobValidator from 'App/Validators/CustomArtJobValidator'
 import CustomArtSaveValidator from 'App/Validators/CustomArtSaveValidator'
+import CustomArtPhotoCheckValidator from 'App/Validators/CustomArtPhotoCheckValidator'
+import PhotoCheck from 'App/Services/CustomArt/PhotoCheck'
 import CustomArtStorage from 'App/Services/CustomArt/Storage'
 import CustomArtVariantMapping from 'App/Services/CustomArt/VariantMapping'
 import { affectedRows } from 'App/Services/CustomArt/db'
@@ -38,6 +40,11 @@ const SESSION_COOKIE_MAX_AGE_SEC = 60 * 60 * 24 * 90
 const PHOTO_EXTNAMES = ['jpg', 'jpeg', 'png', 'webp', 'heic']
 const PHOTO_MAX_SIZE = '12mb'
 const PHOTO_MIN_PX = 512
+
+// Photo-check (POST /photo-check) : la photo arrive DÉJÀ réduite côté client (~768 px, qqs
+// dizaines de Ko) → plafond généreux (5 Mo) + types courants. Le check tourne SANS session.
+const PHOTO_CHECK_EXTNAMES = ['jpg', 'jpeg', 'png', 'webp', 'heic']
+const PHOTO_CHECK_MAX_SIZE = '5mb'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -236,6 +243,59 @@ export default class CustomArtController {
         success: false,
         message: 'Impossible de démarrer la création. Réessaie dans un instant.',
       })
+    }
+  }
+
+  /**
+   * POST /api/custom-art/photo-check — multipart photo + faceAngle (+ hash, productType).
+   *
+   * Valide la photo du visiteur AVANT toute génération (coût quasi nul, cf. App/Services/
+   * CustomArt/PhotoCheck) et renvoie un verdict actionnable. Contrat front : HTTP 200 +
+   * { ok, issues[], faceAngleDetected?, cached? } pour tous les cas NORMAUX (y compris
+   * ok:false). N'EXIGE PAS de session (ce check précède le POST /jobs, donc souvent sans
+   * token) — rate-limité par IP. En cas d'erreur réelle (5xx) le front fait fail-open : la
+   * panne de cet endpoint ne bloque jamais la vente (le pré-check de POST /jobs reste le filet).
+   */
+  public async photoCheck(ctx: HttpContextContract) {
+    const { request, response } = ctx
+    try {
+      const payload = await request.validate(CustomArtPhotoCheckValidator)
+
+      const photo = request.file('photo', {
+        size: PHOTO_CHECK_MAX_SIZE,
+        extnames: PHOTO_CHECK_EXTNAMES,
+      })
+      if (!photo || !photo.isValid || !photo.tmpPath) {
+        // Contrat front violé (photo absente / trop lourde / format refusé) : 422 → le front
+        // fail-open. On ne bloque jamais la vente sur un souci d'intégration.
+        return response.status(422).json({
+          success: false,
+          message: 'Photo manquante ou invalide (JPG/PNG/HEIC, 5 Mo max).',
+        })
+      }
+
+      const buffer = await fs.readFile(photo.tmpPath)
+      const verdict = await new PhotoCheck().check({
+        photo: buffer,
+        faceAngle: payload.faceAngle,
+        hash: payload.hash ?? null,
+        productType: payload.productType ?? null,
+      })
+
+      // RGPD : la photo n'est jamais stockée ; le fichier tmp multipart est purgé par Adonis.
+      return { success: true, data: verdict }
+    } catch (error) {
+      if (error.code === 'E_VALIDATION_FAILURE') {
+        return response.status(422).json({
+          success: false,
+          message: 'Validation failed',
+          errors: error.messages,
+        })
+      }
+      // Erreur réelle (LLM indisponible, etc.) : 503 → le front fail-open (laisse passer, le
+      // pré-check de POST /jobs reste le filet). On ne met JAMAIS un faux verdict en cache.
+      Logger.error('custom-art photo-check: %s', error?.message || error)
+      return response.status(503).json({ success: false, message: 'Vérification indisponible.' })
     }
   }
 
