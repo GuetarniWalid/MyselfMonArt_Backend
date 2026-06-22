@@ -12,7 +12,7 @@ import CustomArtTeam from 'App/Models/CustomArtTeam'
 import CustomArtJobValidator from 'App/Validators/CustomArtJobValidator'
 import CustomArtSaveValidator from 'App/Validators/CustomArtSaveValidator'
 import CustomArtPhotoCheckValidator from 'App/Validators/CustomArtPhotoCheckValidator'
-import PhotoCheck from 'App/Services/CustomArt/PhotoCheck'
+import PhotoCheck, { normalizeFaceAngle } from 'App/Services/CustomArt/PhotoCheck'
 import CustomArtStorage from 'App/Services/CustomArt/Storage'
 import CustomArtVariantMapping from 'App/Services/CustomArt/VariantMapping'
 import { affectedRows } from 'App/Services/CustomArt/db'
@@ -275,9 +275,12 @@ export default class CustomArtController {
       }
 
       const buffer = await fs.readFile(photo.tmpPath)
+      // faceAngle arrive verbatim du studio : normalisé ici (underscore→tiret, casse) vers
+      // l'enum canonique. Un cran inconnu => null => le juge ignore la contrainte d'angle
+      // (jamais de fallback silencieux sur 'front' qui recalerait à tort une photo 3/4).
       const verdict = await new PhotoCheck().check({
         photo: buffer,
-        faceAngle: payload.faceAngle,
+        faceAngle: normalizeFaceAngle(payload.faceAngle),
         hash: payload.hash ?? null,
         productType: payload.productType ?? null,
       })

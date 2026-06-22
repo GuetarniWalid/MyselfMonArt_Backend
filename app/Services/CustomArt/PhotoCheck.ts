@@ -30,9 +30,31 @@ import CustomArtPhotoCheck from 'App/Models/CustomArtPhotoCheck'
  * RGPD : la photo n'est JAMAIS stockée — on ne garde que hash + évaluation dans le cache.
  */
 
-// Angle de visage attendu par l'œuvre (envoyé par le front).
+// Angle de visage attendu par l'œuvre (envoyé VERBATIM par le studio thème, depuis
+// studio.config). Enum CANONIQUE des crans REQUÊTABLES — le thème compare sur le TIRET de
+// 'three-quarter' (jamais l'underscore), on stocke/compare donc à l'identique.
+// NB : 'none' n'en fait PAS partie — c'est une valeur INTERNE au résultat LLM (« aucun
+// visage détecté », cf. PhotoAssessment.faceAngle), jamais un angle que le thème demande.
 export type FaceAngle = 'front' | 'three-quarter' | 'profile' | 'back'
 export const FACE_ANGLES: FaceAngle[] = ['front', 'three-quarter', 'profile', 'back']
+
+/**
+ * Normalise la valeur `faceAngle` reçue du front vers l'enum canonique.
+ *  - tolérant à la casse / aux espaces ;
+ *  - mappe un éventuel underscore (`three_quarter`) vers le tiret (`three-quarter`),
+ *    par sécurité — le contrat thème est le tiret, mais on ne veut pas qu'une faute de
+ *    frappe côté config recale à tort une vraie photo 3/4.
+ *
+ * Retourne `null` si la valeur n'appartient PAS à l'enum. `null` signifie « cran inconnu »
+ * → le juge IGNORE alors la contrainte d'angle (laisse passer) plutôt que de retomber
+ * silencieusement sur 'front', ce qui refuserait à tort une photo de profil ou de 3/4.
+ * Ne retourne JAMAIS 'none' : c'est une valeur de RÉSULTAT LLM, pas un cran requêtable.
+ */
+export function normalizeFaceAngle(raw: string | null | undefined): FaceAngle | null {
+  if (!raw || typeof raw !== 'string') return null
+  const v = raw.trim().toLowerCase().replace(/_/g, '-')
+  return (FACE_ANGLES as string[]).includes(v) ? (v as FaceAngle) : null
+}
 
 // Liste FERMÉE des codes d'anomalie (le front a un message i18n par code).
 export type PhotoCheckIssue =
@@ -60,6 +82,8 @@ export interface PhotoCheckVerdict {
  */
 export interface PhotoAssessment {
   faceCount: number | null
+  // 'none' = le LLM n'a vu aucun visage (≠ des 4 crans requêtables FACE_ANGLES) ;
+  // null = visage non évalué (court-circuit pré-filtre serveur).
   faceAngle: FaceAngle | 'none' | null
   tooDark: boolean
   blurry: boolean
@@ -115,7 +139,9 @@ export default class PhotoCheck {
    */
   public async check(input: {
     photo: Buffer
-    faceAngle: FaceAngle
+    // `null` = cran inconnu / non fourni : le juge ignore la contrainte d'angle (cf.
+    // normalizeFaceAngle) — tous les AUTRES contrôles (visage, netteté, nsfw…) s'appliquent.
+    faceAngle: FaceAngle | null
     hash: string | null
     productType?: string | null
   }): Promise<PhotoCheckVerdict> {
@@ -154,7 +180,7 @@ export default class PhotoCheck {
 
   private deriveVerdict(
     a: PhotoAssessment,
-    faceAngle: FaceAngle,
+    faceAngle: FaceAngle | null,
     cached: boolean
   ): PhotoCheckVerdict {
     const detected = a.faceAngle && a.faceAngle !== 'none' ? a.faceAngle : undefined
@@ -186,7 +212,12 @@ export default class PhotoCheck {
         } else {
           if (a.faceTooSmall) issues.push('face_too_small')
           if (a.obstructed) issues.push('obstructed')
-          if (!this.angleMatches(a.faceAngle, faceAngle)) issues.push('angle_mismatch')
+          // Contrainte d'angle UNIQUEMENT si l'œuvre a précisé un cran connu. Sur cran
+          // inconnu (faceAngle null), on NE recale PAS sur l'angle (laisser passer plutôt
+          // qu'appliquer un mauvais cran) ; les autres contrôles restent actifs.
+          if (faceAngle !== null && !this.angleMatches(a.faceAngle, faceAngle)) {
+            issues.push('angle_mismatch')
+          }
         }
       }
     }
@@ -195,10 +226,16 @@ export default class PhotoCheck {
   }
 
   /**
-   * L'angle détecté correspond-il à l'angle attendu ? Tolérance d'un cran sur l'échelle
-   * front(0)→three-quarter(1)→profile(2) (le front et le trois-quarts sont confondus par
-   * tout détecteur ; « bienveillant mais strict » du plan). `back` exige une correspondance
-   * exacte ; un visage de profil reste un mismatch pour `front` (golden set).
+   * L'angle détecté correspond-il à l'angle attendu ? Tolérance d'UN cran sur l'échelle
+   * front(0)→three-quarter(1)→profile(2). Volontairement PERMISSIF (un faux rejet bloque une
+   * vente ; en cas de doute entre deux crans adjacents on accepte). Matrice résultante,
+   * fidèle aux fourchettes de yaw du contrat thème (front 0–25°, 3/4 25–65°, profil 65–110°) :
+   *   - attendu `front`         → accepte front + three-quarter ; refuse profile.
+   *   - attendu `three-quarter` → accepte front + three-quarter + profile (fourchette large
+   *                                voulue : le cran 3/4 ne doit JAMAIS recaler à tort).
+   *   - attendu `profile`       → accepte three-quarter + profile ; refuse front.
+   *   - attendu `back`          → correspondance EXACTE (un dos n'a pas de demi-mesure).
+   * `none`/`back` détecté pour un cran de face = mismatch.
    */
   private angleMatches(detected: PhotoAssessment['faceAngle'], expected: FaceAngle): boolean {
     if (expected === 'back') return detected === 'back'
@@ -269,7 +306,7 @@ export default class PhotoCheck {
           format: 'enum',
           enum: ['front', 'three-quarter', 'profile', 'back', 'none'],
           description:
-            'Orientation du visage principal : front=face caméra, three-quarter=léger trois-quarts, profile=profil, back=vu de dos/nuque (visage non visible), none=aucun visage.',
+            "Orientation (yaw) du visage principal. front=face caméra, tête tournée d'environ 0–25° (les deux yeux et les deux oreilles visibles). three-quarter=trois-quarts, ~25–65° (un côté du visage plus visible, les deux yeux restent visibles). profile=profil marqué, ~65–110° (un seul œil / une seule oreille visible). back=vu de dos ou nuque, visage non visible. none=aucun visage. En cas d'hésitation entre front et three-quarter, ou entre three-quarter et profile, choisis three-quarter.",
         },
         tooDark: { type: Type.BOOLEAN, description: 'Photo trop sombre/sous-exposée.' },
         blurry: { type: Type.BOOLEAN, description: 'Photo floue / pas nette sur le visage.' },
@@ -321,6 +358,8 @@ export default class PhotoCheck {
       throw new Error(`photo-check: sortie LLM non-JSON (${raw.slice(0, 120)})`)
     }
 
+    // Tout ce qui n'est pas l'un des 4 crans canoniques (le 'none' du LLM = aucun visage,
+    // ou une sortie inattendue) retombe sur 'none' — jamais sur un faux cran de face.
     const angle: PhotoAssessment['faceAngle'] = FACE_ANGLES.includes(parsed.faceAngle)
       ? parsed.faceAngle
       : 'none'
@@ -344,7 +383,7 @@ export default class PhotoCheck {
     return `Tu analyses une photo destinée à devenir un poster artistique imprimé représentant la personne en footballeur.
 Décris OBJECTIVEMENT la photo via le format structuré demandé — tu ne décides PAS si elle est « acceptable », tu te contentes de CONSTATER ce que tu vois :
 - faceCount : nombre de visages humains nettement visibles (0, 1, 2, …).
-- faceAngle : orientation du visage principal — "front" (face caméra), "three-quarter" (léger trois-quarts), "profile" (profil net), "back" (vu de dos / nuque, visage non visible), ou "none" si aucun visage.
+- faceAngle : orientation (yaw) du visage principal — "front" (face caméra, ~0–25°, les deux yeux et oreilles visibles), "three-quarter" (trois-quarts, ~25–65°, un côté plus visible mais les deux yeux restent visibles), "profile" (profil marqué, ~65–110°, un seul œil/une seule oreille), "back" (vu de dos / nuque, visage non visible), ou "none" si aucun visage. En cas d'hésitation entre front et three-quarter, ou entre three-quarter et profile, choisis "three-quarter".
 - tooDark : true si la photo est trop sombre ou sous-exposée pour distinguer le visage.
 - blurry : true si la photo est floue / pas nette sur le visage.
 - faceTooSmall : true si le visage occupe une trop petite part du cadre (personne trop loin).
@@ -418,7 +457,7 @@ Sois bienveillant mais attentif à la lisibilité du visage. Réponds uniquement
   private log(
     verdict: PhotoCheckVerdict,
     source: 'cache' | 'prefilter' | 'llm',
-    faceAngle: FaceAngle,
+    faceAngle: FaceAngle | null,
     costEur: number
   ): void {
     Logger.info(
@@ -426,7 +465,7 @@ Sois bienveillant mais attentif à la lisibilité du visage. Réponds uniquement
       verdict.ok,
       verdict.issues.join(','),
       verdict.faceAngleDetected || '-',
-      faceAngle,
+      faceAngle || 'any', // 'any' = cran inconnu, contrainte d'angle ignorée
       source,
       verdict.cached,
       costEur.toFixed(4)
