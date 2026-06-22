@@ -1,4 +1,5 @@
 import Shopify from 'App/Services/Shopify'
+import type { ShippingZoneInfo } from 'App/Services/Shopify/Shipping'
 import { DateTime } from 'luxon'
 import type { ToolHandler } from './types'
 
@@ -70,7 +71,7 @@ const getOrderStatus: ToolHandler = {
     }
 
     // Estimate the delivery date in code: order date + the zone's delay.
-    const zones = await shopify.shipping.getZonesForBot().catch(() => [])
+    const zones = await shopify.shipping.getZonesForBot().catch((): ShippingZoneInfo[] => [])
     const zone = order.countryCode
       ? zones.find((z) => z.countryCodes.includes(order.countryCode!)) ??
         zones.find((z) => z.restOfWorld)
