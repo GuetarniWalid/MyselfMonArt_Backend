@@ -22,3 +22,5 @@ _v2_*.jpg
 _ins_*.jpg
 _decor_test_*.jpg
 _art.jpg
+# Harness d'éval image local (golden-set, maillots de réf, résultats) — dev only, jamais versionné
+scripts/bench/

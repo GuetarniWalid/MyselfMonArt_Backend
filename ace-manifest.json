@@ -753,6 +753,53 @@
       "aliases": [],
       "flags": []
     },
+    "translate:manual": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/TranslateManual",
+      "commandName": "translate:manual",
+      "description": "Dump source fields needing translation, or apply Claude-provided translations to Shopify (no GPT cost).",
+      "args": [
+        {
+          "type": "string",
+          "propertyName": "action",
+          "name": "action",
+          "required": true,
+          "description": "dump | apply"
+        },
+        {
+          "type": "string",
+          "propertyName": "resource",
+          "name": "resource",
+          "required": true,
+          "description": "resource: product|collection|page|blog|article|model"
+        },
+        {
+          "type": "string",
+          "propertyName": "locale",
+          "name": "locale",
+          "required": true,
+          "description": "locale: de|es|en"
+        }
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "tag",
+          "propertyName": "tag",
+          "type": "string",
+          "description": "Override source/translated file directory tag"
+        },
+        {
+          "name": "region",
+          "propertyName": "region",
+          "type": "string",
+          "description": "Region code (e.g. UK)"
+        }
+      ]
+    },
     "translate:menus": {
       "settings": {
         "loadApp": true,
