@@ -89,13 +89,20 @@ export default class PurgeCustomArt extends BaseTask {
     )
   }
 
-  /** Toutes les clés storage rattachées à un job (photo source, candidats HD, previews). */
+  /** Toutes les clés storage rattachées à un job (photo source, candidats HD, previews, mockups). */
   private jobStorageKeys(job: CustomArtJob): string[] {
     const keys: string[] = []
     if (job.photoPath) keys.push(job.photoPath)
     for (const candidate of job.candidates || []) {
       if (candidate.path) keys.push(candidate.path)
       if (candidate.previewPath) keys.push(candidate.previewPath)
+    }
+    // Mises en situation Photopea (mockup-N.jpg, PUBLIQUES) : mêmes clés qu'à l'écriture
+    // (MockupRenderer, indexées sur job.mockups). Sans elles, les mockups — qui portent
+    // l'œuvre personnalisée — resteraient accessibles après la purge du job (fuite RGPD).
+    // delete() est best-effort : une cellule pending/error sans fichier ne fait pas échouer.
+    for (let i = 0; i < (job.mockups || []).length; i++) {
+      keys.push(`custom-art/jobs/${job.uuid}/mockup-${i}.jpg`)
     }
     return keys
   }
