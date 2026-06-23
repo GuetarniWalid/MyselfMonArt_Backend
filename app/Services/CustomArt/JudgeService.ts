@@ -295,6 +295,10 @@ export default class JudgeService {
   }): Promise<JudgeResult> {
     const model = input.model || DEFAULT_JUDGE_MODEL
 
+    // Préparation des images D'ABORD, EN SÉRIE (une seule pipeline sharp/libvips à la fois :
+    // la concurrence sharp est précisément ce qui segfaultait — incident 13/06). On ne
+    // parallélisera ENSUITE que les 2 appels réseau Opus, aucun sharp n'étant alors en vol.
+
     // Passe 1 — rubrique générale : photo source, réfs maillot annoncées FACE/DOS,
     // candidat en DERNIER (ordre du bench).
     const rubricContent: any[] = [
@@ -306,25 +310,34 @@ export default class JudgeService {
     }
     rubricContent.push(await this.imageBlock(input.candidateBuffer, JUDGE_IMAGE_MAX_PX))
 
-    const rubric = await this.structuredCall<RubricVerdict>(
-      model,
-      rubricContent,
-      'judge_candidate',
-      'Évalue un candidat de poster personnalisé selon la rubrique qualité',
-      rubricSchema
-    )
-
     // Passe 2 — inspection anatomique dédiée sur 4 quadrants zoomés. L'image complète
     // est volontairement ABSENTE : elle servait au modèle à rationaliser une silhouette
     // « naturelle » (faux négatifs du run fiabilite-g31).
-    const crops = await this.armCropBlocks(input.candidateBuffer, JUDGE_CROP_MAX_PX)
-    const anatomy = await this.structuredCall<AnatomyInspection>(
-      model,
-      [{ type: 'text', text: this.anatomyPrompt() }, ...crops],
-      'anatomy_inspection',
-      'Décrit chaque zone de peau visible des agrandissements (le verdict est calculé par programme)',
-      anatomySchema
-    )
+    const anatomyCrops = await this.armCropBlocks(input.candidateBuffer, JUDGE_CROP_MAX_PX)
+    const anatomyContent = [{ type: 'text', text: this.anatomyPrompt() }, ...anatomyCrops]
+
+    // Les 2 passes sont INDÉPENDANTES (fusionnées par union des défauts juste après) : on
+    // lance les 2 appels Opus EN PARALLÈLE. Toutes les opérations sharp sont déjà faites
+    // ci-dessus -> aucune pipeline libvips concurrente (le risque SIGSEGV ne porte que sur
+    // sharp, pas sur les appels réseau). Divise ~par 2 la durée d'un jugement — poste qui
+    // pèse ~80 % du temps total d'un job. ISO-QUALITÉ : même fusion, même classement, seuls
+    // les 2 appels réseau se recouvrent.
+    const [rubric, anatomy] = await Promise.all([
+      this.structuredCall<RubricVerdict>(
+        model,
+        rubricContent,
+        'judge_candidate',
+        'Évalue un candidat de poster personnalisé selon la rubrique qualité',
+        rubricSchema
+      ),
+      this.structuredCall<AnatomyInspection>(
+        model,
+        anatomyContent,
+        'anatomy_inspection',
+        'Décrit chaque zone de peau visible des agrandissements (le verdict est calculé par programme)',
+        anatomySchema
+      ),
+    ])
 
     // Fusion par union des défauts : on retient le PIRE des deux passes pour les compteurs.
     const armsVisible = Math.max(rubric.arms_visible ?? 0, anatomy.arms_visible ?? 0)

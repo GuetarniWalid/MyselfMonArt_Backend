@@ -41,6 +41,7 @@ const JUDGE_TIMEOUT_MS = 180_000
  */
 export default class JudgeRunner {
   public async judge(input: JudgeInput): Promise<JudgeOutcome> {
+    const t0 = Date.now()
     const model = Env.get('CUSTOM_ART_JUDGE_MODEL') || DEFAULT_JUDGE_MODEL
     const childJs = path.join(__dirname, 'judge-child.js')
 
@@ -68,7 +69,8 @@ export default class JudgeRunner {
 
     const { verdict } = outcome
     Logger.info(
-      'custom-art judge pass=%s score=%s suspicion=%s bras=%s mains=%s text="%s"%s (%s)',
+      'custom-art judge %sms pass=%s score=%s suspicion=%s bras=%s mains=%s text="%s"%s (%s)',
+      Math.round(Date.now() - t0),
       verdict.pass,
       verdict.score,
       verdict.suspicion,
