@@ -127,4 +127,27 @@ export default class Order extends Authentication {
       throw new Error(errors[0].message ?? 'orderUpdate failed')
     }
   }
+
+  /**
+   * Ajoute des tags à une commande (mutation tagsAdd : idempotente — n'écrase pas les tags
+   * existants et ne crée pas de doublon). Les tags sont des métadonnées ADMIN : visibles et
+   * filtrables dans l'admin Shopify, JAMAIS exposés au client (panier, checkout, emails,
+   * page de suivi). Surface les userErrors Shopify en exception.
+   */
+  public async addTags(orderId: string, tags: string[]): Promise<void> {
+    const clean = [...new Set(tags.map((t) => t.trim()).filter(Boolean))]
+    if (clean.length === 0) return
+    const gid = orderId.startsWith('gid://') ? orderId : `gid://shopify/Order/${orderId}`
+    const mutation = `mutation OrderTagsAdd($id: ID!, $tags: [String!]!) {
+      tagsAdd(id: $id, tags: $tags) {
+        node { id }
+        userErrors { field message }
+      }
+    }`
+    const data = await this.fetchGraphQL(mutation, { id: gid, tags: clean })
+    const errors = data.tagsAdd?.userErrors
+    if (errors && errors.length) {
+      throw new Error(errors[0].message ?? 'tagsAdd failed')
+    }
+  }
 }

@@ -480,6 +480,7 @@ export default class WebhooksController {
     )
 
     const createdItems: OrderMailItem[] = []
+    const createdJobUuids: string[] = []
     for (const { lineItem, jobUuid } of matches) {
       const job = await CustomArtJob.findBy('uuid', jobUuid)
       if (!job) {
@@ -520,6 +521,7 @@ export default class WebhooksController {
       const team = await CustomArtTeam.find(job.teamId)
       const candidates = job.candidates || []
       const chosen = job.chosenIndex !== null ? candidates[job.chosenIndex] : null
+      createdJobUuids.push(job.uuid)
       createdItems.push({
         playerName: job.playerName,
         playerNumber: job.playerNumber,
@@ -538,6 +540,21 @@ export default class WebhooksController {
       await new OrderMailer()
         .sendPaidConfirmation({ email: customerEmail, orderName, items: createdItems })
         .catch(() => {})
+    }
+
+    // Marquage interne de la commande Shopify (admin UNIQUEMENT, jamais visible client) :
+    // tag `custom-art` (repère filtrable d'un coup d'œil) + `ca-job:<uuid>` par création,
+    // pour relier la commande à son image même hors de notre base (redondance de sécurité).
+    // Détaché + best-effort : ne bloque jamais le webhook et n'échoue jamais la réponse.
+    if (createdJobUuids.length > 0) {
+      const tags = ['custom-art', ...createdJobUuids.map((uuid) => `ca-job:${uuid}`)]
+      setImmediate(() => {
+        new Shopify().order
+          .addTags(orderId, tags)
+          .catch((error) =>
+            console.error(`❌ tagsAdd commande ${orderId}:`, error?.message || error)
+          )
+      })
     }
   }
 
