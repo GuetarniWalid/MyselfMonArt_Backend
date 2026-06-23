@@ -72,7 +72,13 @@ export type PhotoCheckIssue =
 export interface PhotoCheckVerdict {
   ok: boolean
   issues: PhotoCheckIssue[]
-  faceAngleDetected?: string
+  // Bucket d'angle RÉELLEMENT détecté sur la photo (≠ l'angle DEMANDÉ par l'œuvre) : un des
+  // 4 crans canoniques, ou 'none' si aucun visage n'a été détecté/évaluable (LLM sans visage
+  // OU court-circuit pré-filtre serveur). TOUJOURS présent sur une réponse 200, ok:true comme
+  // ok:false — le studio compare `faceAngleDetected` au cran demandé pour distinguer 🟢 «
+  // parfaite » (égaux) de 🟡 « acceptée mais pas idéale » (différents mais tolérés). Sans ce
+  // champ, le front retombe par défaut sur 🟢 et perd l'avertissement 🟡.
+  faceAngleDetected: FaceAngle | 'none'
   cached: boolean
 }
 
@@ -183,7 +189,13 @@ export default class PhotoCheck {
     faceAngle: FaceAngle | null,
     cached: boolean
   ): PhotoCheckVerdict {
-    const detected = a.faceAngle && a.faceAngle !== 'none' ? a.faceAngle : undefined
+    // Angle DÉTECTÉ exposé tel quel (jamais l'angle demandé). Les 4 crans canoniques passent
+    // verbatim ; 'none' du LLM (aucun visage) ET null du pré-filtre (visage non évalué) se
+    // rabattent sur 'none' — ainsi le champ est TOUJOURS présent et reste l'un des 5 buckets
+    // { front, three-quarter, profile, back, none }. La comparaison detected-vs-demandé (🟢/🟡)
+    // est faite côté front : on ne renvoie ici que le constat brut, jamais le verdict d'angle.
+    const detected: FaceAngle | 'none' =
+      a.faceAngle && a.faceAngle !== 'none' ? a.faceAngle : 'none'
     const base = (issues: PhotoCheckIssue[]): PhotoCheckVerdict => ({
       ok: issues.length === 0,
       issues,
@@ -464,7 +476,7 @@ Sois bienveillant mais attentif à la lisibilité du visage. Réponds uniquement
       'custom-art photo-check ok=%s issues=[%s] angle=%s/%s source=%s cached=%s costEur=%s',
       verdict.ok,
       verdict.issues.join(','),
-      verdict.faceAngleDetected || '-',
+      verdict.faceAngleDetected, // détecté (toujours présent : un des 5 buckets, dont 'none')
       faceAngle || 'any', // 'any' = cran inconnu, contrainte d'angle ignorée
       source,
       verdict.cached,

@@ -251,8 +251,10 @@ export default class CustomArtController {
    *
    * Valide la photo du visiteur AVANT toute génération (coût quasi nul, cf. App/Services/
    * CustomArt/PhotoCheck) et renvoie un verdict actionnable. Contrat front : HTTP 200 +
-   * { ok, issues[], faceAngleDetected?, cached? } pour tous les cas NORMAUX (y compris
-   * ok:false). N'EXIGE PAS de session (ce check précède le POST /jobs, donc souvent sans
+   * { ok, issues[], faceAngleDetected, cached } pour tous les cas NORMAUX (y compris ok:false).
+   * `faceAngleDetected` (angle DÉTECTÉ : 'front'|'three-quarter'|'profile'|'back'|'none') est
+   * TOUJOURS présent — le studio le compare au cran demandé pour le badge 🟢/🟡. N'EXIGE PAS de
+   * session (ce check précède le POST /jobs, donc souvent sans
    * token) — rate-limité par IP. En cas d'erreur réelle (5xx) le front fait fail-open : la
    * panne de cet endpoint ne bloque jamais la vente (le pré-check de POST /jobs reste le filet).
    */
