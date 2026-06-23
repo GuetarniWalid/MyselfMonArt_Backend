@@ -31,9 +31,8 @@ const BACKLOG_BATCH = 10
  *   POST {RENDER_ENGINE_URL}/api/render { psd: '/mockups/...psd', image: dataURL,
  *        mockupContext } -> { success, url: '/uploads/xxx.jpg' } (relative au moteur)
  *
- * L'image insérée est la preview ÉLUE (déjà watermarkée par WatermarkService) : le
- * tatouage léger est donc porté par l'œuvre dans la scène — pas de second tatouage
- * plein cadre qui dégraderait la pièce. Chaque rendu est rapatrié et stocké chez nous
+ * L'image insérée est l'aperçu ÉLU (résolution bridée à 1024 px, jamais la HD avant
+ * achat — aucun watermark). Chaque rendu est rapatrié et stocké chez nous
  * (custom-art/jobs/<uuid>/mockup-N.jpg, public) : les URLs servies au client ne
  * dépendent jamais de la disponibilité du PC.
  *
@@ -209,7 +208,7 @@ export default class MockupRenderer {
       return true
     }
 
-    // L'œuvre insérée = preview élue (déjà watermarkée) — jamais la HD avant achat
+    // L'œuvre insérée = aperçu élu (résolution bridée) — jamais la HD avant achat
     const preview = await CustomArtStorage.get(chosen.previewPath)
     const dataUrl = `data:image/jpeg;base64,${preview.toString('base64')}`
     const base = MockupRenderer.engineBase()

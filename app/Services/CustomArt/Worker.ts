@@ -10,7 +10,7 @@ import { mapResizeError } from 'App/Services/ArtworkResizer/jobStore'
 import CustomArtStorage from './Storage'
 import { affectedRows } from './db'
 import MockupRenderer from './MockupRenderer'
-import WatermarkService from './WatermarkService'
+import PreviewService from './PreviewService'
 import { JUDGE_EST_COST_EUR } from './JudgeService'
 import JudgeRunner from './JudgeRunner'
 import ReviewMailer from './ReviewMailer'
@@ -485,7 +485,7 @@ export default class CustomArtWorker {
     return sawError ? { kind: 'failed' } : { kind: 'refused' }
   }
 
-  /** Juge chaque candidat produit, uploade HD privé + preview watermarkée publique. */
+  /** Juge chaque candidat produit, uploade HD privé + aperçu réduit public. */
   private static async judgeAndStore(
     job: CustomArtJob,
     inputs: JobInputs,
@@ -510,14 +510,14 @@ export default class CustomArtWorker {
         const index = existing.length + i
 
         let verdict: any
-        // L'aperçu watermarké est produit DANS l'enfant (zéro sharp côté worker sur le chemin
+        // L'aperçu est produit DANS l'enfant (zéro sharp côté worker sur le chemin
         // réel) ; null si le juge enfant a crashé (candidat non-pass, jamais révélé).
         let preview: Buffer | null = null
         if (fakeProviderEnabled()) {
           // Mode factice (M10/M12) : jugement court-circuité, verdict « pass » sans appel
           // Claude (payant). Petites images statiques du bench -> aperçu en main process OK.
           verdict = CustomArtWorker.fakeVerdict(index)
-          preview = await WatermarkService.makePreview(buffer)
+          preview = await PreviewService.makePreview(buffer)
         } else {
           try {
             const outcome = await judge.judge({
@@ -547,7 +547,7 @@ export default class CustomArtWorker {
           }
         }
 
-        // HD privé (jamais d'URL publique avant achat) + preview watermarkée publique.
+        // HD privé (jamais d'URL publique avant achat) + aperçu réduit public.
         const path = `custom-art/jobs/${job.uuid}/candidate-${index}.jpg`
         const previewPath = `custom-art/jobs/${job.uuid}/preview-${index}.jpg`
         await CustomArtStorage.put(path, buffer, { isPublic: false })

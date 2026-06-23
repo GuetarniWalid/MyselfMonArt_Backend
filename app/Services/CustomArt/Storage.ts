@@ -11,7 +11,7 @@ const RETRY_DELAY_MS = 2000
 export interface PutOptions {
   contentType?: string
   /**
-   * true = URL CDN publique (previews watermarkées UNIQUEMENT, plan §5).
+   * true = URL CDN publique (aperçus réduits UNIQUEMENT, plan §5).
    * false = privé (photos sources, candidats HD, fichiers print) — jamais d'URL publique.
    */
   isPublic?: boolean

@@ -7,7 +7,7 @@ import axios from 'axios'
 const RESEND_ENDPOINT = 'https://api.resend.com/emails'
 
 /**
- * Email « Sauvegarder ma création » : lien de reprise du studio + aperçu watermarké.
+ * Email « Sauvegarder ma création » : lien de reprise du studio + aperçu.
  * Texte simple FR. Retourne false (sans throw) si l'envoi est impossible — la sauvegarde
  * de l'email en session reste acquise même si le mail part plus tard.
  */

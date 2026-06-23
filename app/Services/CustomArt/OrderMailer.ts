@@ -15,7 +15,7 @@ export interface OrderMailItem {
   format: string
   /** Slug de finition ('none', 'chene'…) — converti en libellé lisible. */
   frame: string
-  /** URL publique (CDN) de l'aperçu watermarké validé par le client. */
+  /** URL publique (CDN) de l'aperçu validé par le client. */
   previewUrl: string | null
   /** URLs publiques des mises en situation déjà rendues (2 max affichées). */
   mockupUrls: string[]

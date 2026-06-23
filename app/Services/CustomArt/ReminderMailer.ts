@@ -14,7 +14,7 @@ const FATHERS_DAY_WINDOW_DAYS = 15
 /**
  * Relance « création sauvegardée » (M10) : email chaleureux « votre tableau vous
  * attend » envoyé UNE seule fois, 20-28 h après la création, aux sessions qui ont
- * laissé un email sans acheter. Aperçu watermarké + lien de reprise (contrat ca_job,
+ * laissé un email sans acheter. Aperçu + lien de reprise (contrat ca_job,
  * même que SaveMailer) + rappel fête des pères quand la date approche (21/06 en 2026).
  * Best-effort : retourne false sans throw (la Task relancera tant que la fenêtre
  * 20-28 h n'est pas dépassée).
@@ -23,7 +23,7 @@ export default class ReminderMailer {
   public async send(input: {
     email: string
     jobUuid: string
-    /** URL publique (CDN) de l'aperçu watermarké du candidat élu, null si indisponible */
+    /** URL publique (CDN) de l'aperçu du candidat élu, null si indisponible */
     previewUrl: string | null
     playerName: string
   }): Promise<boolean> {

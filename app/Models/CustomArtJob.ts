@@ -16,7 +16,7 @@ export type CustomArtJobStatus =
 
 export type CustomArtFormat = '30x40' | '60x80'
 
-/** Un candidat généré + jugé. Les `path` sont des clés storage privées, `previewPath` = preview watermarkée. */
+/** Un candidat généré + jugé. Les `path` sont des clés storage privées, `previewPath` = aperçu réduit. */
 export interface CustomArtCandidate {
   path: string
   previewPath: string

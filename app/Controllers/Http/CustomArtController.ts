@@ -89,7 +89,7 @@ const MANUAL_REVIEW_MESSAGE =
  *     'expired'       -> { status, message }   (purge J+30)
  *
  * GET /api/custom-art/jobs/:uuid/preview/:n
- *   Image JPEG watermarkée du candidat révélé n (0-based, ordre de classement),
+ *   Image JPEG (aperçu réduit) du candidat révélé n (0-based, ordre de classement),
  *   proxifiée depuis le storage avec Access-Control-Allow-Origin (texture WebGL).
  *   404 si le candidat n'est pas encore révélé.
  *
@@ -475,7 +475,7 @@ export default class CustomArtController {
   }
 
   /**
-   * GET /api/custom-art/jobs/:uuid/preview/:n — preview watermarkée du candidat révélé n
+   * GET /api/custom-art/jobs/:uuid/preview/:n — aperçu réduit du candidat révélé n
    * (0-based, ordre de classement), proxifiée depuis le storage avec l'en-tête
    * Access-Control-Allow-Origin : le visualiseur WebGL du thème charge l'image en
    * texture cross-origin (crossOrigin='anonymous'), ce que le CDN ne permet pas.
@@ -508,7 +508,7 @@ export default class CustomArtController {
     }
 
     response.header('Content-Type', 'image/jpeg')
-    // CORS image : origin boutique en prod, ouvert en dev (preview déjà watermarkée/publique)
+    // CORS image : origin boutique en prod, ouvert en dev (aperçu réduit déjà public)
     response.header('Access-Control-Allow-Origin', Env.get('STOREFRONT_URL') || '*')
     response.header('Vary', 'Origin')
     response.header('Cross-Origin-Resource-Policy', 'cross-origin')

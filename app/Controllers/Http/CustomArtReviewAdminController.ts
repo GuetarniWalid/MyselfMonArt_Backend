@@ -6,7 +6,7 @@ import CustomArtJob from 'App/Models/CustomArtJob'
 import CustomArtTeam from 'App/Models/CustomArtTeam'
 import CustomArtStorage from 'App/Services/CustomArt/Storage'
 import MockupRenderer from 'App/Services/CustomArt/MockupRenderer'
-import WatermarkService from 'App/Services/CustomArt/WatermarkService'
+import PreviewService from 'App/Services/CustomArt/PreviewService'
 import CustomArtWorker from 'App/Services/CustomArt/Worker'
 import { resolveProviderChain, resolveForcedProvider } from 'App/Services/CustomArt/providers'
 
@@ -51,7 +51,7 @@ export default class CustomArtReviewAdminController {
           createdAt: job.createdAt?.toISO() || null,
           // Photo source servie par la route admin dédiée (clé storage PRIVÉE)
           photoUrl: `/admin/custom-art/review/${job.uuid}/photo`,
-          // Candidats déjà jugés (previews watermarkées publiques) : aident à décider
+          // Candidats déjà jugés (aperçus réduits publics) : aident à décider
           candidates: (job.candidates || []).map((c) => ({
             previewUrl: CustomArtStorage.publicUrl(c.previewPath),
             provider: c.provider,
@@ -120,7 +120,7 @@ export default class CustomArtReviewAdminController {
 
   /**
    * POST /admin/custom-art/review/:uuid/result — multipart `image` : attache manuellement
-   * le rendu réalisé par l'artiste. HD stockée privée + preview watermarkée publique,
+   * le rendu réalisé par l'artiste. HD stockée privée + aperçu réduit public,
    * le job repasse en ready avec ce résultat (les anciens candidats restent archivés
    * mais ne sont plus révélables).
    */
@@ -162,7 +162,7 @@ export default class CustomArtReviewAdminController {
     const path = `custom-art/jobs/${job.uuid}/candidate-${index}.jpg`
     const previewPath = `custom-art/jobs/${job.uuid}/preview-${index}.jpg`
     await CustomArtStorage.put(path, hd, { isPublic: false })
-    const preview = await WatermarkService.makePreview(hd)
+    const preview = await PreviewService.makePreview(hd)
     await CustomArtStorage.put(previewPath, preview, { isPublic: true })
 
     const artist = {

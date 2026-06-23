@@ -8,11 +8,11 @@
  *   argv[2] = chemin d'un JSON d'entrée { candidatePath, photoPath, kitPaths[], kitFiles[],
  *             playerName, playerNumber, fidelityNotes, model }
  *   argv[3] = chemin où écrire le JSON de résultat (JudgeResult)
- *   argv[4] = chemin où écrire l'APERÇU watermarké (JPEG) du candidat
+ *   argv[4] = chemin où écrire l'APERÇU (JPEG) du candidat
  *   clé API : process.env.ANTHROPIC_API_KEY (injectée par le parent)
  *   sortie  : exit 0 + fichiers résultat/aperçu ; toute erreur/crash => exit != 0 (rattrapé par le parent)
  *
- * On produit AUSSI l'aperçu watermarké ici (et pas dans le worker) : TOUT le traitement
+ * On produit AUSSI l'aperçu ici (et pas dans le worker) : TOUT le traitement
  * d'image (sharp/libvips) du chemin candidat doit se faire dans cet enfant jetable. Dans le
  * process applicatif principal (long-vécu, multi-modules natifs), une opération sharp tardive
  * segfaultait par pression mémoire cumulée (incident 13/06) — même après l'isolation du juge,
@@ -21,7 +21,7 @@
 import fs from 'node:fs'
 import Anthropic from '@anthropic-ai/sdk'
 import JudgeService from './JudgeService'
-import WatermarkService from './WatermarkService'
+import PreviewService from './PreviewService'
 
 async function main() {
   const inputPath = process.argv[2]
@@ -61,8 +61,8 @@ async function main() {
     model: input.model,
   })
 
-  // Aperçu watermarké (même process enfant : aucun sharp ne revient au worker)
-  const preview = await WatermarkService.makePreview(candidateBuffer)
+  // Aperçu réduit (même process enfant : aucun sharp ne revient au worker)
+  const preview = await PreviewService.makePreview(candidateBuffer)
   fs.writeFileSync(previewPath, preview)
   fs.writeFileSync(outputPath, JSON.stringify(result))
   process.exit(0)

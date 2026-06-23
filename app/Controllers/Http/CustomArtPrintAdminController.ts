@@ -65,7 +65,7 @@ export default class CustomArtPrintAdminController {
             downloadUrl: order.printFilePath
               ? `/admin/custom-art/print-queue/${order.id}/download`
               : null,
-            // Aperçu watermarké public (vignette rapide en attendant le fichier)
+            // Aperçu réduit public (vignette rapide en attendant le fichier)
             previewUrl: chosen?.previewPath ? CustomArtStorage.publicUrl(chosen.previewPath) : null,
             shopifyAdminUrl: this.shopifyAdminOrderUrl(order.shopifyOrderId),
             printSpec: spec ? `${spec.width} × ${spec.height} px @${spec.dpi} dpi` : null,

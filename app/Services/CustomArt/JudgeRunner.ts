@@ -7,7 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import JudgeService, { DEFAULT_JUDGE_MODEL, JudgeResult } from './JudgeService'
-import WatermarkService from './WatermarkService'
+import PreviewService from './PreviewService'
 
 export interface JudgeInput {
   candidateBuffer: Buffer
@@ -19,7 +19,7 @@ export interface JudgeInput {
   fidelityNotes?: string | null
 }
 
-/** Verdict + aperçu watermarké, tous deux produits hors du process principal en prod. */
+/** Verdict + aperçu, tous deux produits hors du process principal en prod. */
 export interface JudgeOutcome {
   verdict: JudgeResult
   preview: Buffer
@@ -62,7 +62,7 @@ export default class JudgeRunner {
       // DEV (hors conteneur) : juge + aperçu en in-process (pas de crash sur la machine dev).
       const anthropic = new Anthropic({ apiKey: Env.get('ANTHROPIC_API_KEY') })
       const verdict = await new JudgeService(anthropic).judge({ ...input, model })
-      const preview = await WatermarkService.makePreview(input.candidateBuffer)
+      const preview = await PreviewService.makePreview(input.candidateBuffer)
       outcome = { verdict, preview }
     }
 

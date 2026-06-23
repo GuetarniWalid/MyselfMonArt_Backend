@@ -33,7 +33,7 @@ const RETRY_DELAY_MS = 5_000
 
 /**
  * Préparation du fichier d'impression d'une commande payée (M9, plan §9) :
- * HD ÉLUE du job (candidat choisi, clé privée — JAMAIS la preview watermarkée)
+ * HD ÉLUE du job (candidat choisi, clé privée — JAMAIS l'aperçu réduit)
  *   -> upscale ×4 Real-ESRGAN via l'API REST Replicate (fidélité préservée :
  *      ⛔ surtout pas l'ArtworkResizer existant, qui RÉGÉNÈRE via gpt-image-2)
  *   -> sharp : redimension EXACTE aux gabarits print + sRGB + JPEG qualité 95
