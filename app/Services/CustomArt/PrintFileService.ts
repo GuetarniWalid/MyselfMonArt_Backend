@@ -8,6 +8,7 @@ import CustomArtOrder from 'App/Models/CustomArtOrder'
 import CustomArtTeam from 'App/Models/CustomArtTeam'
 import CustomArtStorage from './Storage'
 import PrintMailer from './PrintMailer'
+import { chosenCandidate } from './chosenCandidate'
 
 /**
  * Gabarits print Picanova (plan §9) : dimensions EXACTES en pixels + densité.
@@ -132,11 +133,16 @@ export default class PrintFileService {
     const spec = PRINT_SPECS[job.format]
     if (!spec) throw new Error(`Format inconnu: ${job.format}`)
 
-    // HD élue du job : le candidat que le client a validé au pixel près.
-    const candidates = job.candidates || []
-    const chosen = job.chosenIndex !== null ? candidates[job.chosenIndex] : null
+    // HD de la version ACHETÉE : par rang figé au panier (navigateur de versions), sinon
+    // repli sur le dernier révélé (job.chosenIndex). cf. chosenCandidate. C'est ce qui
+    // garantit qu'acheter une version antérieure imprime bien CETTE version-là.
+    const chosen = chosenCandidate(job, order.candidateRank)
     if (!chosen?.path) {
-      throw new Error('Aucun candidat élu sur ce job (chosenIndex/path manquant)')
+      throw new Error(
+        order.candidateRank !== null
+          ? `Candidat rank=${order.candidateRank} introuvable sur le job ${job.uuid}`
+          : 'Aucun candidat élu sur ce job (chosenIndex/path manquant)'
+      )
     }
     const hdBuffer = await CustomArtStorage.get(chosen.path)
 

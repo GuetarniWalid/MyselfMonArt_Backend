@@ -14,6 +14,7 @@ import CustomArtTeam from 'App/Models/CustomArtTeam'
 import CustomArtStorage from 'App/Services/CustomArt/Storage'
 import PrintFileService from 'App/Services/CustomArt/PrintFileService'
 import OrderMailer, { OrderMailItem } from 'App/Services/CustomArt/OrderMailer'
+import { chosenCandidate } from 'App/Services/CustomArt/chosenCandidate'
 
 interface UpdateFailure {
   productId: string
@@ -441,6 +442,42 @@ export default class WebhooksController {
   }
 
   /**
+   * Rang (1-based, CustomArtCandidate.rank) de la version affichée à l'ajout au panier
+   * (navigateur de versions du studio). Deux sources, dans l'ordre :
+   *   1) property explicite `_version_rank` (1-based) — contrat front recommandé ;
+   *   2) repli : l'URL d'aperçu portée par la ligne (`.../jobs/<uuid>/preview/<n>` du MÊME
+   *      job), d'où rank = n + 1 — fonctionne même sans la property explicite.
+   * Le rang est VALIDÉ contre les candidats du job ; tout rang absent/invalide => null
+   * (repli sur job.chosenIndex côté impression, cf. chosenCandidate).
+   */
+  private extractCandidateRank(lineItem: any, job: CustomArtJob): number | null {
+    const properties: any[] = Array.isArray(lineItem?.properties) ? lineItem.properties : []
+    const candidates = job.candidates || []
+    const isValid = (rank: number) =>
+      Number.isInteger(rank) && rank >= 1 && candidates.some((c) => c.rank === rank)
+
+    // 1) Property explicite _version_rank (1-based) — contrat front recommandé
+    const rankProp = properties.find((p) => p?.name === '_version_rank')
+    if (rankProp) {
+      const rank = Number(rankProp.value)
+      if (isValid(rank)) return rank
+    }
+
+    // 2) Repli : rang dérivé de l'URL d'aperçu de CE job (`/preview/<n>` => rank = n + 1)
+    const re = new RegExp(`/api/custom-art/jobs/${job.uuid}/preview/(\\d+)`, 'i')
+    for (const p of properties) {
+      if (typeof p?.value !== 'string') continue
+      const m = p.value.match(re)
+      if (m) {
+        const rank = Number(m[1]) + 1
+        if (isValid(rank)) return rank
+      }
+    }
+
+    return null
+  }
+
+  /**
    * orders/paid (M9, plan §9) : pour chaque line item portant la property cachée
    * `_job_id` (création studio CustomArt), crée la ligne custom_art_orders en
    * 'awaiting_file' puis lance — détaché — la préparation du fichier print
@@ -488,11 +525,17 @@ export default class WebhooksController {
         continue
       }
 
+      // Version ACHETÉE (navigateur de versions du studio) : rang figé depuis la ligne
+      // panier, validé contre les candidats du job. NULL => repli sur chosenIndex côté
+      // impression (flux historique). cf. extractCandidateRank / chosenCandidate.
+      const candidateRank = this.extractCandidateRank(lineItem, job)
+
       // Idempotent : contrainte unique (shopify_order_id, line_item_id) + firstOrCreate
       const order = await CustomArtOrder.firstOrCreate(
         { shopifyOrderId: orderId, lineItemId: String(lineItem.id) },
         {
           jobId: job.id,
+          candidateRank,
           orderName,
           customerEmail,
           printStatus: 'awaiting_file',
@@ -517,10 +560,9 @@ export default class WebhooksController {
         })
       })
 
-      // Contenu de l'email de confirmation client (aperçu validé + mockups rendus)
+      // Contenu de l'email de confirmation client (aperçu de la version ACHETÉE + mockups)
       const team = await CustomArtTeam.find(job.teamId)
-      const candidates = job.candidates || []
-      const chosen = job.chosenIndex !== null ? candidates[job.chosenIndex] : null
+      const chosen = chosenCandidate(job, order.candidateRank)
       createdJobUuids.push(job.uuid)
       createdItems.push({
         playerName: job.playerName,

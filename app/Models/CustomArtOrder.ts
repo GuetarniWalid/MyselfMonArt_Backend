@@ -30,6 +30,16 @@ export default class CustomArtOrder extends BaseModel {
   @column()
   public jobId: number
 
+  /**
+   * Rang (1-based, CustomArtCandidate.rank) de la version ACHETÉE, figé au webhook
+   * orders/paid depuis la ligne panier (navigateur de versions du studio). Identité
+   * stable de la version : le fichier print est sélectionné par ce rang, immunisé contre
+   * les reveals/générations ultérieurs. NULL = repli sur job.chosenIndex (flux
+   * historique). cf. App/Services/CustomArt/chosenCandidate.
+   */
+  @column()
+  public candidateRank: number | null
+
   @column()
   public lineItemId: string
 

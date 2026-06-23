@@ -10,6 +10,7 @@ import CustomArtTeam from 'App/Models/CustomArtTeam'
 import CustomArtStorage from 'App/Services/CustomArt/Storage'
 import OrderMailer from 'App/Services/CustomArt/OrderMailer'
 import PrintFileService, { PRINT_SPECS } from 'App/Services/CustomArt/PrintFileService'
+import { chosenCandidate } from 'App/Services/CustomArt/chosenCandidate'
 
 // Largeur max des aperçus servis par GET :id/file?w= (le fichier print fait ~5000 px,
 // la vignette de la file n'a pas besoin de plus)
@@ -45,9 +46,9 @@ export default class CustomArtPrintAdminController {
       data: {
         orders: orders.map((order) => {
           const job = jobById.get(order.jobId) || null
-          const candidates = job?.candidates || []
-          const chosen =
-            job && job.chosenIndex !== null ? candidates[job.chosenIndex] || null : null
+          // Aperçu de la version ACHETÉE (rang figé), pas du dernier révélé : l'admin
+          // valide bien l'image qui sera imprimée. cf. chosenCandidate.
+          const chosen = job ? chosenCandidate(job, order.candidateRank) : null
           const spec = job ? PRINT_SPECS[job.format] : null
           return {
             id: order.id,
@@ -183,8 +184,7 @@ export default class CustomArtPrintAdminController {
       const job = await CustomArtJob.find(order.jobId)
       if (job) {
         const team = await CustomArtTeam.find(job.teamId)
-        const candidates = job.candidates || []
-        const chosen = job.chosenIndex !== null ? candidates[job.chosenIndex] || null : null
+        const chosen = chosenCandidate(job, order.candidateRank)
         void new OrderMailer()
           .sendInProduction({
             email: order.customerEmail,
