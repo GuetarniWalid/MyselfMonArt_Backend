@@ -353,6 +353,12 @@ export default class CustomArtWorker {
           job.provider = best.provider
           job.status = 'ready'
           job.error = null
+          // Durée réelle création -> ready : alimente l'estimation glissante de la barre
+          // du studio (JobEstimate). Posée UNIQUEMENT ici (passage ready automatique) —
+          // les jobs ready à la main (file artiste) gardent NULL et sont exclus de la stat.
+          if (job.createdAt) {
+            job.readyDurationMs = Math.max(0, Math.round(Date.now() - job.createdAt.toMillis()))
+          }
           await job.save()
           Logger.info(
             'custom-art READY uuid=%s round=%s score=%s suspicion=%s provider=%s %ss',

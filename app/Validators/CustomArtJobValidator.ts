@@ -38,6 +38,9 @@ export default class CustomArtJobValidator {
     // E-mail facultatif : le front le joint dès qu'il le connaît (cap « 3e essai+ =
     // e-mail requis ») — associé à la session AVANT le contrôle des caps.
     email: schema.string.optional({ trim: true }, [rules.email(), rules.maxLength(191)]),
+    // Type de produit (purement indicatif, même contrat que le photo-check) : segmente
+    // l'estimation glissante renvoyée dans `estimatedMs`. Absent => bucket 'default'.
+    productType: schema.string.optional({ trim: true }, [rules.maxLength(40)]),
   })
 
   public messages: CustomMessages = {

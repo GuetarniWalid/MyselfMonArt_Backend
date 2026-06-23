@@ -15,6 +15,7 @@ import CustomArtPhotoCheckValidator from 'App/Validators/CustomArtPhotoCheckVali
 import PhotoCheck, { normalizeFaceAngle } from 'App/Services/CustomArt/PhotoCheck'
 import CustomArtStorage from 'App/Services/CustomArt/Storage'
 import CustomArtVariantMapping from 'App/Services/CustomArt/VariantMapping'
+import JobEstimate, { normalizeProductType } from 'App/Services/CustomArt/JobEstimate'
 import { affectedRows } from 'App/Services/CustomArt/db'
 import SaveMailer from 'App/Services/CustomArt/SaveMailer'
 import { clientIp } from 'App/Services/ClientIp'
@@ -209,6 +210,10 @@ export default class CustomArtController {
       const photoPath = `custom-art/jobs/${uuid}/source.jpg`
       await CustomArtStorage.put(photoPath, normalized, { isPublic: false })
 
+      // productType : segmente l'estimation glissante (bucket 'default' si absent). Stocké
+      // sur le job pour que GET /jobs/:uuid (polling) recale sur le même bucket.
+      const productType = normalizeProductType(payload.productType)
+
       // 6) Job pending — le worker le prend en charge ; surtout PAS de await sur la
       // génération ici (Cloudflare coupe à ~100s)
       await CustomArtJob.create({
@@ -221,6 +226,7 @@ export default class CustomArtController {
         playerNumber: payload.playerNumber,
         format,
         frame,
+        productType,
         revealedCount: 0,
         round: 1,
       })
@@ -228,8 +234,13 @@ export default class CustomArtController {
       session.essaisCount = session.essaisCount + 1
       await session.save()
 
+      // Estimation globale (tous utilisateurs) de la durée de génération pour ce
+      // productType : le studio cale sa barre de progression dessus. Best-effort —
+      // ne fait jamais échouer la création (cf. JobEstimate).
+      const estimatedMs = await JobEstimate.forProductType(productType)
+
       Logger.info('custom-art job START uuid=%s team=%s format=%s', uuid, team.slug, format)
-      return { success: true, data: { jobId: uuid, token: session.sessionToken } }
+      return { success: true, data: { jobId: uuid, token: session.sessionToken, estimatedMs } }
     } catch (error) {
       if (error.code === 'E_VALIDATION_FAILURE') {
         return response.status(422).json({
@@ -347,7 +358,14 @@ export default class CustomArtController {
     if (job.status !== 'ready') {
       return {
         success: true,
-        data: { status: 'processing', step: job.status, progress: this.progressFor(job) },
+        data: {
+          status: 'processing',
+          step: job.status,
+          progress: this.progressFor(job),
+          // Même estimation globale que le POST /jobs : permet au studio de recaler la
+          // barre si le visiteur recharge en cours de génération (bucket du job).
+          estimatedMs: await JobEstimate.forProductType(job.productType),
+        },
       }
     }
 

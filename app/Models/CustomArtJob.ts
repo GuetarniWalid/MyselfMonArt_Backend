@@ -87,6 +87,23 @@ export default class CustomArtJob extends BaseModel {
   @column()
   public frame: string
 
+  /**
+   * Type de produit envoyé par le studio (même vocabulaire que le photo-check) : clé de
+   * segmentation de l'estimation glissante de la barre de progression (cf.
+   * App/Services/CustomArt/JobEstimate). NULL/absent => bucket 'default'.
+   */
+  @column()
+  public productType: string | null
+
+  /**
+   * Durée réelle création -> ready (ms), posée UNE seule fois par le worker au passage
+   * AUTOMATIQUE en ready. Alimente la médiane glissante (p75) par productType d'où sort
+   * `estimatedMs`. Reste NULL pour tout job jamais passé ready automatiquement (échec,
+   * manual_review, ou résultat attaché à la main par l'artiste) => exclu de la stat.
+   */
+  @column()
+  public readyDurationMs: number | null
+
   @column({
     prepare: (value: any) => (value === null ? null : JSON.stringify(value)),
     consume: (value: any) => (typeof value === 'string' ? JSON.parse(value) : value),
