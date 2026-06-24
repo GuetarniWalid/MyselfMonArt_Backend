@@ -402,15 +402,31 @@ export default class CustomArtWorker {
         Logger.warn('custom-art round 2 silencieux uuid=%s (0 pass au round 1)', job.uuid)
       }
     } catch (error) {
-      job.status = 'failed'
-      job.error = mapResizeError(error)
-      await job.save().catch(() => {})
+      // Décision Walid (2026-06-24) : une photo acceptée au photo-check ne doit JAMAIS finir
+      // sur une erreur générique « réessaie ». Tout échec technique bascule en repli artiste
+      // soigné (manual_review, essai NON décompté) plutôt qu'en 'failed' — le client voit
+      // l'écran « un artiste finalise sous 24 h », la raison technique reste dans job.error
+      // pour la file admin, et Walid est notifié (ReviewMailer, via toManualReview).
       Logger.error(
-        'custom-art FAIL uuid=%s %ss: %s',
+        'custom-art FAIL->MANUAL_REVIEW uuid=%s %ss: %s',
         job.uuid,
         Math.round((Date.now() - t0) / 1000),
         (error as any)?.message || error
       )
+      // teamName best-effort : peut être inconnu si loadInputs() a lui-même échoué.
+      let teamName = ''
+      try {
+        const team = await CustomArtTeam.find(job.teamId)
+        teamName = team?.name || ''
+      } catch {
+        // file admin tolère une équipe vide
+      }
+      await CustomArtWorker.toManualReview(
+        job,
+        teamName,
+        `Échec technique : ${mapResizeError(error)}`,
+        t0
+      ).catch(() => {})
     }
   }
 
@@ -427,7 +443,9 @@ export default class CustomArtWorker {
   ): Promise<void> {
     job.status = 'manual_review'
     job.error = reason
-    await job.save()
+    // save tolérant : appelée aussi depuis le catch de process() où l'erreur d'origine
+    // peut être une panne DB — on ne veut pas re-throw (l'orphan-recovery rattrapera).
+    await job.save().catch(() => {})
     Logger.warn(
       'custom-art MANUAL_REVIEW uuid=%s %ss: %s',
       job.uuid,

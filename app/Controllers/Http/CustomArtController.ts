@@ -18,6 +18,7 @@ import CustomArtVariantMapping from 'App/Services/CustomArt/VariantMapping'
 import JobEstimate, { normalizeProductType } from 'App/Services/CustomArt/JobEstimate'
 import { affectedRows } from 'App/Services/CustomArt/db'
 import SaveMailer from 'App/Services/CustomArt/SaveMailer'
+import UnlockMailer from 'App/Services/CustomArt/UnlockMailer'
 import { clientIp } from 'App/Services/ClientIp'
 
 // Caps anti-abus (plan §4) : 2 essais anonymes/jour (session+IP), 5/jour avec email,
@@ -37,10 +38,18 @@ const EST_JOB_COST_EUR = 0.5
 const SESSION_COOKIE = 'custom_art_session'
 const SESSION_COOKIE_MAX_AGE_SEC = 60 * 60 * 24 * 90
 
-// Contraintes photo (plan §4) : jpg/png/webp/heic, <12 Mo, min 512 px
+// Contraintes photo (plan §4) : jpg/png/webp/heic, <12 Mo.
+// Plancher de taille ALIGNÉ sur le photo-check (PhotoCheck.MIN_SHORT_SIDE_PX = 200) :
+// décision Walid (2026-06-24) « le re-check de génération ne doit jamais être PLUS STRICT
+// que /photo-check ». L'ancien plancher 512 px recalait (422) des originaux 200–511 px
+// pourtant validés `ok:true` au photo-check (qui n'évalue qu'un JPEG réduit ~768 px côté
+// client) -> les deux portes se contredisaient. La résolution du TIRAGE ne dépend PAS de
+// la photo source (le poster imprimé = l'œuvre générée 2048 px) ; la finesse de la photo
+// ne joue que sur la ressemblance du visage, déjà jugée par le photo-check
+// (faceTooSmall/low_quality). Sous 200 px, photo-check ET /jobs refusent de concert.
 const PHOTO_EXTNAMES = ['jpg', 'jpeg', 'png', 'webp', 'heic']
 const PHOTO_MAX_SIZE = '12mb'
-const PHOTO_MIN_PX = 512
+const PHOTO_MIN_PX = 200
 
 // Photo-check (POST /photo-check) : la photo arrive DÉJÀ réduite côté client (~768 px, qqs
 // dizaines de Ko) → plafond généreux (5 Mo) + types courants. Le check tourne SANS session.
@@ -67,9 +76,14 @@ const MANUAL_REVIEW_MESSAGE =
  *   Succès : 200 `{ success: true,  data: { ... } }`
  *   Erreur : 4xx/5xx `{ success: false, message: string, code?: string, errors?: [...] }`
  *     codes : 'not_found' | 'email_required' | 'daily_cap' | 'high_traffic'
+ *     Les 429 de cap (email_required/daily_cap/high_traffic) renvoient AUSSI `token`
+ *     (jeton de session, comme la réponse 200) : le front le renvoie en header
+ *     'x-custom-art-session' pour conserver UNE seule session quand les cookies tiers
+ *     sont bloqués (mobile) — sinon chaque tentative recrée une session et l'e-mail de
+ *     déblocage se rattache à une session éphémère.
  *
  * POST /api/custom-art/jobs  (multipart)
- *   in  : photo (jpg/png/webp/heic, <=12 Mo, min 512 px), teamId, playerName,
+ *   in  : photo (jpg/png/webp/heic, <=12 Mo, min 200 px — aligné photo-check), teamId, playerName,
  *         playerNumber, et SOIT variantId (variante Shopify choisie — SOURCE DE
  *         VÉRITÉ, format+finition dérivés de ses options), SOIT format ('30x40'|
  *         '60x80') + frame (slug) en secours. email facultatif : associé à la
@@ -182,7 +196,7 @@ export default class CustomArtController {
         if (minSide < PHOTO_MIN_PX) {
           return response.status(422).json({
             success: false,
-            message: `Photo trop petite : au moins ${PHOTO_MIN_PX} px de côté pour un beau rendu.`,
+            message: `Photo trop petite : il nous faut au moins ${PHOTO_MIN_PX} px de côté.`,
           })
         }
         normalized = await sharp(raw)
@@ -204,10 +218,9 @@ export default class CustomArtController {
       // E-mail joint par le front (cap « 3e essai+ = e-mail requis ») : associé à la
       // session AVANT le contrôle des caps, sinon l'essai resterait bloqué en 429.
       // Même politique que save() : le premier e-mail posé ne s'écrase jamais.
-      if (payload.email && !session.email) {
-        session.email = payload.email.toLowerCase()
-        await session.save()
-      }
+      // justUnlocked = true UNIQUEMENT au tout premier e-mail (moment du déblocage) :
+      // l'e-mail de confirmation part une fois le job créé (cf. UnlockMailer plus bas).
+      const justUnlocked = await this.attachEmailIfMissing(session, payload.email)
 
       const capError = await this.checkCaps(session)
       if (capError) {
@@ -247,6 +260,15 @@ export default class CustomArtController {
       // productType : le studio cale sa barre de progression dessus. Best-effort —
       // ne fait jamais échouer la création (cf. JobEstimate).
       const estimatedMs = await JobEstimate.forProductType(productType)
+
+      // Confirmation de déblocage (décision Walid 2026-06-24) : au PREMIER e-mail laissé par
+      // un anonyme, on confirme « essai débloqué » + lien de reprise du job tout juste créé.
+      // Fire-and-forget : ne bloque jamais la création (Cloudflare coupe à ~100 s).
+      if (justUnlocked) {
+        void new UnlockMailer()
+          .send({ email: session.email as string, jobUuid: uuid })
+          .catch(() => {})
+      }
 
       Logger.info('custom-art job START uuid=%s team=%s format=%s', uuid, team.slug, format)
       return { success: true, data: { jobId: uuid, token: session.sessionToken, estimatedMs } }
@@ -551,9 +573,12 @@ export default class CustomArtController {
   /**
    * POST /api/custom-art/jobs/:uuid/reveal-next — révèle le runner-up suivant déjà jugé
    * (instantané, gratuit). Au-delà : nouvelle génération si caps OK, sinon email requis.
+   * Accepte un champ `email` OPTIONNEL : comme POST /jobs, il est attaché à la session
+   * AVANT le contrôle des caps — débloque ainsi 'email_required' aussi quand le cap est
+   * touché sur ce chemin (clic « nouvelle version »), pas seulement sur POST /jobs.
    */
   public async revealNext(ctx: HttpContextContract) {
-    const { params, response } = ctx
+    const { params, request, response } = ctx
     response.header('Cache-Control', 'no-store')
 
     const job = await this.findJob(params.uuid)
@@ -614,7 +639,10 @@ export default class CustomArtController {
       }
     }
 
-    // 2) Plus de runner-up : nouvelle génération si les caps le permettent
+    // 2) Plus de runner-up : nouvelle génération si les caps le permettent.
+    // E-mail éventuellement fourni ICI aussi (déblocage du cap sur le chemin « nouvelle
+    // version ») — attaché AVANT checkCaps, exactement comme create().
+    const justUnlocked = await this.attachEmailIfMissing(session, request.input('email'))
     const capError = await this.checkCaps(session)
     if (capError) {
       return response.status(429).json(capError)
@@ -665,6 +693,13 @@ export default class CustomArtController {
       revealedCount: 0,
       round: 1,
     })
+
+    // Confirmation de déblocage si l'e-mail vient d'être posé sur ce chemin (cf. create()).
+    if (justUnlocked) {
+      void new UnlockMailer()
+        .send({ email: session.email as string, jobUuid: newUuid })
+        .catch(() => {})
+    }
 
     Logger.info('custom-art reveal-next -> nouveau job uuid=%s (depuis %s)', newUuid, job.uuid)
     return { success: true, data: { jobId: newUuid, status: 'pending' } }
@@ -924,6 +959,31 @@ export default class CustomArtController {
     return session
   }
 
+  /**
+   * Attache l'e-mail fourni à la session SI elle n'en a pas encore (premier e-mail =
+   * définitif, même politique que save()). C'est ce qui lève le cap anonyme (2 -> 5
+   * essais/jour) au prochain checkCaps, puisque le seuil dépend de `session.email`.
+   *
+   * Renvoie true UNIQUEMENT au PREMIER e-mail posé sur la session (le moment du
+   * « déblocage ») — l'appelant déclenche alors l'e-mail de confirmation (UnlockMailer).
+   *
+   * Tolérant : `rawEmail` peut être non validé (reveal-next n'a pas de validator) — on
+   * vérifie une forme minimale et on no-op sinon (jamais de throw, jamais d'écrasement).
+   */
+  private async attachEmailIfMissing(
+    session: CustomArtSession,
+    rawEmail: unknown
+  ): Promise<boolean> {
+    if (session.email) return false
+    if (!rawEmail || typeof rawEmail !== 'string') return false
+    const normalized = rawEmail.trim().toLowerCase()
+    if (normalized.length > 191 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) return false
+    session.email = normalized
+    await session.save()
+    Logger.info('custom-art e-mail attaché session=%s (déblocage cap anonyme)', session.id)
+    return true
+  }
+
   /** Hash SHA-256 salé (APP_KEY) de l'IP : caps anti-abus sans stocker l'IP en clair. */
   private hashIp(ip: string): string {
     return createHash('sha256')
@@ -938,7 +998,7 @@ export default class CustomArtController {
    */
   private async checkCaps(
     session: CustomArtSession
-  ): Promise<{ success: false; code: string; message: string } | null> {
+  ): Promise<{ success: false; code: string; message: string; token: string } | null> {
     const sinceSql = DateTime.now().startOf('day').toSQL({ includeOffset: false }) as string
 
     // Essais du jour pour la session ET pour l'IP (le plus restrictif gagne)
@@ -959,19 +1019,39 @@ export default class CustomArtController {
 
     const used = Math.max(sessionCount, ipCount)
 
+    // Observabilité (décision Walid 2026-06-24, Q6) : AUCUNE décision de cap n'était loggée
+    // -> impossible de voir dans les logs app pourquoi une relance était refusée. On logge
+    // désormais chaque cap (sans PII : `hasEmail` booléen, pas l'adresse).
     if (!session.email && used >= CAP_ANON_PER_DAY) {
+      Logger.info(
+        'custom-art cap=email_required session=%s used=%s (sess=%s ip=%s) hasEmail=false',
+        session.id,
+        used,
+        sessionCount,
+        ipCount
+      )
       return {
         success: false,
         code: 'email_required',
         message:
           'Tu as utilisé tes essais découverte du jour. Laisse ton email pour continuer (et garder tes créations).',
+        token: session.sessionToken,
       }
     }
     if (used >= CAP_EMAIL_PER_DAY) {
+      Logger.info(
+        'custom-art cap=daily_cap session=%s used=%s (sess=%s ip=%s) hasEmail=%s',
+        session.id,
+        used,
+        sessionCount,
+        ipCount,
+        Boolean(session.email)
+      )
       return {
         success: false,
         code: 'daily_cap',
         message: 'Tu as atteint la limite d’essais du jour. Reviens demain !',
+        token: session.sessionToken,
       }
     }
 
@@ -993,6 +1073,7 @@ export default class CustomArtController {
         code: 'high_traffic',
         message:
           'Forte affluence en ce moment : le studio reprend très vite. Réessaie un peu plus tard.',
+        token: session.sessionToken,
       }
     }
 
