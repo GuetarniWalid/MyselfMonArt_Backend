@@ -87,8 +87,9 @@ const MANUAL_REVIEW_MESSAGE =
  *                        Access-Control-Allow-Origin posé pour le WebGL du thème).
  *                        `candidate` = navigateur de versions du lot (compteur « rank/total »
  *                        côté studio) : `rank` 1-based du candidat servi (meilleur = 1),
- *                        `total` = candidats du lot (tous déjà rendus/jugés, révélables
- *                        gratuitement), `hasMore` = reste-t-il un runner-up à révéler.
+ *                        `total` = candidats VALIDÉS par le juge (pass) du lot, tous déjà
+ *                        rendus et révélables gratuitement ; `hasMore` = reste-t-il un
+ *                        runner-up VALIDÉ à révéler (false = dernier validé).
  *     'failed'        -> { status, message }   (échec technique, essai non décompté)
  *     'manual_review' -> { status, message }   (fallback artiste §0.15 : écran
  *                        « Faire réaliser par un artiste », essai non décompté)
@@ -103,8 +104,8 @@ const MANUAL_REVIEW_MESSAGE =
  *   out : data = { preview, revealed, remainingReveals,
  *                  candidate: { rank, total, hasMore } }        (runner-up instantané)
  *      ou data = { jobId, status: 'pending' }                  (nouvelle génération)
- *   `candidate` = même bloc qu'en 'ready' : `rank` du runner-up servi, `total` du lot,
- *   `hasMore:false` => dernier candidat (le prochain reveal-next = génération payante).
+ *   `candidate` = même bloc qu'en 'ready' : `rank` du runner-up servi, `total` des candidats
+ *   VALIDÉS, `hasMore:false` => dernier validé (le prochain reveal-next = génération payante).
  *
  * POST /api/custom-art/jobs/:uuid/save  { email }  (session propriétaire requise)
  *   out : data = { sent: boolean, alreadySent?: true }
@@ -387,8 +388,8 @@ export default class CustomArtController {
         // URL proxifiée backend (en-tête ACAO) : exigée par le visualiseur WebGL du thème
         preview: chosen ? this.previewUrl(job, chosen) : null,
         revealed: job.revealedCount,
-        // Runner-ups déjà jugés, révélables instantanément via reveal-next
-        remainingReveals: Math.max(0, candidates.length - job.revealedCount),
+        // Runner-ups VALIDÉS déjà jugés, révélables instantanément via reveal-next
+        remainingReveals: Math.max(0, this.revealableCount(job) - job.revealedCount),
         // Navigateur de versions (compteur « rank/total » du studio) — cf. candidateMeta()
         candidate: this.candidateMeta(job, chosen),
         playerName: job.playerName,
@@ -485,8 +486,8 @@ export default class CustomArtController {
         // URL proxifiée backend (en-tête ACAO) : même helper que show(), texture WebGL OK
         preview,
         revealed: job.revealedCount,
-        // Runner-ups déjà jugés, révélables instantanément via reveal-next (session valide)
-        remainingReveals: Math.max(0, candidates.length - job.revealedCount),
+        // Runner-ups VALIDÉS déjà jugés, révélables instantanément via reveal-next (session valide)
+        remainingReveals: Math.max(0, this.revealableCount(job) - job.revealedCount),
         // Navigateur de versions : le studio rétablit le compteur « rank/total » à la reprise
         candidate: this.candidateMeta(job, chosen),
         playerName: job.playerName,
@@ -573,11 +574,15 @@ export default class CustomArtController {
 
     const candidates = job.candidates || []
     const ranked = [...candidates].sort((a, b) => a.rank - b.rank)
+    // On ne fait parcourir au client QUE les candidats validés par le juge (pass:true).
+    // Ils trient EN TÊTE (Worker.rankCandidates) -> ce sont ranked[0..revealable-1] ; au-delà
+    // (versions recalées) on ne révèle plus : le prochain clic = génération payante.
+    const revealable = this.revealableCount(job)
 
-    // 1) Runner-up déjà jugé disponible -> révélation instantanée.
+    // 1) Runner-up VALIDÉ déjà jugé disponible -> révélation instantanée.
     // Verrou optimiste sur revealed_count : deux appels concurrents (double-clic) ne
     // révèlent pas deux fois le même runner-up ; le perdant reçoit 409.
-    if (job.revealedCount < ranked.length) {
+    if (job.revealedCount < revealable) {
       const next = ranked[job.revealedCount]
       const revealed = job.revealedCount + 1
       const updated = affectedRows(
@@ -601,9 +606,9 @@ export default class CustomArtController {
           // URL proxifiée backend (ACAO) — même contrat que GET /jobs/:uuid
           preview: this.previewUrl(job, next),
           revealed,
-          remainingReveals: Math.max(0, candidates.length - revealed),
+          remainingReveals: Math.max(0, revealable - revealed),
           // Même bloc qu'en 'ready' : `next.rank` = rang du runner-up servi, `hasMore:false`
-          // au dernier candidat (le prochain clic = génération payante).
+          // au dernier VALIDÉ (le prochain clic = génération payante).
           candidate: this.candidateMeta(job, next),
         },
       }
@@ -829,22 +834,43 @@ export default class CustomArtController {
   }
 
   /**
+   * Candidats PARCOURABLES par le client = uniquement ceux validés par le juge (`pass:true`).
+   * Décision Walid (suivi du contrat candidate) : on ne fait jamais parcourir gratuitement
+   * une version recalée par le juge. Les validés trient EN TÊTE (Worker.rankCandidates : pass
+   * d'abord), donc ils occupent les rangs 1..N_validés de façon CONTIGUË -> leurs aperçus
+   * sont servis en /preview/0..N_validés-1 (sans trou) et l'impression par rang reste
+   * cohérente avec le `_version_rank` que le front dérive de l'URL (rank = N+1). Aucun
+   * ré-index nécessaire. Toujours >= 1 à l'état ready (le job ne passe ready que si le
+   * meilleur candidat passe, ou via un résultat artiste pass:true).
+   */
+  private revealableCount(job: CustomArtJob): number {
+    return (job.candidates || []).filter((c) => c.pass).length
+  }
+
+  /**
    * Bloc `candidate` du contrat studio (navigateur de versions « rank/total »). Dérivé,
-   * jamais persisté : `total` = nombre de candidats du lot (= base de `remainingReveals`,
-   * tous déjà rendus/jugés et révélables gratuitement via reveal-next) ; `rank` = rang
-   * 1-based du candidat servi (= `served.rank`, identité publique aussi portée par l'URL
-   * d'aperçu `/preview/{rank-1}`) ; `hasMore` = reste-t-il un runner-up à révéler.
+   * jamais persisté, et RESTREINT aux candidats validés (cf. revealableCount) :
+   *  - `total` = nombre de candidats validés du lot (= base de `remainingReveals`) ;
+   *  - `rank`  = position 1-based de `served` dans la séquence des validés (best-first) :
+   *    = `served.rank` pour un validé (validés contigus en tête) ; un éventuel candidat NON
+   *    validé (job legacy révélé au-delà du dernier validé avant ce déploiement) est borné à
+   *    `total` (tous les validés le précèdent) ;
+   *  - `hasMore` = reste-t-il un validé non encore servi (false = dernier -> le prochain
+   *    reveal-next déclenche la génération payante).
    *
    * Stable pour un jobId donné : à `ready`, `job.candidates` est figé (les rounds de
-   * rattrapage du worker se jouent AVANT le passage en ready), donc `total` ne bouge plus.
-   * Épuiser le lot crée un NOUVEAU job (autre `total`), c'est la seule action payante.
+   * rattrapage du worker se jouent AVANT le passage en ready). Épuiser les validés crée un
+   * NOUVEAU job (autre `total`), c'est la seule action payante.
    */
   private candidateMeta(
     job: CustomArtJob,
     served: CustomArtCandidate | null
   ): { rank: number; total: number; hasMore: boolean } {
-    const total = (job.candidates || []).length
-    const rank = served && served.rank > 0 ? served.rank : 0
+    const candidates = job.candidates || []
+    const total = this.revealableCount(job)
+    // Position de `served` parmi les validés (rang croissant) : = served.rank pour un validé
+    // (validés contigus en tête), = total pour un non-validé (tous les validés le précèdent).
+    const rank = served ? candidates.filter((c) => c.pass && c.rank <= served.rank).length : 0
     return { rank, total, hasMore: rank > 0 && rank < total }
   }
 

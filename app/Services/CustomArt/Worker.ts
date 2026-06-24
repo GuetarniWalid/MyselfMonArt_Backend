@@ -640,6 +640,11 @@ export default class CustomArtWorker {
    * parfaite, on révèle d'abord le candidat sans faute de flocage (observé en réel :
    * « WALÍD » classé devant « WALID » à score et suspicion identiques).
    * Public : réutilisé par la file admin (upload d'un résultat artiste).
+   *
+   * ⚠️ Le tri « pass d'abord » est CONTRACTUEL pour le studio : il garantit que les K
+   * candidats validés occupent les rangs 1..K de façon CONTIGUË (aperçus /preview/0..K-1),
+   * ce sur quoi reposent CustomArtController.revealableCount / candidateMeta (le client ne
+   * parcourt que les validés) et l'impression par rang. Ne pas entrelacer pass/non-pass.
    */
   public static rankCandidates(candidates: CustomArtCandidate[]): CustomArtCandidate | null {
     if (candidates.length === 0) return null
