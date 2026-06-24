@@ -81,9 +81,14 @@ const MANUAL_REVIEW_MESSAGE =
  *   out : data.status =
  *     'processing'    -> { status, step: 'pending'|'generating'|'judging', progress }
  *     'ready'         -> { status, progress: 100, preview, revealed, remainingReveals,
+ *                          candidate: { rank, total, hasMore },
  *                          playerName, playerNumber, teamId, format, frame, mockups }
  *                        `preview` = URL backend /jobs/:uuid/preview/:n (en-tête
- *                        Access-Control-Allow-Origin posé pour le WebGL du thème)
+ *                        Access-Control-Allow-Origin posé pour le WebGL du thème).
+ *                        `candidate` = navigateur de versions du lot (compteur « rank/total »
+ *                        côté studio) : `rank` 1-based du candidat servi (meilleur = 1),
+ *                        `total` = candidats du lot (tous déjà rendus/jugés, révélables
+ *                        gratuitement), `hasMore` = reste-t-il un runner-up à révéler.
  *     'failed'        -> { status, message }   (échec technique, essai non décompté)
  *     'manual_review' -> { status, message }   (fallback artiste §0.15 : écran
  *                        « Faire réaliser par un artiste », essai non décompté)
@@ -95,8 +100,11 @@ const MANUAL_REVIEW_MESSAGE =
  *   404 si le candidat n'est pas encore révélé.
  *
  * POST /api/custom-art/jobs/:uuid/reveal-next   (session propriétaire requise)
- *   out : data = { preview, revealed, remainingReveals }       (runner-up instantané)
+ *   out : data = { preview, revealed, remainingReveals,
+ *                  candidate: { rank, total, hasMore } }        (runner-up instantané)
  *      ou data = { jobId, status: 'pending' }                  (nouvelle génération)
+ *   `candidate` = même bloc qu'en 'ready' : `rank` du runner-up servi, `total` du lot,
+ *   `hasMore:false` => dernier candidat (le prochain reveal-next = génération payante).
  *
  * POST /api/custom-art/jobs/:uuid/save  { email }  (session propriétaire requise)
  *   out : data = { sent: boolean, alreadySent?: true }
@@ -381,6 +389,8 @@ export default class CustomArtController {
         revealed: job.revealedCount,
         // Runner-ups déjà jugés, révélables instantanément via reveal-next
         remainingReveals: Math.max(0, candidates.length - job.revealedCount),
+        // Navigateur de versions (compteur « rank/total » du studio) — cf. candidateMeta()
+        candidate: this.candidateMeta(job, chosen),
         playerName: job.playerName,
         playerNumber: job.playerNumber,
         teamId: job.teamId,
@@ -477,6 +487,8 @@ export default class CustomArtController {
         revealed: job.revealedCount,
         // Runner-ups déjà jugés, révélables instantanément via reveal-next (session valide)
         remainingReveals: Math.max(0, candidates.length - job.revealedCount),
+        // Navigateur de versions : le studio rétablit le compteur « rank/total » à la reprise
+        candidate: this.candidateMeta(job, chosen),
         playerName: job.playerName,
         playerNumber: job.playerNumber,
         teamId: job.teamId,
@@ -590,6 +602,9 @@ export default class CustomArtController {
           preview: this.previewUrl(job, next),
           revealed,
           remainingReveals: Math.max(0, candidates.length - revealed),
+          // Même bloc qu'en 'ready' : `next.rank` = rang du runner-up servi, `hasMore:false`
+          // au dernier candidat (le prochain clic = génération payante).
+          candidate: this.candidateMeta(job, next),
         },
       }
     }
@@ -811,6 +826,26 @@ export default class CustomArtController {
   private previewUrl(job: CustomArtJob, candidate: CustomArtCandidate): string | null {
     if (!candidate || !candidate.rank || candidate.rank < 1) return null
     return `${Env.get('BACKEND_URL')}/api/custom-art/jobs/${job.uuid}/preview/${candidate.rank - 1}`
+  }
+
+  /**
+   * Bloc `candidate` du contrat studio (navigateur de versions « rank/total »). Dérivé,
+   * jamais persisté : `total` = nombre de candidats du lot (= base de `remainingReveals`,
+   * tous déjà rendus/jugés et révélables gratuitement via reveal-next) ; `rank` = rang
+   * 1-based du candidat servi (= `served.rank`, identité publique aussi portée par l'URL
+   * d'aperçu `/preview/{rank-1}`) ; `hasMore` = reste-t-il un runner-up à révéler.
+   *
+   * Stable pour un jobId donné : à `ready`, `job.candidates` est figé (les rounds de
+   * rattrapage du worker se jouent AVANT le passage en ready), donc `total` ne bouge plus.
+   * Épuiser le lot crée un NOUVEAU job (autre `total`), c'est la seule action payante.
+   */
+  private candidateMeta(
+    job: CustomArtJob,
+    served: CustomArtCandidate | null
+  ): { rank: number; total: number; hasMore: boolean } {
+    const total = (job.candidates || []).length
+    const rank = served && served.rank > 0 ? served.rank : 0
+    return { rank, total, hasMore: rank > 0 && rank < total }
   }
 
   /** Progression indicative pour la barre storytelling du front. */
