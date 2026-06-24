@@ -517,10 +517,10 @@ export default class CustomArtWorker {
     // tué par l'OOM-killer -> ce candidat non-pass (rattrapé ci-dessous), le worker survit.
     // Le classement (best-of-3) reste identique : on attend les N verdicts avant de ranger.
     const concurrency = Number(Env.get('CUSTOM_ART_JUDGE_CONCURRENCY')) || JUDGE_CONCURRENCY_DEFAULT
-    const judged: CustomArtCandidate[] = await CustomArtWorker.mapWithConcurrency(
+    const judged = await CustomArtWorker.mapWithConcurrency(
       produced,
       concurrency,
-      async (item, i) => {
+      async (item, i): Promise<CustomArtCandidate | null> => {
         const { result, provider } = item
         const buffer = result.imageBuffer as Buffer
         const index = existing.length + i
@@ -563,13 +563,26 @@ export default class CustomArtWorker {
           }
         }
 
+        // Candidat non jugeable : le juge enfant a crashé (SIGSEGV/OOM/timeout) et n'a
+        // produit AUCUN aperçu. Il est non-pass (classé dernier) et son /preview/{rank-1}
+        // renverrait un 404 (fichier jamais uploadé). On l'ÉCARTE du lot : ainsi TOUT
+        // candidat de job.candidates est réellement affichable, et `total` /
+        // `remainingReveals` / reveal-next / le fichier d'impression ne pointent QUE vers
+        // des aperçus existants (pas de flèche « version suivante » cassée côté studio).
+        if (!preview) {
+          Logger.warn(
+            'custom-art uuid=%s candidat #%s écarté (juge KO, aucun aperçu)',
+            job.uuid,
+            index
+          )
+          return null
+        }
+
         // HD privé (jamais d'URL publique avant achat) + aperçu réduit public.
         const path = `custom-art/jobs/${job.uuid}/candidate-${index}.jpg`
         const previewPath = `custom-art/jobs/${job.uuid}/preview-${index}.jpg`
         await CustomArtStorage.put(path, buffer, { isPublic: false })
-        if (preview) {
-          await CustomArtStorage.put(previewPath, preview, { isPublic: true })
-        }
+        await CustomArtStorage.put(previewPath, preview, { isPublic: true })
 
         const candidate: CustomArtCandidate = {
           path,
@@ -588,7 +601,10 @@ export default class CustomArtWorker {
       }
     )
 
-    job.candidates = [...existing, ...judged]
+    // Les candidats sans aperçu (juge enfant KO) ont été écartés (null) : on ne conserve
+    // que les candidats réellement servables. rankCandidates (appelé ensuite par process)
+    // recalcule des rangs denses 1..N sur cet ensemble nettoyé.
+    job.candidates = [...existing, ...judged.filter((c): c is CustomArtCandidate => c !== null)]
   }
 
   /**
