@@ -443,12 +443,17 @@ export default class WebhooksController {
 
   /**
    * Rang (1-based, CustomArtCandidate.rank) de la version affichée à l'ajout au panier
-   * (navigateur de versions du studio). Deux sources, dans l'ordre :
-   *   1) property explicite `_version_rank` (1-based) — contrat front recommandé ;
-   *   2) repli : l'URL d'aperçu portée par la ligne (`.../jobs/<uuid>/preview/<n>` du MÊME
-   *      job), d'où rank = n + 1 — fonctionne même sans la property explicite.
-   * Le rang est VALIDÉ contre les candidats du job ; tout rang absent/invalide => null
-   * (repli sur job.chosenIndex côté impression, cf. chosenCandidate).
+   * (navigateur de versions du studio). Deux sources :
+   *   - property explicite `_version_rank` (1-based) — contrat front ;
+   *   - l'URL d'aperçu de la ligne (`.../jobs/<uuid>/preview/<n>` du MÊME job) => rank=n+1,
+   *     soit l'image LITTÉRALEMENT affichée — source de secours ET garde-fou.
+   *
+   * Si les deux sont présentes mais DIVERGENT, on tranche pour l'URL (image réellement
+   * vue par le client) et on le signale : c'est le filet anti off-by-one du front pendant
+   * qu'il câble `_version_rank` (envoyer N au lieu de N+1 imprimerait sinon la version
+   * voisine, en silence). Sinon on prend ce qui est disponible. Rang VALIDÉ contre les
+   * candidats du job ; tout rang absent/invalide => null (repli chosenIndex, cf.
+   * chosenCandidate).
    */
   private extractCandidateRank(lineItem: any, job: CustomArtJob): number | null {
     const properties: any[] = Array.isArray(lineItem?.properties) ? lineItem.properties : []
@@ -456,25 +461,38 @@ export default class WebhooksController {
     const isValid = (rank: number) =>
       Number.isInteger(rank) && rank >= 1 && candidates.some((c) => c.rank === rank)
 
-    // 1) Property explicite _version_rank (1-based) — contrat front recommandé
-    const rankProp = properties.find((p) => p?.name === '_version_rank')
-    if (rankProp) {
-      const rank = Number(rankProp.value)
-      if (isValid(rank)) return rank
-    }
-
-    // 2) Repli : rang dérivé de l'URL d'aperçu de CE job (`/preview/<n>` => rank = n + 1)
+    // Rang dérivé de l'URL d'aperçu de CE job (`/preview/<n>` => rank = n + 1)
+    let urlRank: number | null = null
     const re = new RegExp(`/api/custom-art/jobs/${job.uuid}/preview/(\\d+)`, 'i')
     for (const p of properties) {
       if (typeof p?.value !== 'string') continue
       const m = p.value.match(re)
       if (m) {
-        const rank = Number(m[1]) + 1
-        if (isValid(rank)) return rank
+        const r = Number(m[1]) + 1
+        if (isValid(r)) {
+          urlRank = r
+          break
+        }
       }
     }
 
-    return null
+    // Property explicite _version_rank (1-based)
+    let propRank: number | null = null
+    const rankProp = properties.find((p) => p?.name === '_version_rank')
+    if (rankProp) {
+      const r = Number(rankProp.value)
+      if (isValid(r)) propRank = r
+    }
+
+    // Désaccord => probable off-by-one front : on retient l'URL (image affichée) + alerte
+    if (urlRank !== null && propRank !== null && urlRank !== propRank) {
+      console.warn(
+        `⚠️ orders/paid job ${job.uuid}: _version_rank=${propRank} ≠ rang URL aperçu=${urlRank} — on retient l'URL (image affichée). Vérifier le 1-based côté front.`
+      )
+      return urlRank
+    }
+
+    return propRank ?? urlRank
   }
 
   /**
