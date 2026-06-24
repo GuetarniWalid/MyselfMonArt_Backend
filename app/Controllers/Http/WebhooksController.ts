@@ -451,25 +451,37 @@ export default class WebhooksController {
    * Si les deux sont présentes mais DIVERGENT, on tranche pour l'URL (image réellement
    * vue par le client) et on le signale : c'est le filet anti off-by-one du front pendant
    * qu'il câble `_version_rank` (envoyer N au lieu de N+1 imprimerait sinon la version
-   * voisine, en silence). Sinon on prend ce qui est disponible. Rang VALIDÉ contre les
-   * candidats du job ; tout rang absent/invalide => null (repli chosenIndex, cf.
-   * chosenCandidate).
+   * voisine, en silence). Sinon on prend ce qui est disponible.
+   *
+   * ⚠️ Un rang n'est retenu QUE s'il désigne un candidat VALIDÉ par le juge (`pass:true`) —
+   * décision Walid, défense en profondeur sur le chemin payé. Si un rang est indiqué mais ne
+   * pointe AUCUN validé (rang forgé, ou ligne panier PÉRIMÉE d'avant le déploiement « validés
+   * seulement »), repli SÛR sur le meilleur candidat validé (rang 1) + log — jamais d'erreur,
+   * jamais une version recalée. Aucune info de version sur la ligne (vieux panier) => null
+   * (repli chosenIndex, lui aussi protégé contre un non-validé, cf. chosenCandidate).
    */
   private extractCandidateRank(lineItem: any, job: CustomArtJob): number | null {
     const properties: any[] = Array.isArray(lineItem?.properties) ? lineItem.properties : []
     const candidates = job.candidates || []
-    const isValid = (rank: number) =>
-      Number.isInteger(rank) && rank >= 1 && candidates.some((c) => c.rank === rank)
+    // Rang retenu UNIQUEMENT s'il désigne un candidat validé (pass:true).
+    const isValidated = (rank: number) =>
+      Number.isInteger(rank) && rank >= 1 && candidates.some((c) => c.rank === rank && c.pass)
+    // Repli sûr : meilleur candidat validé (plus petit rang parmi les pass = rang 1).
+    const bestValidatedRank =
+      candidates.filter((c) => c.pass).sort((a, b) => a.rank - b.rank)[0]?.rank ?? null
+
+    const re = new RegExp(`/api/custom-art/jobs/${job.uuid}/preview/(\\d+)`, 'i')
 
     // Rang dérivé de l'URL d'aperçu de CE job (`/preview/<n>` => rank = n + 1)
     let urlRank: number | null = null
-    const re = new RegExp(`/api/custom-art/jobs/${job.uuid}/preview/(\\d+)`, 'i')
+    let urlHintPresent = false
     for (const p of properties) {
       if (typeof p?.value !== 'string') continue
       const m = p.value.match(re)
       if (m) {
+        urlHintPresent = true
         const r = Number(m[1]) + 1
-        if (isValid(r)) {
+        if (isValidated(r)) {
           urlRank = r
           break
         }
@@ -479,12 +491,14 @@ export default class WebhooksController {
     // Property explicite _version_rank (1-based)
     let propRank: number | null = null
     const rankProp = properties.find((p) => p?.name === '_version_rank')
+    const propHintPresent = Boolean(rankProp)
     if (rankProp) {
       const r = Number(rankProp.value)
-      if (isValid(r)) propRank = r
+      if (isValidated(r)) propRank = r
     }
 
-    // Désaccord => probable off-by-one front : on retient l'URL (image affichée) + alerte
+    // Désaccord entre deux rangs VALIDÉS => probable off-by-one front : on retient l'URL
+    // (image réellement affichée) + alerte.
     if (urlRank !== null && propRank !== null && urlRank !== propRank) {
       console.warn(
         `⚠️ orders/paid job ${job.uuid}: _version_rank=${propRank} ≠ rang URL aperçu=${urlRank} — on retient l'URL (image affichée). Vérifier le 1-based côté front.`
@@ -492,7 +506,22 @@ export default class WebhooksController {
       return urlRank
     }
 
-    return propRank ?? urlRank
+    const resolved = propRank ?? urlRank
+    if (resolved !== null) return resolved
+
+    // Un rang était indiqué (panier périmé d'avant « validés seulement », ou rang forgé) mais
+    // ne pointe AUCUN candidat validé : repli SÛR sur le meilleur validé (jamais d'erreur,
+    // jamais un recalé). Logué pour suivre l'arrivée éventuelle de vieilles lignes panier.
+    if ((propHintPresent || urlHintPresent) && bestValidatedRank !== null) {
+      console.warn(
+        `⚠️ orders/paid job ${job.uuid}: _version_rank non-validé → repli best (rang ${bestValidatedRank})`
+      )
+      return bestValidatedRank
+    }
+
+    // Aucune info de version sur la ligne (vieux panier sans property) : null => chosenIndex
+    // validé côté chosenCandidate (lui-même protégé contre un dernier révélé non validé).
+    return null
   }
 
   /**
