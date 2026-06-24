@@ -12,11 +12,12 @@ services:
       db:
         condition: service_healthy
     restart: always
-    # 512 Mo (était 256) : marge pour les traitements d'image (libvips/sharp) du juge
-    # custom-art. À 256 Mo le conteneur était déjà à ~80 % à vide -> dépassement mémoire
-    # et segfault natif pendant le jugement (incident 13/06). Couplé à 1 instance PM2.
-    mem_limit: 512m
-    memswap_limit: 768m
+    # 768 Mo (était 512, 256 à l'origine) : marge pour juger les 3 candidats custom-art EN
+    # PARALLÈLE (3 process enfants juge concurrents, chacun node+sharp+images). La marge a
+    # été libérée en supprimant le stack n8n du VPS. À 256 Mo le conteneur segfaultait au
+    # jugement (OOM, incident 13/06) ; à 512 Mo le jugement était sérialisé. Couplé à 1 PM2.
+    mem_limit: 768m
+    memswap_limit: 1024m
 
   nginx:
     image: ${DOCKERHUB_USERNAME}/nginx:latest

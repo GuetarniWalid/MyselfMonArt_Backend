@@ -42,6 +42,11 @@ const MAX_RECOVERIES = 1
 // Plafond de coût quotidien (€) si CUSTOM_ART_DAILY_COST_CAP_EUR absent — disjoncteur du
 // worker (en plus du cap à la création de job dans le contrôleur).
 const DAILY_COST_CAP_FALLBACK = 30
+// Jugements d'un round menés EN PARALLÈLE, chacun dans un process enfant isolé. Plafond de
+// concurrence (défaut 3 = les 3 candidats jugés ensemble) : il borne la MÉMOIRE (N enfants
+// node+sharp simultanés dans le conteneur app). Surchargeable par CUSTOM_ART_JUDGE_CONCURRENCY
+// pour redescendre sans redéploiement si le conteneur tangente l'OOM.
+const JUDGE_CONCURRENCY_DEFAULT = 3
 
 interface JobInputs {
   photoBuffer: Buffer
@@ -503,15 +508,20 @@ export default class CustomArtWorker {
     const judge = new JudgeRunner()
     const existing = job.candidates || []
 
-    // Jugement SÉQUENTIEL (un candidat à la fois). En parallèle (Promise.all), les 3
-    // jugements lançaient ~3 pipelines libvips/sharp concurrentes (resize + 4 crops
-    // chacune) dans le process applicatif -> SIGSEGV natif non rattrapable (incident
-    // 13/06, le bench standalone les enchaînait et ne plantait pas). En série : une seule
-    // pipeline à la fois, stable. Quelques dizaines de secondes de plus par job (acceptable).
-    const judged: CustomArtCandidate[] = []
-    for (let i = 0; i < produced.length; i++) {
-      {
-        const { result, provider } = produced[i]
+    // Jugement PARALLÈLE plafonné. Chaque jugement tourne dans un PROCESS ENFANT isolé
+    // (JudgeRunner -> judge-child.js, sharp en concurrency(1)) : le SIGSEGV du 13/06 venait
+    // de pipelines libvips concurrentes DANS LE PROCESS PRINCIPAL — ici le worker ne fait
+    // AUCUN sharp, et chaque enfant est indépendant. Le seul coût de la concurrence est la
+    // MÉMOIRE (N enfants node+images), d'où le plafond CUSTOM_ART_JUDGE_CONCURRENCY et le
+    // conteneur app remonté à 768 Mo (marge libérée par la suppression du n8n). Un enfant
+    // tué par l'OOM-killer -> ce candidat non-pass (rattrapé ci-dessous), le worker survit.
+    // Le classement (best-of-3) reste identique : on attend les N verdicts avant de ranger.
+    const concurrency = Number(Env.get('CUSTOM_ART_JUDGE_CONCURRENCY')) || JUDGE_CONCURRENCY_DEFAULT
+    const judged: CustomArtCandidate[] = await CustomArtWorker.mapWithConcurrency(
+      produced,
+      concurrency,
+      async (item, i) => {
+        const { result, provider } = item
         const buffer = result.imageBuffer as Buffer
         const index = existing.length + i
 
@@ -540,7 +550,7 @@ export default class CustomArtWorker {
             job.addCost('judge', JUDGE_EST_COST_EUR, 'claude')
           } catch (error) {
             // Juge enfant crashé/indisponible : candidat conservé mais non-pass (sécurité
-            // qualité). Le worker survit (process enfant isolé) et passe au candidat suivant.
+            // qualité). Le worker survit (process enfant isolé) — les autres continuent.
             Logger.error('custom-art judge KO uuid=%s: %s', job.uuid, (error as any)?.message)
             verdict = {
               scores: {},
@@ -574,11 +584,36 @@ export default class CustomArtWorker {
           verdicts: { ...verdict.verdicts, reason: verdict.reason },
           rank: 0, // recalculé sur l'ensemble juste après
         }
-        judged.push(candidate)
+        return candidate
       }
-    }
+    )
 
     job.candidates = [...existing, ...judged]
+  }
+
+  /**
+   * map parallèle à concurrence BORNÉE, qui préserve l'ordre des résultats. Lance au plus
+   * `limit` exécutions de `fn` à la fois (pool de runners qui tirent le prochain index) :
+   * sert à juger les candidats en parallèle sans dépasser un nombre fixe de process enfants
+   * simultanés (garde-fou mémoire). Une exécution qui rejette propage (rattrapé par fn).
+   */
+  private static async mapWithConcurrency<T, R>(
+    items: T[],
+    limit: number,
+    fn: (item: T, index: number) => Promise<R>
+  ): Promise<R[]> {
+    const results = new Array<R>(items.length)
+    let next = 0
+    const poolSize = Math.min(Math.max(1, Math.floor(limit) || 1), items.length)
+    const runners = Array.from({ length: poolSize }, async () => {
+      while (true) {
+        const i = next++
+        if (i >= items.length) return
+        results[i] = await fn(items[i], i)
+      }
+    })
+    await Promise.all(runners)
+    return results
   }
 
   /**
