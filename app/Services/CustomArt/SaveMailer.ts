@@ -1,6 +1,7 @@
 import Env from '@ioc:Adonis/Core/Env'
 import Logger from '@ioc:Adonis/Core/Logger'
 import axios from 'axios'
+import { buildCustomArtResumeUrl } from 'App/Services/CustomArt/resumeUrl'
 
 // SMTP sortant bloqué sur le droplet DO -> envoi via l'API HTTPS Resend
 // (même canal que EscalationMailer).
@@ -22,7 +23,7 @@ export default class SaveMailer {
       return false
     }
 
-    const resumeUrl = this.buildResumeUrl(input.jobUuid)
+    const resumeUrl = buildCustomArtResumeUrl(input.jobUuid)
 
     const text = [
       'Bonjour,',
@@ -74,14 +75,5 @@ export default class SaveMailer {
       Logger.error('custom-art save-mail échec: %s', (error as any)?.message || error)
       return false
     }
-  }
-
-  /**
-   * Lien de reprise vers le studio sur la boutique. Le chemin exact de la fiche
-   * personnalisée sera figé en M6/M8 — le paramètre ca_job est le contrat.
-   */
-  private buildResumeUrl(jobUuid: string): string {
-    const base = Env.get('STOREFRONT_URL') || Env.get('SHOPIFY_SHOP_URL')
-    return `${base}/products/poster-personnalise-foot?ca_job=${jobUuid}`
   }
 }

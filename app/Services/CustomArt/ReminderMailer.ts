@@ -2,6 +2,7 @@ import Env from '@ioc:Adonis/Core/Env'
 import Logger from '@ioc:Adonis/Core/Logger'
 import axios from 'axios'
 import { DateTime } from 'luxon'
+import { buildCustomArtResumeUrl } from 'App/Services/CustomArt/resumeUrl'
 
 // SMTP sortant bloqué sur le droplet DO -> envoi via l'API HTTPS Resend
 // (même canal que EscalationMailer / SaveMailer / MockupsReadyMailer).
@@ -32,7 +33,7 @@ export default class ReminderMailer {
       return false
     }
 
-    const resumeUrl = this.buildResumeUrl(input.jobUuid)
+    const resumeUrl = buildCustomArtResumeUrl(input.jobUuid)
     const fathersDay = this.fathersDayLabel()
 
     const text = [
@@ -113,14 +114,5 @@ export default class ReminderMailer {
     const days = fathersDay.startOf('day').diff(now.startOf('day'), 'days').days
     if (days < 0 || days > FATHERS_DAY_WINDOW_DAYS) return null
     return fathersDay.setLocale('fr').toFormat('cccc d LLLL')
-  }
-
-  /**
-   * Lien de reprise vers le studio sur la boutique — même contrat ca_job que
-   * SaveMailer / MockupsReadyMailer.
-   */
-  private buildResumeUrl(jobUuid: string): string {
-    const base = Env.get('STOREFRONT_URL') || Env.get('SHOPIFY_SHOP_URL')
-    return `${base}/products/poster-personnalise-foot?ca_job=${jobUuid}`
   }
 }

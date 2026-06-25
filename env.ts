@@ -118,6 +118,10 @@ export default Env.rules({
   CUSTOM_ART_FAKE_IMAGES_DIR: Env.schema.string.optional(),
   // Origin public de la boutique (https://www.myselfmonart.com) pour le CORS du studio.
   STOREFRONT_URL: Env.schema.string.optional(),
+  // Handle Shopify de la fiche produit hébergeant le studio de personnalisation : cible
+  // du lien de reprise (?ca_job=) des emails. Optionnel — défaut figé dans
+  // App/Services/CustomArt/resumeUrl.ts ; à poser seulement si la fiche est renommée.
+  CUSTOM_ART_PRODUCT_HANDLE: Env.schema.string.optional(),
   // Lire l'IP client dans l'en-tête CF-Connecting-IP (chaîne Cloudflare -> nginx -> Adonis)
   // pour le throttle et les caps anti-abus, tant que nginx ne ré-injecte pas la vraie IP
   // dans X-Forwarded-For. Voir App/Services/ClientIp.
