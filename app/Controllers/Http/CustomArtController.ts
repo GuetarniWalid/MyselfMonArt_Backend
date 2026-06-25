@@ -76,8 +76,19 @@ const MANUAL_REVIEW_MESSAGE =
  *   Succès : 200 `{ success: true,  data: { ... } }`
  *   Erreur : 4xx/5xx `{ success: false, message: string, code?: string, errors?: [...] }`
  *     codes : 'not_found' | 'email_required' | 'daily_cap' | 'high_traffic'
+ *       - 'email_required' (429) : essais anonymes du jour épuisés -> le front ouvre la
+ *         boîte e-mail (l'e-mail renvoyé en POST /jobs lève le cap 2 -> 5).
+ *       - 'daily_cap'      (429) : quota du jour épuisé MÊME avec e-mail (5/5) -> message
+ *         « limite du jour atteinte, reviens demain » (PAS la boîte e-mail : on bouclerait).
+ *       - 'high_traffic'   (429) : cap COÛT global du studio atteint (pas la limite perso)
+ *         -> message « forte affluence, réessaie plus tard ».
+ *       NB : un 429 SANS `code` (et avec en-tête `Retry-After`) vient du throttle HTTP par
+ *       IP/route (App/Middleware/Throttle) = anti-rafale (10/min sur /jobs) — distinct des
+ *       caps métier ci-dessus. Brancher sur `data.code`, pas sur le seul statut 429.
  *     Les 429 de cap (email_required/daily_cap/high_traffic) renvoient AUSSI `token`
- *     (jeton de session, comme la réponse 200) : le front le renvoie en header
+ *     (jeton de session, comme la réponse 200) ET `resetsAt` (ISO 8601 avec offset =
+ *     prochain minuit Europe/Paris où le quota « du jour » se réinitialise ; sert au
+ *     « reviens demain » de 'daily_cap'). Le `token` : le front le renvoie en header
  *     'x-custom-art-session' pour conserver UNE seule session quand les cookies tiers
  *     sont bloqués (mobile) — sinon chaque tentative recrée une session et l'e-mail de
  *     déblocage se rattache à une session éphémère.
@@ -996,10 +1007,19 @@ export default class CustomArtController {
    * (« essai non décompté » — décision §0.15 pour le fallback artiste).
    * Retourne null si OK, sinon le corps de la réponse 429.
    */
-  private async checkCaps(
-    session: CustomArtSession
-  ): Promise<{ success: false; code: string; message: string; token: string } | null> {
+  private async checkCaps(session: CustomArtSession): Promise<{
+    success: false
+    code: string
+    message: string
+    token: string
+    resetsAt: string
+  } | null> {
     const sinceSql = DateTime.now().startOf('day').toSQL({ includeOffset: false }) as string
+    // Tous les caps « du jour » se réinitialisent au PROCHAIN minuit Europe/Paris (TZ du
+    // conteneur, cf. Docker/node/Dockerfile : ENV TZ=Europe/Paris). On expose cet instant en
+    // ISO 8601 (offset inclus) pour que le front affiche « reviens demain » / un compte à
+    // rebours fiable. `plus({days:1}).startOf('day')` = minuit de demain, robuste au DST.
+    const resetsAt = DateTime.now().plus({ days: 1 }).startOf('day').toISO() as string
 
     // Essais du jour pour la session ET pour l'IP (le plus restrictif gagne)
     const sessionRows = await CustomArtJob.query()
@@ -1036,6 +1056,7 @@ export default class CustomArtController {
         message:
           'Tu as utilisé tes essais découverte du jour. Laisse ton email pour continuer (et garder tes créations).',
         token: session.sessionToken,
+        resetsAt,
       }
     }
     if (used >= CAP_EMAIL_PER_DAY) {
@@ -1052,6 +1073,7 @@ export default class CustomArtController {
         code: 'daily_cap',
         message: 'Tu as atteint la limite d’essais du jour. Reviens demain !',
         token: session.sessionToken,
+        resetsAt,
       }
     }
 
@@ -1074,6 +1096,7 @@ export default class CustomArtController {
         message:
           'Forte affluence en ce moment : le studio reprend très vite. Réessaie un peu plus tard.',
         token: session.sessionToken,
+        resetsAt,
       }
     }
 
