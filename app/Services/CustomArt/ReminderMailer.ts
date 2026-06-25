@@ -3,6 +3,7 @@ import Logger from '@ioc:Adonis/Core/Logger'
 import axios from 'axios'
 import { DateTime } from 'luxon'
 import { buildCustomArtResumeUrl } from 'App/Services/CustomArt/resumeUrl'
+import { renderReminderEmail } from 'App/Services/CustomArt/emailTemplate'
 
 // SMTP sortant bloqué sur le droplet DO -> envoi via l'API HTTPS Resend
 // (même canal que EscalationMailer / SaveMailer / MockupsReadyMailer).
@@ -34,45 +35,12 @@ export default class ReminderMailer {
     }
 
     const resumeUrl = buildCustomArtResumeUrl(input.jobUuid)
-    const fathersDay = this.fathersDayLabel()
-
-    const text = [
-      'Bonjour,',
-      '',
-      `Hier, vous avez créé le tableau personnalisé de ${input.playerName} — il est toujours là, précieusement gardé, et il n'attend plus que vous.`,
-      '',
-      `Pour le retrouver et finaliser votre commande : ${resumeUrl}`,
-      '',
-      ...(fathersDay
-        ? [
-            `Pensez-y : la fête des pères, c'est le ${fathersDay}. Il est encore temps de recevoir votre tableau à la maison pour le grand jour.`,
-            '',
-          ]
-        : []),
-      'Votre création reste sauvegardée 30 jours.',
-      '',
-      'À très vite,',
-      "L'équipe MyselfMonArt",
-    ].join('\n')
-
-    const html = `<!DOCTYPE html>
-<html lang="fr"><head><meta charset="utf-8"></head>
-<body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a;line-height:1.5">
-  <h2 style="margin:0 0 8px">Votre tableau vous attend</h2>
-  <p style="margin:0 0 16px">Hier, vous avez créé le tableau personnalisé de <strong>${input.playerName}</strong> — il est toujours là, précieusement gardé, et il n'attend plus que vous.</p>
-  ${
-    input.previewUrl
-      ? `<p style="margin:0 0 16px"><img src="${input.previewUrl}" alt="Aperçu de votre création" style="max-width:320px;border-radius:8px"></p>`
-      : ''
-  }
-  <p style="margin:0 0 16px"><a href="${resumeUrl}" style="background:#1a1a1a;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none">Reprendre ma création</a></p>
-  ${
-    fathersDay
-      ? `<p style="margin:0 0 16px">Pensez-y : la fête des pères, c'est le <strong>${fathersDay}</strong>. Il est encore temps de recevoir votre tableau à la maison pour le grand jour.</p>`
-      : ''
-  }
-  <p style="margin:0;color:#666;font-size:13px">Votre création reste sauvegardée 30 jours.</p>
-</body></html>`
+    const { subject, html, text } = renderReminderEmail({
+      resumeUrl,
+      previewUrl: input.previewUrl,
+      playerName: input.playerName,
+      fathersDay: this.fathersDayLabel(),
+    })
 
     try {
       await axios.post(
@@ -80,7 +48,7 @@ export default class ReminderMailer {
         {
           from: Env.get('RESEND_FROM'),
           to: [input.email],
-          subject: 'Votre tableau vous attend',
+          subject,
           html,
           text,
         },

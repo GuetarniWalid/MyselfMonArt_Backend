@@ -2,6 +2,7 @@ import Env from '@ioc:Adonis/Core/Env'
 import Logger from '@ioc:Adonis/Core/Logger'
 import axios from 'axios'
 import { buildCustomArtResumeUrl } from 'App/Services/CustomArt/resumeUrl'
+import { renderSaveEmail } from 'App/Services/CustomArt/emailTemplate'
 
 // SMTP sortant bloqué sur le droplet DO -> envoi via l'API HTTPS Resend
 // (même canal que EscalationMailer).
@@ -9,8 +10,9 @@ const RESEND_ENDPOINT = 'https://api.resend.com/emails'
 
 /**
  * Email « Sauvegarder ma création » : lien de reprise du studio + aperçu.
- * Texte simple FR. Retourne false (sans throw) si l'envoi est impossible — la sauvegarde
- * de l'email en session reste acquise même si le mail part plus tard.
+ * Gabarit de marque partagé (App/Services/CustomArt/emailTemplate). Retourne false (sans
+ * throw) si l'envoi est impossible — la sauvegarde de l'email en session reste acquise
+ * même si le mail part plus tard.
  */
 export default class SaveMailer {
   public async send(input: {
@@ -24,33 +26,7 @@ export default class SaveMailer {
     }
 
     const resumeUrl = buildCustomArtResumeUrl(input.jobUuid)
-
-    const text = [
-      'Bonjour,',
-      '',
-      'Votre création personnalisée MyselfMonArt est bien sauvegardée.',
-      '',
-      `Pour la retrouver et finaliser votre tableau : ${resumeUrl}`,
-      '',
-      'Le lien reste valable 30 jours.',
-      '',
-      'À très vite,',
-      "L'équipe MyselfMonArt",
-    ].join('\n')
-
-    const html = `<!DOCTYPE html>
-<html lang="fr"><head><meta charset="utf-8"></head>
-<body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a;line-height:1.5">
-  <h2 style="margin:0 0 8px">Votre création vous attend</h2>
-  <p style="margin:0 0 16px">Votre tableau personnalisé MyselfMonArt est bien sauvegardé.</p>
-  ${
-    input.previewUrl
-      ? `<p style="margin:0 0 16px"><img src="${input.previewUrl}" alt="Aperçu de votre création" style="max-width:320px;border-radius:8px"></p>`
-      : ''
-  }
-  <p style="margin:0 0 16px"><a href="${resumeUrl}" style="background:#1a1a1a;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none">Reprendre ma création</a></p>
-  <p style="margin:0;color:#666;font-size:13px">Le lien reste valable 30 jours.</p>
-</body></html>`
+    const { subject, html, text } = renderSaveEmail({ resumeUrl, previewUrl: input.previewUrl })
 
     try {
       await axios.post(
@@ -58,7 +34,7 @@ export default class SaveMailer {
         {
           from: Env.get('RESEND_FROM'),
           to: [input.email],
-          subject: 'Votre création MyselfMonArt vous attend',
+          subject,
           html,
           text,
         },
