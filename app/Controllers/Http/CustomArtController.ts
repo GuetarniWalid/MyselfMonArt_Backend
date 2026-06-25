@@ -18,7 +18,6 @@ import CustomArtVariantMapping from 'App/Services/CustomArt/VariantMapping'
 import JobEstimate, { normalizeProductType } from 'App/Services/CustomArt/JobEstimate'
 import { affectedRows } from 'App/Services/CustomArt/db'
 import SaveMailer from 'App/Services/CustomArt/SaveMailer'
-import UnlockMailer from 'App/Services/CustomArt/UnlockMailer'
 import { clientIp } from 'App/Services/ClientIp'
 
 // Caps anti-abus (plan §4) : 2 essais anonymes/jour (session+IP), 5/jour avec email,
@@ -229,9 +228,11 @@ export default class CustomArtController {
       // E-mail joint par le front (cap « 3e essai+ = e-mail requis ») : associé à la
       // session AVANT le contrôle des caps, sinon l'essai resterait bloqué en 429.
       // Même politique que save() : le premier e-mail posé ne s'écrase jamais.
-      // justUnlocked = true UNIQUEMENT au tout premier e-mail (moment du déblocage) :
-      // l'e-mail de confirmation part une fois le job créé (cf. UnlockMailer plus bas).
-      const justUnlocked = await this.attachEmailIfMissing(session, payload.email)
+      // On ne dépend plus du retour (premier e-mail = moment du déblocage) : plus aucun
+      // e-mail « reprends ta génération » n'est envoyé sur ce déblocage (décision Walid
+      // 2026-06-25 — la génération a déjà repris dans CETTE requête, le mail était
+      // incohérent). Le lien de reprise volontaire reste SaveMailer via POST /jobs/:uuid/save.
+      await this.attachEmailIfMissing(session, payload.email)
 
       const capError = await this.checkCaps(session)
       if (capError) {
@@ -271,15 +272,6 @@ export default class CustomArtController {
       // productType : le studio cale sa barre de progression dessus. Best-effort —
       // ne fait jamais échouer la création (cf. JobEstimate).
       const estimatedMs = await JobEstimate.forProductType(productType)
-
-      // Confirmation de déblocage (décision Walid 2026-06-24) : au PREMIER e-mail laissé par
-      // un anonyme, on confirme « essai débloqué » + lien de reprise du job tout juste créé.
-      // Fire-and-forget : ne bloque jamais la création (Cloudflare coupe à ~100 s).
-      if (justUnlocked) {
-        void new UnlockMailer()
-          .send({ email: session.email as string, jobUuid: uuid })
-          .catch(() => {})
-      }
 
       Logger.info('custom-art job START uuid=%s team=%s format=%s', uuid, team.slug, format)
       return { success: true, data: { jobId: uuid, token: session.sessionToken, estimatedMs } }
@@ -652,8 +644,9 @@ export default class CustomArtController {
 
     // 2) Plus de runner-up : nouvelle génération si les caps le permettent.
     // E-mail éventuellement fourni ICI aussi (déblocage du cap sur le chemin « nouvelle
-    // version ») — attaché AVANT checkCaps, exactement comme create().
-    const justUnlocked = await this.attachEmailIfMissing(session, request.input('email'))
+    // version ») — attaché AVANT checkCaps, exactement comme create(). On ne renvoie plus
+    // d'e-mail « reprise » sur ce déblocage : la nouvelle version se lance dans la foulée.
+    await this.attachEmailIfMissing(session, request.input('email'))
     const capError = await this.checkCaps(session)
     if (capError) {
       return response.status(429).json(capError)
@@ -704,13 +697,6 @@ export default class CustomArtController {
       revealedCount: 0,
       round: 1,
     })
-
-    // Confirmation de déblocage si l'e-mail vient d'être posé sur ce chemin (cf. create()).
-    if (justUnlocked) {
-      void new UnlockMailer()
-        .send({ email: session.email as string, jobUuid: newUuid })
-        .catch(() => {})
-    }
 
     Logger.info('custom-art reveal-next -> nouveau job uuid=%s (depuis %s)', newUuid, job.uuid)
     return { success: true, data: { jobId: newUuid, status: 'pending' } }
@@ -976,7 +962,9 @@ export default class CustomArtController {
    * essais/jour) au prochain checkCaps, puisque le seuil dépend de `session.email`.
    *
    * Renvoie true UNIQUEMENT au PREMIER e-mail posé sur la session (le moment du
-   * « déblocage ») — l'appelant déclenche alors l'e-mail de confirmation (UnlockMailer).
+   * « déblocage »). Les appelants ignorent désormais ce retour : aucun e-mail n'est
+   * envoyé sur le déblocage (la génération reprend dans la même requête). Conservé pour
+   * la sémantique/les logs et un éventuel usage futur.
    *
    * Tolérant : `rawEmail` peut être non validé (reveal-next n'a pas de validator) — on
    * vérifie une forme minimale et on no-op sinon (jamais de throw, jamais d'écrasement).
