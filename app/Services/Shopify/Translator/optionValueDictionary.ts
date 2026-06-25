@@ -24,6 +24,7 @@ export const OPTION_VALUE_DICTIONARY: Record<string, Partial<Record<LanguageCode
   'Bordure miroir': { de: 'Spiegelrand', es: 'Borde espejo', nl: 'Spiegelrand' },
   'Bordure pliée': { de: 'Gefalteter Rand', es: 'Borde plegado', nl: 'Gevouwen rand' },
   'Sans cadre': { de: 'Ohne Rahmen', es: 'Sin marco', nl: 'Zonder lijst' },
+  'Avec cadre': { de: 'Mit Rahmen', es: 'Con marco', nl: 'Met lijst' },
   'Cadre blanc': { de: 'Weißer Rahmen', es: 'Marco blanco', nl: 'Witte lijst' },
   'Cadre noir Mat': { de: 'Mattschwarzer Rahmen', es: 'Marco negro mate', nl: 'Matzwarte lijst' },
   'Cadre argent ancien': {

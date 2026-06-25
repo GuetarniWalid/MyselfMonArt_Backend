@@ -50,6 +50,33 @@
         }
       ]
     },
+    "shopify:collapse_poster_frames": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/CollapsePosterFrames",
+      "commandName": "shopify:collapse_poster_frames",
+      "description": "Collapse a poster \"Cadre\" option to { Sans cadre, Avec cadre }; frame color moves to a line-item property",
+      "args": [
+        {
+          "type": "spread",
+          "propertyName": "productIds",
+          "name": "productIds",
+          "required": true,
+          "description": "Poster product IDs (numeric or gid://) to collapse"
+        }
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "dry-run",
+          "propertyName": "dryRun",
+          "type": "boolean",
+          "description": "Print the plan without mutating anything"
+        }
+      ]
+    },
     "color:attribution": {
       "settings": {
         "loadApp": true,

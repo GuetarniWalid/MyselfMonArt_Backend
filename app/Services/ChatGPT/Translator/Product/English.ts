@@ -151,6 +151,7 @@ export default class English {
 
   private translateIfIsOfTypeFrame(value: string) {
     if (value === 'Sans cadre') return { translation: 'No frame' }
+    if (value === 'Avec cadre') return { translation: 'With frame' }
     if (value === 'Cadre blanc') return { translation: 'White frame' }
     if (value === 'Cadre noir Mat') return { translation: 'Matte black frame' }
     if (value === 'Cadre argent ancien') return { translation: 'Antique silver frame' }
