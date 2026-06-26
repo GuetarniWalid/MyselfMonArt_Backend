@@ -113,6 +113,17 @@ export default class CustomArtJob extends BaseModel {
   @column()
   public chosenIndex: number | null
 
+  /**
+   * Rang (1-based, cf. CustomArtCandidate.rank) de la version SAUVEGARDÉE par le visiteur
+   * via POST /jobs/:uuid/save. Identité STABLE de la version regardée au moment du save —
+   * survit aux reveals ultérieurs, contrairement à `chosenIndex` (réécrit à chaque
+   * reveal-next). La reprise du lien e-mail (?ca_job=) ré-affiche CETTE version (sélection /
+   * repli best validé : App/Services/CustomArt/chosenCandidate, comme l'achat). NULL =
+   * jamais sauvegardé -> reprise sur le dernier révélé.
+   */
+  @column()
+  public savedVersionRank: number | null
+
   @column()
   public revealedCount: number
 

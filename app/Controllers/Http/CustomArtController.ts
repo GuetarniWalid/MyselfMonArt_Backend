@@ -17,6 +17,7 @@ import CustomArtStorage from 'App/Services/CustomArt/Storage'
 import CustomArtVariantMapping from 'App/Services/CustomArt/VariantMapping'
 import JobEstimate, { normalizeProductType } from 'App/Services/CustomArt/JobEstimate'
 import { affectedRows } from 'App/Services/CustomArt/db'
+import { chosenCandidate } from 'App/Services/CustomArt/chosenCandidate'
 import SaveMailer from 'App/Services/CustomArt/SaveMailer'
 import { clientIp } from 'App/Services/ClientIp'
 
@@ -108,7 +109,9 @@ const MANUAL_REVIEW_MESSAGE =
  *                          candidate: { rank, total, hasMore },
  *                          playerName, playerNumber, teamId, format, frame, mockups }
  *                        `preview` = URL backend /jobs/:uuid/preview/:n (en-tête
- *                        Access-Control-Allow-Origin posé pour le WebGL du thème).
+ *                        Access-Control-Allow-Origin posé pour le WebGL du thème). Sur une
+ *                        REPRISE de save (lien e-mail ?ca_job=), `preview` ET `candidate`
+ *                        pointent la version SAUVEGARDÉE (saved_version_rank), pas le rang 1.
  *                        `candidate` = navigateur de versions du lot (compteur « rank/total »
  *                        côté studio) : `rank` 1-based du candidat servi (meilleur = 1),
  *                        `total` = candidats VALIDÉS par le juge (pass) du lot, tous déjà
@@ -131,8 +134,11 @@ const MANUAL_REVIEW_MESSAGE =
  *   `candidate` = même bloc qu'en 'ready' : `rank` du runner-up servi, `total` des candidats
  *   VALIDÉS, `hasMore:false` => dernier validé (le prochain reveal-next = génération payante).
  *
- * POST /api/custom-art/jobs/:uuid/save  { email }  (session propriétaire requise)
- *   out : data = { sent: boolean, alreadySent?: true }
+ * POST /api/custom-art/jobs/:uuid/save  { email, version_rank? }  (session propriétaire requise)
+ *   in  : version_rank = RANG 1-based de la version REGARDÉE (navigateur de versions, même
+ *         sémantique que `_version_rank` du panier). Optionnel ; figé sur le job pour que la
+ *         reprise ramène CETTE version (repli best validé si hors bornes / non validé).
+ *   out : data = { sent: boolean, versionRank: number | null, alreadySent?: true }
  *
  * GET /api/custom-art/teams
  *   out : data = [{ id, name, slug, colors, aliases }]
@@ -403,8 +409,11 @@ export default class CustomArtController {
       }
     }
 
-    const candidates = job.candidates || []
-    const chosen = job.chosenIndex !== null ? candidates[job.chosenIndex] : null
+    // Version à ré-afficher : si une version a été SAUVEGARDÉE (POST /save), on la ramène
+    // (reprise du lien e-mail ?ca_job=) ; sinon le dernier révélé (chosen_index). Dans tous
+    // les cas via chosenCandidate -> jamais une version recalée par le juge (repli best
+    // validé), même contrat que l'impression.
+    const chosen = chosenCandidate(job, job.savedVersionRank)
     return {
       success: true,
       data: {
@@ -494,10 +503,11 @@ export default class CustomArtController {
     }
 
     // status === 'ready'
-    const candidates = job.candidates || []
-    const chosen = job.chosenIndex !== null ? candidates[job.chosenIndex] : null
+    // Même résolution que show() : version SAUVEGARDÉE si présente, sinon dernier révélé —
+    // toujours via chosenCandidate (jamais un recalé, repli best validé).
+    const chosen = chosenCandidate(job, job.savedVersionRank)
     const preview = chosen ? this.previewUrl(job, chosen) : null
-    if (!preview) return response.noContent() // ready sans aperçu affichable (chosenIndex null) => 204
+    if (!preview) return response.noContent() // ready sans aperçu affichable (aucun validé) => 204
 
     // teamName lisible pour l'affichage panier (relation belongsTo déjà sur le modèle).
     await job.load('team')
@@ -710,7 +720,7 @@ export default class CustomArtController {
   public async save(ctx: HttpContextContract) {
     const { params, request, response } = ctx
     try {
-      const { email } = await request.validate(CustomArtSaveValidator)
+      const { email, version_rank: versionRank } = await request.validate(CustomArtSaveValidator)
 
       const job = await this.findJob(params.uuid)
       if (!job) {
@@ -763,16 +773,35 @@ export default class CustomArtController {
       session.lastSaveJobUuid = job.uuid
       await session.save()
 
-      const candidates = job.candidates || []
-      const chosen = job.chosenIndex !== null ? candidates[job.chosenIndex] : null
+      // Version REGARDÉE au moment du save (navigateur de versions). Le front envoie
+      // `version_rank` (1-based, même sémantique que `_version_rank` du panier). On résout
+      // par RANG via le MÊME sélecteur que l'impression (chosenCandidate) : la version
+      // validée correspondante, ou repli sûr sur le meilleur validé (rang 1) si le rang est
+      // hors bornes / forgé / non validé. On FIGE le rang résolu sur le job pour que la
+      // reprise (GET /jobs/:uuid) ramène CETTE version, pas le rang 1 par défaut.
+      const requestedRank =
+        Number.isInteger(versionRank) && (versionRank as number) >= 1
+          ? (versionRank as number)
+          : null
+      const saved = chosenCandidate(job, requestedRank)
+      if (saved) {
+        job.savedVersionRank = saved.rank
+        // La reprise sert l'aperçu via /preview/(rank-1), qui 404 si rank > revealed_count.
+        // Regarder une version = l'avoir révélée (revealed_count >= saved.rank en pratique) ;
+        // on le garantit (monotone, borné aux validés -> jamais de reveal payant déclenché).
+        if (job.revealedCount < saved.rank) job.revealedCount = saved.rank
+        await job.save()
+      }
+
       const sent = await new SaveMailer().send({
         // Toujours l'email de la session (jamais le payload brut) : pas de relais
         email: targetEmail,
         jobUuid: job.uuid,
-        previewUrl: chosen ? CustomArtStorage.publicUrl(chosen.previewPath) : null,
+        // Aperçu de la version SAUVEGARDÉE (cohérent avec la reprise) ; repli best validé.
+        previewUrl: saved ? CustomArtStorage.publicUrl(saved.previewPath) : null,
       })
 
-      return { success: true, data: { sent } }
+      return { success: true, data: { sent, versionRank: job.savedVersionRank } }
     } catch (error) {
       if (error.code === 'E_VALIDATION_FAILURE') {
         return response.status(422).json({
