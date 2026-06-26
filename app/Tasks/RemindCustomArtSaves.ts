@@ -96,7 +96,8 @@ export default class RemindCustomArtSaves extends BaseTask {
       .distinct('session_id')
     const cooledDownSessionIds = new Set(recentRows.map((r) => Number(r.session_id)))
 
-    // 4) Un envoi par session : créations éligibles groupées, rappel sur la plus récente
+    // 4) Un envoi par session : créations éligibles groupées (rappel illustré plus bas
+    //    par la création la PLUS RÉCENTE de la session, cf. boucle d'envoi).
     const bySession = new Map<number, CustomArtJob[]>()
     for (const job of jobs) {
       const session = sessionById.get(job.sessionId)
@@ -109,7 +110,6 @@ export default class RemindCustomArtSaves extends BaseTask {
     let sent = 0
     for (const [sessionId, sessionJobs] of bySession) {
       const session = sessionById.get(sessionId)!
-      const newest = sessionJobs[sessionJobs.length - 1]
       const jobIds = sessionJobs.map((j) => j.id)
 
       // Claim atomique AVANT l'envoi (un seul rappel par création, jamais plus) :
@@ -123,13 +123,26 @@ export default class RemindCustomArtSaves extends BaseTask {
       )
       if (claimed === 0) continue // déjà traité par un autre passage
 
-      const candidates = newest.candidates || []
-      const chosen = newest.chosenIndex !== null ? candidates[newest.chosenIndex] : null
+      // Aperçu + lien de reprise = la création la PLUS RÉCENTE de la session (sa dernière
+      // œuvre), pas forcément celle qui a déclenché la fenêtre : la fenêtre glissante
+      // attrape d'abord la plus ANCIENNE du lot. On va donc chercher le dernier job `ready`
+      // de la session (même hors fenêtre s'il est plus jeune que 20 h) ; repli sur le plus
+      // récent en fenêtre. La création vedette n'a pas besoin d'être marquée : le cooldown
+      // 24 h empêchera de toute façon un second envoi quand elle entrera en fenêtre.
+      const featured =
+        (await CustomArtJob.query()
+          .where('session_id', sessionId)
+          .where('status', 'ready')
+          .orderBy('id', 'desc')
+          .first()) || sessionJobs[sessionJobs.length - 1]
+
+      const candidates = featured.candidates || []
+      const chosen = featured.chosenIndex !== null ? candidates[featured.chosenIndex] : null
       const ok = await new ReminderMailer().send({
         email: session.email!,
-        jobUuid: newest.uuid,
+        jobUuid: featured.uuid,
         previewUrl: chosen ? CustomArtStorage.publicUrl(chosen.previewPath) : null,
-        playerName: newest.playerName,
+        playerName: featured.playerName,
       })
 
       if (ok) {
