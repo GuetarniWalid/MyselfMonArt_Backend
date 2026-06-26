@@ -370,6 +370,13 @@ export default class ArtworkCopier extends ModelCopier {
       return
     }
 
+    // Pas de modèle carré poster (on ne vend pas de poster carré) : on ignore proprement
+    // au lieu de laisser getProductByTag lever et laisser un produit incomplet.
+    if (tag === 'square model' && artworkType === 'poster') {
+      console.info(`ℹ️  No square poster model by design — skipping model copy for ${product.id}`)
+      return
+    }
+
     const model = await shopify.product.getProductByTag(tag, artworkType)
     return model
   }

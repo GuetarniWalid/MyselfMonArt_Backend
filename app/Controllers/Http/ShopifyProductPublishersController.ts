@@ -52,6 +52,22 @@ export default class ShopifyProductPublishersController {
       const aiService = new ProductPublisher()
       const shopify = new Shopify()
 
+      // Pas de poster carré : on n'en propose pas. Sortie AVANT toute génération IA et
+      // toute création produit (aucun modèle « square model » + artwork.type=poster
+      // n'existe — le copieur lèverait plus loin). On libère l'idempotence pour ne pas
+      // bloquer un éventuel renvoi corrigé.
+      if (
+        productPublisher.getProductType() === 'poster' &&
+        productPublisher.getRatio() === 'square'
+      ) {
+        if (idemKey) await this.idem.release(idemKey)
+        return response.status(422).json({
+          success: false,
+          skipped: true,
+          message: 'Format carré non proposé en poster — aucun produit créé.',
+        })
+      }
+
       // Save all images as originals (for Shopify publication)
       const originalImageUrls = await productPublisher.processAllImages()
 
