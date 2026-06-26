@@ -152,6 +152,28 @@ export default class CustomArtController {
   public async create(ctx: HttpContextContract) {
     const { request, response } = ctx
     try {
+      // Observabilité (incident 26/06) : trace TOUTE arrivée de POST /jobs dès l'entrée, AVANT
+      // toute validation. Jusqu'ici le contrôleur ne loggait qu'à la fin (succès, « job START »)
+      // ou dans le catch — impossible de distinguer dans les logs « la requête n'arrive jamais »
+      // (échec réseau/edge, front qui n'émet pas le POST) d'un échec applicatif, sans rejouer
+      // toute l'enquête (logs nginx + DB). On ne logge que des métadonnées NON-PII : taille
+      // d'upload (content-length), type MIME, présence de la photo, équipe, type de produit, et
+      // deux booléens (email/session présents) — jamais l'adresse e-mail ni le jeton de session.
+      Logger.info(
+        'custom-art POST /jobs received bytes=%s ct=%s hasPhoto=%s team=%s productType=%s hasEmail=%s hasSession=%s',
+        request.header('content-length') || '?',
+        (request.header('content-type') || '').split(';')[0] || '?',
+        Boolean(request.file('photo')),
+        request.input('teamId') ?? '?',
+        request.input('productType') ?? '?',
+        Boolean(request.input('email')),
+        Boolean(
+          request.cookie(SESSION_COOKIE) ||
+            request.header('x-custom-art-session') ||
+            request.input('sessionToken')
+        )
+      )
+
       // Honeypot : champ caché jamais rempli par un humain
       if (request.input('website')) {
         return response.badRequest({ success: false, message: 'Requête invalide.' })
