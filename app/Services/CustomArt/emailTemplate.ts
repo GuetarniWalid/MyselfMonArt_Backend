@@ -1,17 +1,23 @@
 /**
- * Gabarit HTML partagé des emails du studio CustomArt — design « Galerie Terracotta »
- * dérivé de la palette du thème live MyselfMonArt (terracotta/blush sur crème, encre
- * brun-noir, CTA = couleur du bouton d'achat du site). Issu de la refonte multi-agents
- * (design system + copywriting + UI/UX + revue email-safe : Outlook VML, dark mode,
- * mobile, préheader caché, accessibilité).
+ * Gabarit HTML partagé des emails du studio CustomArt — design « Galerie MyselfMonArt »
+ * calé sur les tokens RÉELS du thème live (tw_myselfmonart_shopify_theme) :
+ *  - couleurs : encre #21150C, crème #F3E1DA, blush #E9C7BC/#DFAE9D, terracotta #A65437/#6D3724,
+ *    et surtout le BOUTON D'ACHAT du site #D79B86 (texte encre) → le CTA email = le bouton du site
+ *    (« cliquer = acheter »).
+ *  - typographie : titres en pile sans-serif type Harmonia Sans (font-heading du thème), corps Roboto.
+ *    Limelight reste un ACCENT (eyebrows/wordmark), comme sur le site — jamais un serif Georgia.
+ *    NB email-safe : les webfonts (Harmonia/Limelight) ne se chargent pas partout ; le rendu réel est
+ *    la pile de repli (Helvetica/Arial pour les titres) — propre et fidèle à l'esprit du site.
+ *  - layout : PLEINE LARGEUR — bandeaux 100% bord-à-bord, contenu centré à 680px (« full-bleed
+ *    background, contained content »). AUCUN logo en tête → l'email s'ouvre sur l'ŒUVRE (image d'abord).
+ *  - rendu verrouillé en CLAIR (color-scheme: light) : l'email est clair par nature, on neutralise
+ *    l'auto-dark-mode des clients qui inverserait partiellement et casserait la lisibilité.
  *
- * Module PUR (aucune dépendance Adonis) : SaveMailer / ReminderMailer / MockupsReadyMailer
- * appellent renderSaveEmail / renderReminderEmail / renderMockupsEmail et envoient le
- * { subject, html, text } via Resend. Un seul endroit pour faire évoluer le shell.
+ * Module PUR (aucune dépendance Adonis) : SaveMailer / ReminderMailer / MockupsReadyMailer appellent
+ * renderSaveEmail / renderReminderEmail / renderMockupsEmail et envoient le { subject, html, text }
+ * via Resend. Un seul endroit pour faire évoluer les 3 emails.
  */
 
-const LOGO_URL =
-  'https://www.myselfmonart.com/cdn/shop/files/logo-MyselfMonArt_a7b9a9ae-c049-4b20-a2d1-b8ec0116ac7e.png?v=1683973841&width=600'
 const STORE_URL = 'https://www.myselfmonart.com'
 const CONTACT_EMAIL = 'contact@myselfmonart.com'
 
@@ -48,6 +54,7 @@ function toText(html: string): string {
     .replace(/<br\s*\/?>(\s*)/gi, '\n')
     .replace(/&rsquo;/g, '’')
     .replace(/&mdash;/g, '—')
+    .replace(/&times;/g, '×')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&#8203;/g, '')
@@ -56,12 +63,39 @@ function toText(html: string): string {
     .trim()
 }
 
-const SANS = "Roboto,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif"
-const SERIF = "'Limelight',Georgia,'Times New Roman',serif"
+// Typographie email-safe alignée sur le thème : titres = pile humaniste sans-serif (Harmonia Sans
+// n'est pas une webfont → repli Helvetica/Arial, même rendu « propre » que le site, PAS de serif) ;
+// corps = Roboto ; Limelight = accent display (eyebrow/wordmark), repli sans-serif comme le thème.
+const HEADING = "'Harmonia Sans','Helvetica Neue',Helvetica,Arial,sans-serif"
+const BODY = "Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif"
+const DISPLAY = "'Limelight','Helvetica Neue',Arial,sans-serif"
+
+// Palette de marque (tokens thème live → hex)
+const INK = '#21150C' // --color-main : texte, bordures, ombre « neu »
+const CREAM = '#F3E1DA' // --color-brand-50 : fond de page + bandeaux
+const BLUSH_LT = '#E9C7BC' // --color-brand-100 : passe-partout / blocs doux
+const BLUSH = '#DFAE9D' // --color-brand-300 / accent : filets fins
+const BUY = '#D79B86' // --color-buy-button / brand-500 : FOND du CTA (bouton d'achat du site)
+const TERRA = '#A65437' // --color-brand-700 : eyebrow, liens, accents
+const TERRA_DEEP = '#6D3724' // --color-brand-900 : bordures profondes / liens footer
+const RUST = '#A93514' // --color-like : alertes (édition fête des pères)
+const WHITE = '#FFFFFF'
+
+// Largeur du contenu (le fond des bandeaux reste 100% ; seul le contenu est borné et centré).
+const CONTENT_W = 680
 
 // ---------------------------------------------------------------------------
 // Briques de shell partagées
 // ---------------------------------------------------------------------------
+
+/** Colonne de contenu centrée (max 680px) sur un bandeau pleine largeur. */
+function col(innerHtml: string, align: 'left' | 'center', padH = 28): string {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" width="100%" style="width:100%; max-width:${CONTENT_W}px; margin:0 auto;">
+                <tr>
+                  <td align="${align}" style="padding-left:${padH}px; padding-right:${padH}px;">${innerHtml}</td>
+                </tr>
+              </table>`
+}
 
 function head(titleHtml: string): string {
   return `<head>
@@ -69,80 +103,66 @@ function head(titleHtml: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="x-apple-disable-message-reformatting">
-  <meta name="color-scheme" content="light dark">
-  <meta name="supported-color-schemes" content="light dark">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
   <title>${titleHtml}</title>
   <!--[if mso]>
   <noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
   <![endif]-->
   <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Limelight&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
   <style type="text/css">
-    @import url('https://fonts.googleapis.com/css2?family=Limelight&family=Roboto:wght@400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Limelight&family=Roboto:wght@400;500;700&display=swap');
     body, table, td, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
     table, td { mso-table-lspace:0pt; mso-table-rspace:0pt; }
     img { -ms-interpolation-mode:bicubic; border:0; height:auto; line-height:100%; outline:none; text-decoration:none; }
     table { border-collapse:collapse !important; }
-    body { margin:0 !important; padding:0 !important; width:100% !important; height:100% !important; }
+    body { margin:0 !important; padding:0 !important; width:100% !important; height:100% !important; background-color:${CREAM}; }
     a { text-decoration:none; }
-    @media screen and (max-width:600px) {
-      .email-container { width:100% !important; }
-      .gutter { padding-left:24px !important; padding-right:24px !important; }
-      .h1 { font-size:26px !important; line-height:32px !important; }
-      .cta-btn { width:100% !important; max-width:320px !important; }
-      .cta-btn-a { padding-left:20px !important; padding-right:20px !important; }
-      .reassure-item { display:block !important; width:100% !important; padding:10px 0 !important; }
+    @media screen and (max-width:640px) {
+      .h1 { font-size:27px !important; line-height:34px !important; }
+      .hero-img { max-width:100% !important; }
+      .reassure-item { display:block !important; width:100% !important; padding:12px 0 !important; }
       .reassure-sep { display:none !important; }
-    }
-    @media (prefers-color-scheme: dark) {
-      .dm-card { background-color:#FFFFFF !important; }
-      .dm-cream { background-color:#F3E1DA !important; }
-      .dm-body { background-color:#FFFFFF !important; }
-      .dm-cta { color:#FFFFFF !important; background-color:#A65437 !important; }
+      .mockup-cell { display:block !important; width:100% !important; padding:0 0 14px 0 !important; }
+      .mockup-gap { display:none !important; }
     }
   </style>
 </head>`
 }
 
-function headerRow(): string {
+function footerRow(): string {
+  const inner = `<p style="margin:0 0 6px 0; font-family:${DISPLAY}; font-size:22px; line-height:26px; letter-spacing:1px; color:${INK};">MyselfMonArt</p>
+              <p style="margin:0 0 18px 0; font-family:${HEADING}; font-size:12px; line-height:16px; letter-spacing:2px; text-transform:uppercase; color:${TERRA};">L&rsquo;atelier des tableaux qui vous ressemblent</p>
+              <p style="margin:0 0 16px 0; font-family:${BODY}; font-size:13px; line-height:20px; color:${INK};">Une question ? Répondez simplement à cet e-mail, nous sommes là pour vous accompagner.</p>
+              <p style="margin:0 0 14px 0; font-family:${BODY}; font-size:12px; line-height:18px; color:${INK};">
+                <a href="${STORE_URL}" target="_blank" style="color:${TERRA_DEEP}; text-decoration:underline;">Visiter la boutique</a>
+                &nbsp;&middot;&nbsp;
+                <a href="mailto:${CONTACT_EMAIL}" target="_blank" style="color:${TERRA_DEEP}; text-decoration:underline;">Contacter l&rsquo;atelier</a>
+              </p>
+              <p style="margin:0; font-family:${BODY}; font-size:12px; line-height:18px; color:${TERRA_DEEP};">Tableaux personnalisés &mdash; conçus en France, imprimés en Europe.</p>`
   return `<tr>
-            <td class="gutter dm-cream" align="center" bgcolor="#F3E1DA" style="background-color:#F3E1DA; padding:28px 32px;">
-              <a href="${STORE_URL}" target="_blank" style="text-decoration:none; color:#21150C;">
-                <img src="${escUrl(LOGO_URL)}" alt="MyselfMonArt" width="160" style="display:block; width:160px; max-width:160px; height:auto; margin:0 auto;">
-              </a>
+            <td bgcolor="${CREAM}" style="background-color:${CREAM}; padding:36px 0 38px 0;" align="center">
+              ${col(inner, 'center')}
             </td>
           </tr>
           <tr>
-            <td height="1" bgcolor="#DFAE9D" style="height:1px; line-height:1px; font-size:1px; mso-line-height-rule:exactly; background-color:#DFAE9D;"><div style="font-size:1px; line-height:1px;">&#8203;</div></td>
-          </tr>`
-}
-
-function footerRow(): string {
-  return `<tr>
-            <td bgcolor="#21150C" style="background-color:#21150C; padding:28px 32px;" align="center">
-              <p style="margin:0 0 8px 0; font-family:${SERIF}; font-size:18px; line-height:24px; color:#F3E1DA;">L&rsquo;atelier MyselfMonArt</p>
-              <p style="margin:0 0 16px 0; font-family:${SANS}; font-size:13px; line-height:20px; color:#E9C7BC;">Une question ? Répondez simplement à cet e-mail, nous sommes là pour vous accompagner.</p>
-              <p style="margin:0 0 12px 0; font-family:${SANS}; font-size:12px; line-height:18px; color:#E9C7BC;">
-                <a href="${STORE_URL}" target="_blank" style="color:#DFAE9D; text-decoration:underline;">Visiter la boutique</a>
-                &nbsp;&middot;&nbsp;
-                <a href="mailto:${CONTACT_EMAIL}" target="_blank" style="color:#DFAE9D; text-decoration:underline;">Contacter l&rsquo;atelier</a>
-              </p>
-              <p style="margin:0; font-family:${SANS}; font-size:12px; line-height:18px; color:#E9C7BC;">MyselfMonArt &middot; myselfmonart.com &mdash; tableaux personnalisés, conçus en France.</p>
-            </td>
+            <td height="6" bgcolor="${BUY}" style="height:6px; line-height:6px; font-size:1px; mso-line-height-rule:exactly; background-color:${BUY};"><div style="font-size:1px; line-height:1px;">&#8203;</div></td>
           </tr>`
 }
 
 function eyebrowRow(text: string): string {
   return `<tr>
-            <td class="gutter dm-body" align="center" bgcolor="#FFFFFF" style="background-color:#FFFFFF; padding:32px 32px 0 32px;">
-              <p style="margin:0; font-family:${SANS}; font-size:12px; line-height:16px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#A65437;">${text}</p>
+            <td align="center" bgcolor="${WHITE}" style="background-color:${WHITE}; padding:30px 0 0 0;">
+              ${col(`<p style="margin:0; font-family:${DISPLAY}; font-size:15px; line-height:18px; letter-spacing:3px; text-transform:uppercase; color:${TERRA};">${text}</p>`, 'center')}
             </td>
           </tr>`
 }
 
 function h1Row(html: string): string {
   return `<tr>
-            <td class="gutter dm-body" align="center" bgcolor="#FFFFFF" style="background-color:#FFFFFF; padding:16px 32px 8px 32px;">
-              <h1 class="h1" style="margin:0; font-family:${SERIF}; font-size:30px; line-height:38px; letter-spacing:0.5px; color:#21150C; font-weight:400;">${html}</h1>
+            <td align="center" bgcolor="${WHITE}" style="background-color:${WHITE}; padding:12px 0 8px 0;">
+              ${col(`<h1 class="h1" style="margin:0; font-family:${HEADING}; font-size:32px; line-height:40px; letter-spacing:-0.2px; color:${INK}; font-weight:700;">${html}</h1>`, 'center')}
             </td>
           </tr>`
 }
@@ -151,29 +171,34 @@ function bodyRow(paragraphsHtml: string[]): string {
   const ps = paragraphsHtml
     .map(
       (p, i) =>
-        `<p style="margin:0${i < paragraphsHtml.length - 1 ? ' 0 16px 0' : ''}; font-family:${SANS}; font-size:16px; line-height:26px; color:#21150C;">${p}</p>`
+        `<p style="margin:0${i < paragraphsHtml.length - 1 ? ' 0 16px 0' : ''}; font-family:${BODY}; font-size:16px; line-height:27px; color:${INK};">${p}</p>`
     )
-    .join('\n              ')
+    .join('\n                  ')
   return `<tr>
-            <td class="gutter dm-body" align="left" bgcolor="#FFFFFF" style="background-color:#FFFFFF; padding:16px 32px 0 32px;">
-              ${ps}
+            <td align="center" bgcolor="${WHITE}" style="background-color:${WHITE}; padding:14px 0 0 0;">
+              ${col(ps, 'left')}
             </td>
           </tr>`
 }
 
+/**
+ * CTA = bouton d'achat du site : fond #D79B86, TEXTE ENCRE (#21150C, pas blanc), bordure encre,
+ * coins arrondis, ombre « neu » décalée (dégrade en plat sur Outlook/Gmail). Centré de façon
+ * robuste (td align=center + table margin auto + VML Outlook, largeur 320px pour tenir les libellés).
+ */
 function ctaButton(url: string, label: string): string {
   const u = escUrl(url)
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
                 <tr>
-                  <td align="center" bgcolor="#A65437" style="border-radius:6px;">
+                  <td align="center">
                     <!--[if mso]>
-                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${u}" style="height:52px;v-text-anchor:middle;width:280px;" arcsize="12%" strokecolor="#6D3724" fillcolor="#A65437">
+                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${u}" style="height:54px;v-text-anchor:middle;width:320px;" arcsize="20%" strokecolor="${INK}" strokeweight="2px" fillcolor="${BUY}">
                       <w:anchorlock/>
-                      <center style="color:#FFFFFF;font-family:Roboto,Arial,sans-serif;font-size:16px;font-weight:700;letter-spacing:.3px;">${label}</center>
+                      <center style="color:${INK};font-family:Helvetica,Arial,sans-serif;font-size:16px;font-weight:700;letter-spacing:.2px;">${label}</center>
                     </v:roundrect>
                     <![endif]-->
                     <!--[if !mso]><!-->
-                    <a class="cta-btn cta-btn-a dm-cta" href="${u}" target="_blank" style="display:inline-block; padding:16px 36px; border:1px solid #6D3724; border-radius:6px; background-color:#A65437; color:#FFFFFF; font-family:${SANS}; font-size:16px; font-weight:700; line-height:16px; letter-spacing:.3px; text-decoration:none;">${label}</a>
+                    <a href="${u}" target="_blank" style="display:inline-block; padding:16px 40px; border:2px solid ${INK}; border-radius:12px; background-color:${BUY}; color:${INK}; font-family:${HEADING}; font-size:16px; font-weight:700; line-height:18px; letter-spacing:.2px; text-decoration:none; box-shadow:4px 5px 0 ${INK};">${label}</a>
                     <!--<![endif]-->
                   </td>
                 </tr>
@@ -181,82 +206,72 @@ function ctaButton(url: string, label: string): string {
 }
 
 function intentCtaRow(intentHtml: string, url: string, label: string): string {
+  const inner = `<p style="margin:0 0 18px 0; font-family:${BODY}; font-size:14px; line-height:22px; color:${TERRA_DEEP};">${intentHtml}</p>
+                  ${ctaButton(url, label)}`
   return `<tr>
-            <td class="gutter dm-body" align="center" bgcolor="#FFFFFF" style="background-color:#FFFFFF; padding:24px 32px 8px 32px;">
-              <p style="margin:0 0 16px 0; font-family:${SANS}; font-size:14px; line-height:22px; color:#6D3724;">${intentHtml}</p>
-              ${ctaButton(url, label)}
+            <td align="center" bgcolor="${WHITE}" style="background-color:${WHITE}; padding:26px 0 10px 0;">
+              ${col(inner, 'center')}
             </td>
           </tr>`
 }
 
 function fathersDayRow(lineHtml: string, url: string): string {
-  return `<tr>
-            <td class="gutter dm-body" bgcolor="#FFFFFF" style="background-color:#FFFFFF; padding:24px 32px 0 32px;">
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
+  const box = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
                 <tr>
-                  <td bgcolor="#E9C7BC" style="background-color:#E9C7BC; padding:20px 24px; border:1px solid #A65437;">
-                    <p style="margin:0 0 6px 0; font-family:Roboto,Arial,sans-serif; font-size:12px; line-height:16px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#A93514;">Édition fête des pères</p>
-                    <p style="margin:0 0 12px 0; font-family:Roboto,Arial,sans-serif; font-size:14px; line-height:22px; color:#21150C;">${lineHtml}</p>
-                    <a href="${escUrl(url)}" target="_blank" style="font-family:Roboto,Arial,sans-serif; font-size:14px; font-weight:700; color:#A65437; text-decoration:underline;">Composer pour la fête des pères</a>
+                  <td bgcolor="${BLUSH_LT}" style="background-color:${BLUSH_LT}; padding:20px 24px; border:1px solid ${TERRA};">
+                    <p style="margin:0 0 6px 0; font-family:${HEADING}; font-size:12px; line-height:16px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:${RUST};">Édition fête des pères</p>
+                    <p style="margin:0 0 12px 0; font-family:${BODY}; font-size:14px; line-height:22px; color:${INK};">${lineHtml}</p>
+                    <a href="${escUrl(url)}" target="_blank" style="font-family:${HEADING}; font-size:14px; font-weight:700; color:${TERRA_DEEP}; text-decoration:underline;">Composer pour la fête des pères</a>
                   </td>
                 </tr>
-              </table>
+              </table>`
+  return `<tr>
+            <td align="center" bgcolor="${WHITE}" style="background-color:${WHITE}; padding:24px 0 0 0;">
+              ${col(box, 'center')}
             </td>
           </tr>`
 }
 
 function spacerRow(): string {
-  return `<tr><td class="dm-body" bgcolor="#FFFFFF" style="background-color:#FFFFFF; height:28px; line-height:28px; font-size:0; mso-line-height-rule:exactly;">&nbsp;</td></tr>`
+  return `<tr><td bgcolor="${WHITE}" style="background-color:${WHITE}; height:30px; line-height:30px; font-size:0; mso-line-height-rule:exactly;">&nbsp;</td></tr>`
 }
 
 function reassuranceRow(items: ReassureItem[]): string {
   const width = items.length >= 3 ? '33%' : items.length === 2 ? '50%' : '100%'
-  const sep = `<td class="reassure-sep" width="1" bgcolor="#DFAE9D" style="width:1px; font-size:1px; line-height:1px; mso-line-height-rule:exactly; background-color:#DFAE9D;"><div style="font-size:1px; line-height:1px;">&#8203;</div></td>`
+  const sep = `<td class="reassure-sep" width="1" bgcolor="${BLUSH}" style="width:1px; font-size:1px; line-height:1px; mso-line-height-rule:exactly; background-color:${BLUSH};"><div style="font-size:1px; line-height:1px;">&#8203;</div></td>`
   const cells: string[] = []
   items.forEach((it, i) => {
     if (i > 0) cells.push(sep)
     cells.push(
-      `<td class="reassure-item" align="center" valign="top" width="${width}" style="padding:6px 10px;"><p style="margin:0; font-family:Roboto,Arial,sans-serif; font-size:13px; line-height:18px; color:#21150C;"><strong style="color:#21150C;">${it.strong}</strong><br>${it.rest}</p></td>`
+      `<td class="reassure-item" align="center" valign="top" width="${width}" style="padding:8px 14px;"><p style="margin:0; font-family:${BODY}; font-size:13px; line-height:19px; color:${INK};"><strong style="color:${INK};">${it.strong}</strong><br>${it.rest}</p></td>`
     )
   })
+  const grid = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;"><tr>${cells.join('')}</tr></table>`
   return `<tr>
-            <td bgcolor="#F3E1DA" class="dm-cream" style="background-color:#F3E1DA; padding:20px 24px;">
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;"><tr>${cells.join('')}</tr></table>
+            <td bgcolor="${CREAM}" style="background-color:${CREAM}; padding:22px 0;">
+              ${col(grid, 'center', 14)}
             </td>
           </tr>`
 }
 
-/** Cellule « cadre crème + passe-partout blanc » autour d'une image (ou d'un contenu). */
-function framedCell(innerHtml: string): string {
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
-                <tr>
-                  <td align="center" bgcolor="#F3E1DA" style="background-color:#F3E1DA; padding:14px;">
-                    ${innerHtml}
-                  </td>
-                </tr>
-              </table>`
-}
-
-/** Cartel d'attente (repli quand aucun visuel n'est disponible). */
+/** Cartel d'attente (repli sobre quand aucun visuel n'est disponible) — sans cadre simulé. */
 function waitingPlate(titleHtml: string, subHtml: string): string {
-  return framedCell(
-    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" height="360" style="width:100%;">
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" height="320" style="width:100%;">
                       <tr>
-                        <td align="center" valign="middle" height="360" bgcolor="#E9C7BC" style="background-color:#E9C7BC; padding:32px 24px; border:1px solid #A65437;">
-                          <p style="margin:0 0 6px 0; font-family:${SERIF}; font-size:14px; line-height:18px; letter-spacing:2px; text-transform:uppercase; color:#A65437;">Aperçu</p>
-                          <p style="margin:0 0 6px 0; font-family:${SERIF}; font-size:20px; line-height:26px; color:#6D3724;">${titleHtml}</p>
-                          <p style="margin:0; font-family:${SANS}; font-size:14px; line-height:22px; color:#6D3724;">${subHtml}</p>
+                        <td align="center" valign="middle" height="320" bgcolor="${CREAM}" style="background-color:${CREAM}; padding:44px 24px;">
+                          <p style="margin:0 0 8px 0; font-family:${DISPLAY}; font-size:14px; line-height:18px; letter-spacing:3px; text-transform:uppercase; color:${TERRA};">Aperçu</p>
+                          <p style="margin:0 0 6px 0; font-family:${HEADING}; font-size:20px; line-height:26px; font-weight:700; color:${INK};">${titleHtml}</p>
+                          <p style="margin:0; font-family:${BODY}; font-size:14px; line-height:22px; color:${TERRA_DEEP};">${subHtml}</p>
                         </td>
                       </tr>
                     </table>`
-  )
 }
 
 function captionP(html: string): string {
-  return `<p style="margin:12px 0 0 0; font-family:${SANS}; font-size:14px; line-height:22px; font-style:italic; color:#21150C;">${html}</p>`
+  return `<p style="margin:14px 0 0 0; font-family:${BODY}; font-size:13px; line-height:20px; font-style:italic; color:${TERRA_DEEP};">${html}</p>`
 }
 
-/** Hero « aperçu unique encadré » (save / reminder), avec repli cartel si pas d'image. */
+/** Hero « aperçu unique encadré » — PREMIÈRE section (image d'abord), repli cartel si pas d'image. */
 function framedPreviewRow(opts: {
   previewUrl?: string | null
   alt: string
@@ -266,25 +281,20 @@ function framedPreviewRow(opts: {
 }): string {
   let inner: string
   if (opts.previewUrl) {
-    const img = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
-                      <tr>
-                        <td align="center" bgcolor="#FFFFFF" style="background-color:#FFFFFF; padding:24px; border:1px solid #A65437;">
-                          <img src="${escUrl(opts.previewUrl)}" alt="${esc(opts.alt)}" width="476" style="display:block; width:100%; max-width:476px; height:auto; border:1px solid #E9C7BC;">
-                        </td>
-                      </tr>
-                    </table>`
-    inner = framedCell(img) + '\n              ' + captionP(opts.caption)
+    // Image NUE (décision owner) : aucun cadre/passe-partout simulé — l'œuvre se suffit.
+    const img = `<img class="hero-img" src="${escUrl(opts.previewUrl)}" alt="${esc(opts.alt)}" width="600" style="display:block; width:100%; max-width:600px; height:auto; margin:0 auto;">`
+    inner = img + '\n                  ' + captionP(opts.caption)
   } else {
     inner = waitingPlate(opts.fallbackTitle, opts.fallbackSub)
   }
   return `<tr>
-            <td class="gutter dm-body" align="center" bgcolor="#FFFFFF" style="background-color:#FFFFFF; padding:20px 32px 8px 32px;">
-              ${inner}
+            <td align="center" bgcolor="${WHITE}" style="background-color:${WHITE}; padding:32px 0 6px 0;">
+              ${col(inner, 'center', 20)}
             </td>
           </tr>`
 }
 
-/** Hero « grille 2 mises en situation » (mockups), repli cartel si rien. */
+/** Hero « grille 2 mises en situation » (mockups) — PREMIÈRE section, repli cartel si rien. */
 function mockupsGridRow(opts: {
   url1?: string | null
   url2?: string | null
@@ -293,58 +303,56 @@ function mockupsGridRow(opts: {
   fallbackSub: string
 }): string {
   let inner: string
+  // Images NUES (décision owner) : pas de cadre/passe-partout simulé autour des mises en situation.
   const cellImg = (url: string, alt: string) =>
-    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
-                            <tr>
-                              <td align="center" bgcolor="#FFFFFF" style="background-color:#FFFFFF; padding:14px; border:1px solid #A65437;">
-                                <img src="${escUrl(url)}" alt="${esc(alt)}" width="218" style="display:block; width:100%; max-width:218px; height:auto; border:1px solid #E9C7BC;">
-                              </td>
-                            </tr>
-                          </table>`
+    `<img src="${escUrl(url)}" alt="${esc(alt)}" width="300" style="display:block; width:100%; max-width:300px; height:auto; margin:0 auto;">`
   if (opts.url1 && opts.url2) {
     const grid = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
-                      <tr>
-                        <td class="mockup-cell" align="center" valign="top" width="50%" style="width:50%; padding:0 7px 0 0;">${cellImg(
-                          opts.url1,
-                          'Votre tableau personnalisé accroché sur un mur'
-                        )}</td>
-                        <td class="mockup-gap" width="14" style="font-size:0; line-height:0; width:14px;">&nbsp;</td>
-                        <td class="mockup-cell" align="center" valign="top" width="50%" style="width:50%; padding:0 0 0 7px;">${cellImg(
-                          opts.url2,
-                          'Votre tableau personnalisé en situation dans un intérieur'
-                        )}</td>
-                      </tr>
-                    </table>`
-    inner = framedCell(grid) + '\n              ' + captionP(opts.caption)
+                          <tr>
+                            <td class="mockup-cell" align="center" valign="top" width="50%" style="width:50%; padding:0 7px 0 0;">${cellImg(
+                              opts.url1,
+                              'Votre tableau personnalisé accroché sur un mur'
+                            )}</td>
+                            <td class="mockup-gap" width="14" style="font-size:0; line-height:0; width:14px;">&nbsp;</td>
+                            <td class="mockup-cell" align="center" valign="top" width="50%" style="width:50%; padding:0 0 0 7px;">${cellImg(
+                              opts.url2,
+                              'Votre tableau personnalisé en situation dans un intérieur'
+                            )}</td>
+                          </tr>
+                        </table>`
+    inner = grid + '\n                  ' + captionP(opts.caption)
   } else if (opts.url1) {
     inner =
-      framedCell(cellImg(opts.url1, 'Votre tableau personnalisé en situation')) +
-      '\n              ' +
+      cellImg(opts.url1, 'Votre tableau personnalisé en situation') +
+      '\n                  ' +
       captionP(opts.caption)
   } else {
     inner = waitingPlate(opts.fallbackTitle, opts.fallbackSub)
   }
   return `<tr>
-            <td class="gutter dm-body" align="center" bgcolor="#FFFFFF" style="background-color:#FFFFFF; padding:20px 32px 8px 32px;">
-              ${inner}
+            <td align="center" bgcolor="${WHITE}" style="background-color:${WHITE}; padding:32px 0 6px 0;">
+              ${col(inner, 'center', 20)}
             </td>
           </tr>`
 }
 
+/**
+ * Layout PLEINE LARGEUR : aucun logo en tête, bandeaux 100% bord-à-bord (plus de marges crème),
+ * contenu centré à 680px. L'email commence directement par l'œuvre.
+ */
 function layout(opts: { title: string; preheader: string; rows: string }): string {
   return `<!DOCTYPE html>
 <html lang="fr" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 ${head(opts.title)}
-<body style="margin:0; padding:0; width:100%; background-color:#F3E1DA;">
-  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F3E1DA;">
+<body style="margin:0; padding:0; width:100%; background-color:${WHITE};">
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:${WHITE};">
     ${opts.preheader}
     &#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;
   </div>
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#F3E1DA;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%; background-color:${WHITE};">
     <tr>
-      <td align="center" style="padding:24px 0;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" class="email-container dm-card" bgcolor="#FFFFFF" style="width:600px; max-width:600px; background-color:#FFFFFF;">
-          ${headerRow()}
+      <td align="center" style="padding:0;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" class="email-container" bgcolor="${WHITE}" style="width:100%; max-width:100%; background-color:${WHITE};">
           ${opts.rows}
           ${footerRow()}
         </table>
@@ -357,13 +365,13 @@ ${head(opts.title)}
 
 const INTENT_LINE =
   'Un clic, vous validez l&rsquo;aperçu &mdash; on n&rsquo;imprime qu&rsquo;ensuite.'
-const CTA_LABEL = 'Reprendre ma création'
 
 function textVersion(opts: {
   headline: string
   paragraphs: string[]
   reassurance: ReassureItem[]
   resumeUrl: string
+  ctaLabel: string
   fathersDayText?: string | null
 }): string {
   const lines = [
@@ -372,12 +380,12 @@ function textVersion(opts: {
     ...opts.paragraphs.map(toText),
     '',
     ...(opts.fathersDayText ? [toText(opts.fathersDayText), ''] : []),
-    `${toText(CTA_LABEL)} : ${opts.resumeUrl}`,
+    `${toText(opts.ctaLabel)} : ${opts.resumeUrl}`,
     '',
     ...opts.reassurance.map((r) => `• ${toText(r.strong)} — ${toText(r.rest)}`),
     '',
     'Une question ? Répondez simplement à cet e-mail.',
-    'L’équipe MyselfMonArt',
+    'L’atelier MyselfMonArt',
   ]
   return lines.join('\n')
 }
@@ -392,17 +400,17 @@ export function renderSaveEmail(input: {
   previewUrl: string | null
 }): RenderedEmail {
   const paragraphs = [
-    'Tout est gardé tel quel : le prénom, le numéro floqué, le maillot aux couleurs du club, l&rsquo;ambiance du stade. Rien n&rsquo;est perdu, rien ne presse &mdash; votre création reste accessible 30 jours.',
-    'Quand le moment vous semblera juste, un seul clic vous y ramène. Vous gardez la main jusqu&rsquo;au bout : vous validez l&rsquo;aperçu, et nous n&rsquo;imprimons qu&rsquo;ensuite. Pas avant.',
+    'Tout est gardé intact : le prénom et le numéro floqués, le maillot aux couleurs du club, la lumière du stade. Votre création est précieusement conservée dans notre atelier, prête à reprendre vie dès que le moment vous semblera juste.',
+    'Rien n&rsquo;est imprimé à ce stade : l&rsquo;aperçu se valide toujours avant l&rsquo;impression, jamais l&rsquo;inverse. Prenez le temps qu&rsquo;il faut &mdash; votre œuvre reste accessible 30 jours.',
   ]
   const reassurance: ReassureItem[] = [
-    { strong: 'Aperçu avant achat', rest: 'vous validez, puis nous imprimons' },
+    { strong: 'Aperçu avant impression', rest: 'vous validez, puis nous imprimons' },
+    { strong: 'Conservée 30 jours', rest: 'vous reprenez quand vous voulez' },
     { strong: 'Conçu en France', rest: 'imprimé en Europe &mdash; rendu mat' },
-    { strong: 'Fabrication 3 à 4 jours ouvrés', rest: 'expédition suivie' },
   ]
-  const headline = 'Votre création vous attend, intacte'
+  const headline = 'Votre petite légende, mise à l&rsquo;abri'
+  const ctaLabel = 'Reprendre ma création'
   const rows = [
-    eyebrowRow('Brouillon conservé'),
     framedPreviewRow({
       previewUrl: input.previewUrl,
       alt: 'Aperçu de votre tableau personnalisé',
@@ -410,21 +418,23 @@ export function renderSaveEmail(input: {
       fallbackTitle: 'Votre création est conservée',
       fallbackSub: 'L&rsquo;aperçu se révèle dès que vous reprenez votre tableau.',
     }),
+    eyebrowRow('Œuvre en atelier'),
     h1Row(headline),
     bodyRow(paragraphs),
-    intentCtaRow(INTENT_LINE, input.resumeUrl, CTA_LABEL),
+    intentCtaRow(INTENT_LINE, input.resumeUrl, ctaLabel),
     spacerRow(),
     reassuranceRow(reassurance),
   ].join('\n          ')
 
   return {
-    subject: 'Votre création est conservée — reprenez en 1 clic',
+    subject: 'Votre création est conservée à l’atelier',
     html: layout({
       title: 'Votre création est conservée',
-      preheader: 'Reprenez en 1 clic &mdash; vous validez l&rsquo;aperçu avant toute impression.',
+      preheader:
+        'Rien n&rsquo;est perdu &mdash; vous validez l&rsquo;aperçu avant toute impression.',
       rows,
     }),
-    text: textVersion({ headline, paragraphs, reassurance, resumeUrl: input.resumeUrl }),
+    text: textVersion({ headline, paragraphs, reassurance, resumeUrl: input.resumeUrl, ctaLabel }),
   }
 }
 
@@ -437,24 +447,21 @@ export function renderReminderEmail(input: {
 }): RenderedEmail {
   const p = esc(input.playerName)
   const paragraphs = [
-    `Hier, vous avez donné à ${p} son maillot, son prénom et son numéro floqués, et sa place sous les lumières du stade. Le voilà transformé en joueur de légende &mdash; et votre création est toujours là, soigneusement mise de côté, exactement là où vous l&rsquo;avez laissée.`,
-    'Imaginez son regard en se découvrant affiché comme une star, fièrement accroché au mur. Rien n&rsquo;est figé : avant toute impression, vous validez l&rsquo;aperçu &mdash; on n&rsquo;imprime que ce que vous aimez vraiment. Votre création reste accessible 30 jours.',
+    `Hier, vous avez donné à ${p} son maillot, son prénom et son numéro floqués, et sa place sous les projecteurs. Imaginez son émerveillement en se découvrant en véritable légende &mdash; et la fierté que vous aurez à l&rsquo;accrocher au mur.`,
+    `Sa création est toujours là, soigneusement mise de côté dans notre atelier, exactement où vous l&rsquo;avez laissée. Avant toute impression, vous validez l&rsquo;aperçu &mdash; on n&rsquo;imprime que ce que vous aimez vraiment. Accessible encore 30 jours.`,
   ]
   const reassurance: ReassureItem[] = [
     { strong: 'Aperçu validé avant impression', rest: 'on valide, on imprime' },
-    { strong: 'Rendu mat haute qualité', rest: 'conçu en France &mdash; imprimé en Europe' },
-    {
-      strong: 'Création gardée 30 jours',
-      rest: 'fabrication 3 à 4 jours ouvrés, expédition suivie',
-    },
+    { strong: 'Conservée 30 jours', rest: 'reprise en un clic' },
+    { strong: 'Fabrication 3 à 4 jours', rest: 'ouvrés &mdash; conçu en France' },
   ]
-  const headline = `${p} n&rsquo;attend plus que vous`
+  const headline = `${p} entre dans la légende`
+  const ctaLabel = 'Revoir l&rsquo;œuvre'
   const fathersDayHtml = input.fathersDay
-    ? `La fête des pères approche &mdash; c&rsquo;est le ${esc(input.fathersDay)}. Pour offrir ${p} à temps, finalisez votre commande dès maintenant : comptez 3 à 4 jours ouvrés de fabrication, puis l&rsquo;expédition avec suivi.`
+    ? `La fête des pères approche &mdash; c&rsquo;est le ${esc(input.fathersDay)}. Pour offrir son tableau à temps, finalisez votre commande dès maintenant : comptez 3 à 4 jours ouvrés de fabrication, puis l&rsquo;expédition avec suivi.`
     : null
 
   const rows = [
-    eyebrowRow('Reprise en 1 clic'),
     framedPreviewRow({
       previewUrl: input.previewUrl,
       alt: `Aperçu du tableau personnalisé de ${input.playerName}`,
@@ -462,20 +469,21 @@ export function renderReminderEmail(input: {
       fallbackTitle: `Le tableau de ${p} vous attend`,
       fallbackSub: 'L&rsquo;aperçu se révèle dès que vous reprenez votre tableau.',
     }),
+    eyebrowRow('Votre légende vous attend'),
     h1Row(headline),
     bodyRow(paragraphs),
-    intentCtaRow(INTENT_LINE, input.resumeUrl, CTA_LABEL),
+    intentCtaRow(INTENT_LINE, input.resumeUrl, ctaLabel),
     ...(fathersDayHtml ? [fathersDayRow(fathersDayHtml, input.resumeUrl)] : []),
     spacerRow(),
     reassuranceRow(reassurance),
   ].join('\n          ')
 
   return {
-    subject: `Le tableau de ${input.playerName} vous attend`,
+    subject: `La légende de ${input.playerName} vous attend à l’atelier`,
     html: layout({
       title: `Le tableau de ${p} vous attend`,
       preheader:
-        'Reprenez votre création là où vous l&rsquo;avez laissée &mdash; vous validez l&rsquo;aperçu avant toute impression.',
+        'Sa place sous les lumières du stade est gardée &mdash; reprise en 1 clic, aperçu validé avant impression.',
       rows,
     }),
     text: textVersion({
@@ -483,6 +491,7 @@ export function renderReminderEmail(input: {
       paragraphs,
       reassurance,
       resumeUrl: input.resumeUrl,
+      ctaLabel,
       fathersDayText: fathersDayHtml,
     }),
   }
@@ -495,17 +504,17 @@ export function renderMockupsEmail(input: {
 }): RenderedEmail {
   const urls = (input.mockupUrls || []).filter(Boolean)
   const paragraphs = [
-    'Voici les aperçus de votre tableau personnalisé mis en situation : votre création, accrochée sur un vrai mur, à sa juste échelle. De quoi voir, enfin, le rendu mat et l&rsquo;effet qu&rsquo;elle aura une fois chez vous &mdash; ou chez la personne à qui vous la destinez.',
-    'Il ne vous reste qu&rsquo;un geste : reprendre votre création là où vous l&rsquo;aviez laissée, choisir le format et la finition, puis valider. Nous ne l&rsquo;imprimons qu&rsquo;une fois votre aperçu approuvé.',
+    'Voici votre petite légende mise en situation : la création accrochée sur un vrai mur, à sa juste échelle. Le rendu mat et les formats 30×40 ou 60×80&nbsp;cm prennent alors tout leur sens &mdash; de quoi ressentir dès maintenant la fierté qu&rsquo;elle inspirera, chez vous ou chez la personne à qui vous la destinez.',
+    'Il ne reste qu&rsquo;un geste : reprendre votre création, choisir le format et la finition &mdash; sans cadre ou cadre au choix &mdash; puis valider. Nous ne l&rsquo;imprimons qu&rsquo;une fois votre aperçu approuvé, jamais avant.',
   ]
   const reassurance: ReassureItem[] = [
-    { strong: '30x40 &amp; 60x80 cm', rest: 'sans cadre ou cadre au choix' },
+    { strong: '30×40 &amp; 60×80 cm', rest: 'sans cadre ou cadre au choix' },
     { strong: 'Rendu mat, conçu en France', rest: 'imprimé en Europe &mdash; 3 à 4 j ouvrés' },
     { strong: 'Accessible 30 jours', rest: 'votre création reste conservée' },
   ]
-  const headline = 'On a imaginé votre création sur un mur.'
+  const headline = 'On l&rsquo;a imaginé sur votre mur'
+  const ctaLabel = 'Choisir format et finition'
   const rows = [
-    eyebrowRow('Aperçus prêts'),
     mockupsGridRow({
       url1: urls[0] || null,
       url2: urls[1] || null,
@@ -513,9 +522,10 @@ export function renderMockupsEmail(input: {
       fallbackTitle: 'Vos aperçus se préparent',
       fallbackSub: 'Les mises en situation se révèlent dès que vous reprenez votre tableau.',
     }),
+    eyebrowRow('Aperçus en situation prêts'),
     h1Row(headline),
     bodyRow(paragraphs),
-    intentCtaRow(INTENT_LINE, input.resumeUrl, CTA_LABEL),
+    intentCtaRow(INTENT_LINE, input.resumeUrl, ctaLabel),
     spacerRow(),
     reassuranceRow(reassurance),
   ].join('\n          ')
@@ -527,6 +537,6 @@ export function renderMockupsEmail(input: {
       preheader: 'Découvrez vos aperçus en situation &mdash; un clic pour finaliser.',
       rows,
     }),
-    text: textVersion({ headline, paragraphs, reassurance, resumeUrl: input.resumeUrl }),
+    text: textVersion({ headline, paragraphs, reassurance, resumeUrl: input.resumeUrl, ctaLabel }),
   }
 }
