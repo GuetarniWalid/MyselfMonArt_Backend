@@ -155,6 +155,18 @@
       "aliases": [],
       "flags": []
     },
+    "shopify:ensure_frames_poster_def": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/EnsureFramesPosterDef",
+      "commandName": "shopify:ensure_frames_poster_def",
+      "description": "Create the product metafield definition painting_options.frames_poster (list of painting_option metaobjects)",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
     "image:rename": {
       "settings": {
         "loadApp": true,
