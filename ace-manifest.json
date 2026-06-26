@@ -327,6 +327,26 @@
         }
       ]
     },
+    "shopify:rebuild_poster_cadre": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/RebuildPosterCadre",
+      "commandName": "shopify:rebuild_poster_cadre",
+      "description": "Rebuild a poster Cadres option from metafield-linked values to a plain { Sans cadre, Avec cadre } + frames_poster",
+      "args": [
+        {
+          "type": "spread",
+          "propertyName": "productIds",
+          "name": "productIds",
+          "required": true,
+          "description": "Poster product IDs (numeric or gid://)"
+        }
+      ],
+      "aliases": [],
+      "flags": []
+    },
     "shopify:remove-glb-files": {
       "settings": {
         "loadApp": true,
