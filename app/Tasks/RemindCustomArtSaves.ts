@@ -15,6 +15,13 @@ import { affectedRows } from 'App/Services/CustomArt/db'
 const REMINDER_MIN_AGE_H = 20
 const REMINDER_MAX_AGE_H = 28
 
+// Plafond anti-rafale : AU PLUS un rappel par session toutes les 24 h. La fenêtre
+// d'éligibilité (8 h) glisse d'1 h par scan, donc deux créations d'une même session
+// espacées de plus de 8 h n'entrent jamais dans la même fenêtre — sans ce plafond,
+// chacune déclenchait son propre email au fil des scans horaires (rafales constatées :
+// une session a reçu 4 mails dans la même matinée).
+const REMINDER_COOLDOWN_H = 24
+
 /**
  * Relance « création sauvegardée » (M10). Toutes les heures, scanne les jobs `ready`
  * dont la session a laissé un email, non achetés (aucun CustomArtOrder), créés il y a
@@ -25,8 +32,13 @@ const REMINDER_MAX_AGE_H = 28
  *   - UN seul rappel par création : claim conditionnel WHERE reminder_sent_at IS NULL
  *     (sûr même si plusieurs schedulers tournaient) ; le flag n'est rendu (et l'envoi
  *     retenté à l'heure suivante) que si Resend échoue, tant que la fenêtre est ouverte.
+ *   - AU PLUS UN email par session toutes les 24 h (REMINDER_COOLDOWN_H) : on saute
+ *     toute session déjà relancée avec succès dans les dernières 24 h. C'est ce qui
+ *     évite les rafales quand les créations d'une session sont étalées sur plus de 8 h
+ *     (donc jamais dans la même fenêtre de scan). Un job marqué reminder_sent_at = un
+ *     envoi réussi (le rollback remet à NULL en cas d'échec), d'où un signal fiable.
  *   - UN seul email par session et par scan : si une session a plusieurs créations
- *     éligibles, on relance sur la plus récente et on marque les autres (pas de rafale).
+ *     éligibles dans la même fenêtre, on relance sur la plus récente et on marque les autres.
  *   - Jamais de relance vers quelqu'un qui a déjà acheté (sur n'importe quel job de
  *     sa session) : l'email « votre tableau vous attend » serait absurde après achat.
  *
@@ -71,12 +83,26 @@ export default class RemindCustomArtSaves extends BaseTask {
       .select('custom_art_jobs.session_id as sessionId')
     const buyerSessionIds = new Set(buyerRows.map((r) => Number(r.$extras.sessionId)))
 
+    // 3 bis) Plafond 1 rappel / session / 24 h : sessions déjà relancées avec succès dans
+    // la fenêtre de cooldown. reminder_sent_at non NULL == envoi réussi (rollback à NULL
+    // sinon), donc signal fiable même pour les jobs « frères » marqués sans envoi propre.
+    const cooldownStart = DateTime.now()
+      .minus({ hours: REMINDER_COOLDOWN_H })
+      .toSQL({ includeOffset: false }) as string
+    const recentRows = await Database.from('custom_art_jobs')
+      .whereIn('session_id', sessionIds)
+      .whereNotNull('reminder_sent_at')
+      .where('reminder_sent_at', '>=', cooldownStart)
+      .distinct('session_id')
+    const cooledDownSessionIds = new Set(recentRows.map((r) => Number(r.session_id)))
+
     // 4) Un envoi par session : créations éligibles groupées, rappel sur la plus récente
     const bySession = new Map<number, CustomArtJob[]>()
     for (const job of jobs) {
       const session = sessionById.get(job.sessionId)
       if (!session || !session.email) continue
       if (buyerSessionIds.has(job.sessionId)) continue
+      if (cooledDownSessionIds.has(job.sessionId)) continue // plafond 1 rappel / 24 h
       bySession.set(job.sessionId, [...(bySession.get(job.sessionId) || []), job])
     }
 
