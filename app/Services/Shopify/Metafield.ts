@@ -64,8 +64,8 @@ export default class Metafield extends Authentication {
     return response.data.value as number
   }
 
-  public async update(ownerId: string, namespace: string, key: string, value: any) {
-    const { query, variables } = this.updateQuery(ownerId, namespace, key, value)
+  public async update(ownerId: string, namespace: string, key: string, value: any, type?: string) {
+    const { query, variables } = this.updateQuery(ownerId, namespace, key, value, type)
     const response = await this.fetchGraphQL(query, variables)
 
     if (response.metafieldsSet.userErrors?.length) {
@@ -75,7 +75,7 @@ export default class Metafield extends Authentication {
     return response.metafieldsSet.metafields
   }
 
-  private updateQuery(ownerId: string, namespace: string, key: string, value: any) {
+  private updateQuery(ownerId: string, namespace: string, key: string, value: any, type?: string) {
     return {
       query: `mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
                 metafieldsSet(metafields: $metafields) {
@@ -98,6 +98,7 @@ export default class Metafield extends Authentication {
             namespace,
             key,
             value,
+            ...(type ? { type } : {}),
           },
         ],
       },

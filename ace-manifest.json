@@ -417,6 +417,45 @@
         }
       ]
     },
+    "shopify:backfill_posters": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ShopifyBackfillPosters",
+      "commandName": "shopify:backfill_posters",
+      "description": "Create one poster per painting (reuse image, AI-regenerated poster text); webhook enriches variants",
+      "args": [
+        {
+          "type": "spread",
+          "propertyName": "productIds",
+          "name": "productIds",
+          "required": false,
+          "description": "Optional painting IDs to process (test mode); default = all eligible paintings"
+        }
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "limit",
+          "propertyName": "limit",
+          "type": "number",
+          "description": "Max posters to create this run (default 100)"
+        },
+        {
+          "name": "spacing",
+          "propertyName": "spacing",
+          "type": "number",
+          "description": "Seconds between paintings (default 20)"
+        },
+        {
+          "name": "dry-run",
+          "propertyName": "dryRun",
+          "type": "boolean",
+          "description": "Classify only — no AI, no writes"
+        }
+      ]
+    },
     "shopify:change_meta_objects_media_status": {
       "settings": {
         "loadApp": true,
