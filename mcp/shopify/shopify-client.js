@@ -1,5 +1,44 @@
 import '@shopify/shopify-api/adapters/node'
 import { shopifyApi, ApiVersion, Session, LogSeverity } from '@shopify/shopify-api'
+// Shared selection for collection reads/writes — kept in one place so
+// createCollection, updateCollection and getCollection stay in sync.
+// NOTE: the image is read back as `image { url }` (output) even though it is
+// written via CollectionInput.image `{ src }` (input).
+const COLLECTION_FIELDS = `
+  id
+  handle
+  title
+  descriptionHtml
+  templateSuffix
+  sortOrder
+  updatedAt
+  seo {
+    title
+    description
+  }
+  image {
+    url
+    altText
+  }
+  ruleSet {
+    appliedDisjunctively
+    rules {
+      column
+      relation
+      condition
+    }
+  }
+  metafields(first: 50) {
+    edges {
+      node {
+        namespace
+        key
+        value
+        type
+      }
+    }
+  }
+`
 export class ShopifyClient {
   client
   session
@@ -940,16 +979,28 @@ export class ShopifyClient {
     }
     return this.graphql(query, variables)
   }
+  async createCollection(input) {
+    const mutation = `
+      mutation collectionCreate($input: CollectionInput!) {
+        collectionCreate(input: $input) {
+          collection {
+            ${COLLECTION_FIELDS}
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `
+    return this.graphql(mutation, { input })
+  }
   async updateCollection(id, input) {
     const mutation = `
       mutation updateCollection($input: CollectionInput!) {
         collectionUpdate(input: $input) {
           collection {
-            id
-            title
-            handle
-            descriptionHtml
-            updatedAt
+            ${COLLECTION_FIELDS}
           }
           userErrors {
             field
@@ -959,6 +1010,133 @@ export class ShopifyClient {
       }
     `
     return this.graphql(mutation, { input: { ...input, id } })
+  }
+  async deleteCollection(id) {
+    const mutation = `
+      mutation collectionDelete($input: CollectionDeleteInput!) {
+        collectionDelete(input: $input) {
+          deletedCollectionId
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `
+    return this.graphql(mutation, { input: { id } })
+  }
+  // Resolve (and cache) the "Online Store" publication id — the SEO-relevant
+  // sales channel a collection must be published on to appear/be indexed on the
+  // storefront. Cached on the (shared, long-lived) client instance.
+  async getOnlineStorePublicationId() {
+    if (this._onlineStorePublicationId) return this._onlineStorePublicationId
+    const query = `
+      query getPublications {
+        publications(first: 50) {
+          edges {
+            node {
+              id
+              name
+            }
+          }
+        }
+      }
+    `
+    const result = await this.graphql(query)
+    const publications = (result.data?.publications?.edges || []).map((edge) => edge.node)
+    const onlineStore =
+      publications.find((p) => p.name === 'Online Store') ||
+      publications.find((p) => /online store/i.test(p.name || ''))
+    if (!onlineStore) {
+      const names = publications.map((p) => p.name).join(', ') || 'none'
+      throw new Error(
+        `Could not find the "Online Store" publication (available: ${names}). ` +
+          'Publishing/unpublishing a collection requires the read_publications scope.'
+      )
+    }
+    this._onlineStorePublicationId = onlineStore.id
+    return onlineStore.id
+  }
+  // Publish or unpublish a collection on the Online Store publication.
+  // Returns the raw graphql result of publishablePublish / publishableUnpublish.
+  async setCollectionPublished(collectionId, published) {
+    const publicationId = await this.getOnlineStorePublicationId()
+    const mutation = published
+      ? `
+        mutation publishCollection($id: ID!, $publicationId: ID!) {
+          publishablePublish(id: $id, input: [{ publicationId: $publicationId }]) {
+            publishable {
+              publishedOnPublication(publicationId: $publicationId)
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+      `
+      : `
+        mutation unpublishCollection($id: ID!, $publicationId: ID!) {
+          publishableUnpublish(id: $id, input: [{ publicationId: $publicationId }]) {
+            publishable {
+              publishedOnPublication(publicationId: $publicationId)
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+      `
+    return this.graphql(mutation, { id: collectionId, publicationId })
+  }
+  // Read a single collection by id OR handle. Returns the collection node
+  // (with a `publishedOnOnlineStore` boolean when publication access is
+  // available) or null if not found. Degrades gracefully — if the token lacks
+  // read_publications, the published flag is simply omitted instead of failing.
+  async getCollection(params) {
+    let publicationId = null
+    try {
+      publicationId = await this.getOnlineStorePublicationId()
+    } catch (e) {
+      // No publication access — return the collection without the storefront
+      // published flag rather than failing the whole read.
+    }
+    const publishedAlias = publicationId
+      ? 'publishedOnOnlineStore: publishedOnPublication(publicationId: $publicationId)'
+      : ''
+    const pubVarDecl = publicationId ? ', $publicationId: ID!' : ''
+    if (params.id) {
+      const query = `
+        query getCollection($id: ID!${pubVarDecl}) {
+          collection(id: $id) {
+            ${COLLECTION_FIELDS}
+            ${publishedAlias}
+          }
+        }
+      `
+      const variables = publicationId ? { id: params.id, publicationId } : { id: params.id }
+      const result = await this.graphql(query, variables)
+      return result.data?.collection || null
+    }
+    const query = `
+      query getCollectionByHandle($query: String!${pubVarDecl}) {
+        collections(first: 5, query: $query) {
+          edges {
+            node {
+              ${COLLECTION_FIELDS}
+              ${publishedAlias}
+            }
+          }
+        }
+      }
+    `
+    const variables = publicationId
+      ? { query: `handle:${params.handle}`, publicationId }
+      : { query: `handle:${params.handle}` }
+    const result = await this.graphql(query, variables)
+    const nodes = (result.data?.collections?.edges || []).map((edge) => edge.node)
+    return nodes.find((n) => n.handle === params.handle) || nodes[0] || null
   }
   // Location operations
   async getLocations() {

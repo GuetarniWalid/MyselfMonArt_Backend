@@ -67,12 +67,13 @@ SHOPIFY_STORE_DOMAIN=your-store.myshopify.com SHOPIFY_ACCESS_TOKEN=shpat_xxx npm
 ## API Scopes Required
 
 Configure your Shopify app with these scopes:
-- `read_products`, `write_products`
+- `read_products`, `write_products` (covers create/update/delete of collections too)
 - `read_orders`
 - `read_customers`
 - `read_inventory`, `write_inventory`
 - `read_analytics`, `read_reports`
 - `write_files` (required for `uploadFile` / `createFile` / `createStagedUpload`)
+- `read_publications`, `write_publications` (required to publish/unpublish a collection — the `published` flag of `createCollection` / `updateCollection`, and the `publishedOnOnlineStore` field of `getCollection`)
 
 ## File upload
 

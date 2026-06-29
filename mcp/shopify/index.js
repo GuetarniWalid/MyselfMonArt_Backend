@@ -34,6 +34,17 @@ const globalShopifyClient = new ShopifyClient({
 
 console.log(`Shopify MCP Server initialized for store: ${SHOPIFY_STORE_DOMAIN}`)
 
+// Flatten a collection's `metafields { edges { node } }` connection into a plain
+// array so tool callers get `metafields: [{ namespace, key, value, type }]`.
+function shapeCollection(collection) {
+  if (!collection) return collection
+  const shaped = { ...collection }
+  if (collection.metafields && Array.isArray(collection.metafields.edges)) {
+    shaped.metafields = collection.metafields.edges.map((edge) => edge.node)
+  }
+  return shaped
+}
+
 // Register all tools
 function registerTools(server, shopifyClient) {
   // Product Tools
@@ -828,8 +839,201 @@ function registerTools(server, shopifyClient) {
     }
   )
   server.tool(
+    'createCollection',
+    'Create a collection from scratch (collectionCreate) — the full SEO/editorial shell in ONE call: title (= storefront H1), handle, descriptionHtml, SEO meta, a representative image (by public URL), template suffix, editorial metafields (e.g. custom.intro / custom.guide / custom.faq), and an optional smart `ruleSet` (auto-populated by tag). ' +
+      'The collection is created UNPUBLISHED by default so empty pages are never indexed; pass published:true to publish it on the Online Store. ' +
+      'Returns the created collection (id, handle, …) and its publication status; userErrors are surfaced as-is.',
+    {
+      title: z.string().describe('Collection title — this is also the H1 on the collection page'),
+      handle: z
+        .string()
+        .optional()
+        .describe('URL handle/slug. Auto-generated from the title if omitted.'),
+      descriptionHtml: z
+        .string()
+        .optional()
+        .describe('Collection body/description (HTML allowed) — maps to body_html'),
+      seo: z
+        .object({
+          title: z.string().optional().describe('SEO meta title (the <title> tag)'),
+          description: z.string().optional().describe('SEO meta description'),
+        })
+        .optional()
+        .describe('SEO meta title/description override'),
+      image: z
+        .object({
+          src: z
+            .string()
+            .describe('Publicly accessible image URL (or a staged-upload URL from uploadFile)'),
+          altText: z.string().optional().describe('Accessibility / SEO alt text'),
+        })
+        .optional()
+        .describe('Representative collection image'),
+      templateSuffix: z
+        .string()
+        .optional()
+        .describe(
+          'Theme template suffix (e.g. "editorial" renders templates/collection.editorial.json). Omit for the default collection template.'
+        ),
+      published: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'FALSE by default — do NOT publish at creation (empty pages must not be indexed). TRUE publishes the collection on the Online Store publication (requires the write_publications scope).'
+        ),
+      ruleSet: z
+        .object({
+          appliedDisjunctively: z
+            .boolean()
+            .describe('true = product matches ANY rule (OR); false = must match ALL rules (AND)'),
+          rules: z
+            .array(
+              z.object({
+                column: z
+                  .string()
+                  .describe(
+                    'Rule column, e.g. TAG, TYPE, VENDOR, TITLE, VARIANT_PRICE, IS_PRICE_REDUCED'
+                  ),
+                relation: z
+                  .string()
+                  .describe(
+                    'Relation, e.g. EQUALS, NOT_EQUALS, CONTAINS, STARTS_WITH, ENDS_WITH, GREATER_THAN, LESS_THAN'
+                  ),
+                condition: z.string().describe('Value to match, e.g. a tag name like "poster"'),
+              })
+            )
+            .min(1),
+        })
+        .optional()
+        .describe('Makes this a SMART (auto-populated) collection. Omit for a manual collection.'),
+      metafields: z
+        .array(
+          z.object({
+            namespace: z.string(),
+            key: z.string(),
+            type: z
+              .string()
+              .describe(
+                'Shopify metafield type, e.g. multi_line_text_field, single_line_text_field, rich_text_field, json'
+              ),
+            value: z.string(),
+          })
+        )
+        .optional()
+        .describe(
+          'Editorial metafields to set in the same call, e.g. custom.intro / custom.guide / custom.faq'
+        ),
+    },
+    async (args) => {
+      try {
+        const { published, ...input } = args
+        const result = await shopifyClient.createCollection(input)
+        const payload = result.data.collectionCreate
+        if (payload.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error creating collection: ${JSON.stringify(payload.userErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        const collection = payload.collection
+        // Created UNPUBLISHED by default (Shopify behaviour). Only publish when asked.
+        let publication = { publishedOnOnlineStore: false }
+        if (published) {
+          try {
+            const pub = await shopifyClient.setCollectionPublished(collection.id, true)
+            const p = pub.data.publishablePublish
+            publication =
+              p.userErrors && p.userErrors.length > 0
+                ? { publishedOnOnlineStore: false, userErrors: p.userErrors }
+                : { publishedOnOnlineStore: p.publishable?.publishedOnPublication ?? true }
+          } catch (e) {
+            // The collection was created; surface the publish failure without losing it.
+            publication = { publishedOnOnlineStore: false, error: e.message }
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                { collection: shapeCollection(collection), publication },
+                null,
+                2
+              ),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error creating collection: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'getCollection',
+    'Read a collection by `id` OR `handle`. Returns id, handle, title, descriptionHtml, templateSuffix, sortOrder, seo, image, ruleSet, whether it is published on the Online Store (publishedOnOnlineStore), and its metafields (all namespaces, incl. custom & global). Use it for idempotence — check whether a handle already exists before createCollection, or to verify metafields after a write.',
+    {
+      id: z
+        .string()
+        .optional()
+        .describe('Collection GID (e.g. gid://shopify/Collection/123). Provide id OR handle.'),
+      handle: z
+        .string()
+        .optional()
+        .describe('Collection handle/slug (e.g. "test-poster-zzz"). Provide id OR handle.'),
+    },
+    async (args) => {
+      try {
+        if (!args.id && !args.handle) {
+          return {
+            content: [{ type: 'text', text: 'Provide either `id` or `handle`.' }],
+            isError: true,
+          }
+        }
+        const collection = await shopifyClient.getCollection(args)
+        if (!collection) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Collection not found for ${args.id ? `id ${args.id}` : `handle "${args.handle}"`}.`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [{ type: 'text', text: JSON.stringify(shapeCollection(collection), null, 2) }],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error fetching collection: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
     'updateCollection',
-    'Update an existing collection (title is also the storefront H1), description, handle/URL, or SEO fields',
+    'Update an existing collection: title (= storefront H1), description, handle/URL, SEO meta, representative image, templateSuffix, editorial metafields, and/or publish/unpublish it on the Online Store (`published`). Only the fields you pass are changed.',
     {
       id: z.string().describe('The collection ID to update (e.g. gid://shopify/Collection/123)'),
       title: z
@@ -840,26 +1044,98 @@ function registerTools(server, shopifyClient) {
       handle: z.string().optional().describe('URL handle/slug of the collection'),
       seoTitle: z.string().optional().describe('SEO meta title'),
       seoDescription: z.string().optional().describe('SEO meta description'),
+      image: z
+        .object({
+          src: z
+            .string()
+            .describe('Publicly accessible image URL (or a staged-upload URL from uploadFile)'),
+          altText: z.string().optional().describe('Accessibility / SEO alt text'),
+        })
+        .optional()
+        .describe('Replace the representative collection image'),
+      templateSuffix: z
+        .string()
+        .optional()
+        .describe(
+          'Theme template suffix. Pass "" to reset to the default collection template. Omit to leave unchanged.'
+        ),
+      metafields: z
+        .array(
+          z.object({
+            namespace: z.string(),
+            key: z.string(),
+            type: z
+              .string()
+              .describe(
+                'Shopify metafield type, e.g. multi_line_text_field, rich_text_field, json'
+              ),
+            value: z.string(),
+          })
+        )
+        .optional()
+        .describe(
+          'Editorial metafields to set/overwrite, e.g. custom.intro / custom.guide / custom.faq'
+        ),
+      published: z
+        .boolean()
+        .optional()
+        .describe(
+          'Publish (true) or unpublish (false) the collection on the Online Store publication. Omit to leave the publication state unchanged. Requires the write_publications scope.'
+        ),
     },
     async (args) => {
       try {
-        const { id, description, seoTitle, seoDescription, ...rest } = args
+        const { id, description, seoTitle, seoDescription, published, templateSuffix, ...rest } =
+          args
         const input = { ...rest }
         if (description !== undefined) {
           input.descriptionHtml = description
+        }
+        // "" means "reset to the default collection template" → Shopify expects null.
+        if (templateSuffix !== undefined) {
+          input.templateSuffix = templateSuffix === '' ? null : templateSuffix
         }
         if (seoTitle !== undefined || seoDescription !== undefined) {
           input.seo = {}
           if (seoTitle !== undefined) input.seo.title = seoTitle
           if (seoDescription !== undefined) input.seo.description = seoDescription
         }
-        const result = await shopifyClient.updateCollection(id, input)
-        if (result.data.collectionUpdate.userErrors.length > 0) {
+        let collection = null
+        if (Object.keys(input).length > 0) {
+          const result = await shopifyClient.updateCollection(id, input)
+          const payload = result.data.collectionUpdate
+          if (payload.userErrors.length > 0) {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: `Error updating collection: ${JSON.stringify(payload.userErrors)}`,
+                },
+              ],
+              isError: true,
+            }
+          }
+          collection = payload.collection
+        }
+        let publication
+        if (published !== undefined) {
+          try {
+            const pub = await shopifyClient.setCollectionPublished(id, published)
+            const p = published ? pub.data.publishablePublish : pub.data.publishableUnpublish
+            publication =
+              p.userErrors && p.userErrors.length > 0
+                ? { published, userErrors: p.userErrors }
+                : { publishedOnOnlineStore: p.publishable?.publishedOnPublication ?? published }
+          } catch (e) {
+            publication = { published, error: e.message }
+          }
+        }
+        if (!collection && publication === undefined) {
           return {
             content: [
               {
                 type: 'text',
-                text: `Error updating collection: ${JSON.stringify(result.data.collectionUpdate.userErrors)}`,
+                text: 'Nothing to update: pass at least one field to change (title, description, handle, seoTitle, seoDescription, image, templateSuffix, metafields) or `published`.',
               },
             ],
             isError: true,
@@ -869,7 +1145,11 @@ function registerTools(server, shopifyClient) {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(result.data.collectionUpdate.collection, null, 2),
+              text: JSON.stringify(
+                { collection: collection ? shapeCollection(collection) : undefined, publication },
+                null,
+                2
+              ),
             },
           ],
         }
@@ -879,6 +1159,48 @@ function registerTools(server, shopifyClient) {
             {
               type: 'text',
               text: `Error updating collection: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'deleteCollection',
+    'Delete a collection by id (collectionDelete). IRREVERSIBLE — use for cleanup/rollback of a shell you created. Returns the deleted collection id.',
+    {
+      id: z.string().describe('The collection ID to delete (e.g. gid://shopify/Collection/123)'),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.deleteCollection(args.id)
+        const payload = result.data.collectionDelete
+        if (payload.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error deleting collection: ${JSON.stringify(payload.userErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({ deletedCollectionId: payload.deletedCollectionId }, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error deleting collection: ${error.message}`,
             },
           ],
           isError: true,
@@ -2086,7 +2408,9 @@ function registerTools(server, shopifyClient) {
     {
       type: z
         .string()
-        .describe('Permanent unique type identifier (e.g. "color_swatch"). Cannot be changed later.'),
+        .describe(
+          'Permanent unique type identifier (e.g. "color_swatch"). Cannot be changed later.'
+        ),
       name: z.string().describe('Human-readable display name (e.g. "Color swatch")'),
       description: z.string().optional().describe('Administrative description of the definition'),
       displayNameKey: z
@@ -2100,13 +2424,17 @@ function registerTools(server, shopifyClient) {
             name: z.string().describe('Field display name (e.g. "Hex")'),
             type: z
               .string()
-              .describe('Shopify field type, e.g. "single_line_text_field", "color", "number_integer", "file_reference"'),
+              .describe(
+                'Shopify field type, e.g. "single_line_text_field", "color", "number_integer", "file_reference"'
+              ),
             description: z.string().optional(),
             required: z.boolean().optional().default(false),
             validations: z
               .array(z.object({ name: z.string(), value: z.string() }))
               .optional()
-              .describe('Field validations, e.g. [{ name: "regex", value: "^#([A-Fa-f0-9]{6})$" }]'),
+              .describe(
+                'Field validations, e.g. [{ name: "regex", value: "^#([A-Fa-f0-9]{6})$" }]'
+              ),
           })
         )
         .min(1)
@@ -2118,7 +2446,9 @@ function registerTools(server, shopifyClient) {
       translatable: z
         .boolean()
         .optional()
-        .describe('Enable the translatable capability so field values can be translated per locale'),
+        .describe(
+          'Enable the translatable capability so field values can be translated per locale'
+        ),
       publishable: z
         .boolean()
         .optional()
@@ -2133,7 +2463,8 @@ function registerTools(server, shopifyClient) {
         }
         if (translatable !== undefined || publishable !== undefined) {
           params.capabilities = {}
-          if (translatable !== undefined) params.capabilities.translatable = { enabled: translatable }
+          if (translatable !== undefined)
+            params.capabilities.translatable = { enabled: translatable }
           if (publishable !== undefined) params.capabilities.publishable = { enabled: publishable }
         }
         const result = await shopifyClient.createMetaobjectDefinition(params)
