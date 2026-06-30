@@ -154,16 +154,18 @@ Route.group(() => {
   Route.get('/clean-mockup/result', 'CleanMockupController.result').middleware(['auth']) // état (polling)
 }).prefix('/api')
 
-// Batch « posters en masse » (cf. BulkPostersController). Auth : lectures + mutations Shopify.
-// La création du brouillon réutilise /api/shopify-product-publisher/publish en mode draft:true.
+// Batch « posters en masse » (cf. BulkPostersController). Auth : jeton de service (moteur de rendu
+// PC, workflow sans navigateur) OU session (page /bulk-posters historique). cf. BulkAuth.
+// create-one = mode COPIE (pivot 30/06) : crée le brouillon SANS IA, texte fourni par l'agent.
 Route.group(() => {
   Route.get('/candidates', 'BulkPostersController.candidates')
+  Route.post('/create-one', 'BulkPostersController.createOne')
   Route.get('/status', 'BulkPostersController.status')
   Route.post('/finalize', 'BulkPostersController.finalize')
   Route.post('/delete-draft', 'BulkPostersController.deleteDraft')
 })
   .prefix('/api/bulk-posters')
-  .middleware(['auth'])
+  .middleware(['bulkAuth'])
 
 // CustomArt (poster personnalisé foot) — API publique du studio, rate-limitée.
 // Génération asynchrone : POST /jobs répond immédiatement (jobId), le front polle

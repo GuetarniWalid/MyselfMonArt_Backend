@@ -71,6 +71,10 @@ export default Env.rules({
   CHROME_EXTENSION_ID: Env.schema.string(),
   // URL publique du moteur de rendu des mockups (PC exposé via tunnel Cloudflare). Optionnel.
   RENDER_ENGINE_URL: Env.schema.string.optional(),
+  // Jeton de service du batch « posters en masse » (pivot COPIE) : le moteur de rendu PC s'en sert
+  // pour appeler /api/bulk-posters/* sans session (en-tête x-bulk-token). DOIT être identique à
+  // BULK_POSTERS_TOKEN côté render server. Absent = seules les sessions navigateur sont acceptées.
+  BULK_POSTERS_TOKEN: Env.schema.string.optional(),
   // --- Publisher / images IA : tout tourne sur Gemini (Nano Banana) depuis le 12/06/2026. ---
   // Clé DÉDIÉE AI Studio (distincte de GOOGLE_API_KEY) ; lue via process.env dans les services,
   // déclarée ici pour documentation. Requise en pratique pour décor, insertion et retaillage.

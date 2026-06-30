@@ -2,6 +2,7 @@ import type { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
 import ExtensionShopifyProductPublisherRequestValidator from 'App/Validators/ExtensionShopifyProductPublisherRequestValidator'
 import ReplaceProductImagesValidator from 'App/Validators/ReplaceProductImagesValidator'
 import ShopifyProductPublisher from 'App/Services/ShopifyProductPublisher'
+import { composePosterMedia } from 'App/Services/ShopifyProductPublisher/composePosterMedia'
 import ProductPublisher from 'App/Services/Claude/ProductPublisher'
 import ProductReimage from 'App/Services/Shopify/ProductReimage'
 import PublishAlertMailer from 'App/Services/PublishAlertMailer'
@@ -129,76 +130,22 @@ export default class ShopifyProductPublishersController {
       // Use original high-quality images for Shopify (not compressed)
       // All images are sent to Shopify in the same order as received from extension
       //
-      // Passe-partout (poster) : les jumeaux matés (passePartout=true) sont ajoutés EN FIN de
-      // tableau et RÉUTILISENT l'alt/le filename de leur mockup source (suffixe « passe-partout »,
-      // zéro appel IA). On procède en 2 passes : (1) les mockups normaux (alt IA, indexés par
-      // clientId), (2) les jumeaux (lookup du clientId source). L'ordre final reste celui du payload.
-      const imageMetas = checkedRequest.images
-      const PP_ALT_SUFFIX = ' — passe-partout blanc'
-      const PP_FILENAME_SUFFIX = '-passe-partout'
-      const mediaByIndex: Array<{ src: string; alt: string } | null> = new Array(
-        originalImageUrls.length
-      ).fill(null)
-      const altByClientId = new Map<string, { alt: string; filename: string }>()
-
-      // Passe 1 : tout SAUF les jumeaux passe-partout
-      await Promise.all(
-        originalImageUrls.map(async (url, index) => {
-          const meta = imageMetas[index]
-          if (meta?.passePartout) return // -> passe 2
-
-          let alt: string
-          let filename: string
-          if (index === originalImageIndex) {
-            // Original artwork: Uses its generated alt and filename
-            alt = mainArtworkAlt
-            filename = mainArtworkFilename
-          } else if (index === 0) {
-            // First mockup (index 0): White background mockup - uses original artwork's alt.
-            // Generate filename slug from alt text (not using mainArtworkFilename to avoid duplicates)
-            alt = mainArtworkAlt
-            filename = mainArtworkAlt
-              .toLowerCase()
-              .replace(/[^a-z0-9]+/g, '-')
-              .replace(/^-|-$/g, '')
-              .substring(0, 80)
-          } else {
-            // Other mockups: AI-powered contextual generation
-            const mockupContext = productPublisher!.getMockupContext(index)
-            ;({ alt, filename } = await aiService.generateMockupAlt(mockupContext, mockupMetadata))
-          }
-
-          // Batch posters (draft) : garantir un nom de fichier UNIQUE par mockup. Sinon des mockups
-          // au contexte identique (ex. plusieurs décors IA tous « Décor sur-mesure (IA) ») reçoivent
-          // le MÊME slug de l'IA → leurs jumeaux passe-partout partagent le slug → le thème, qui
-          // apparie image↔passe-partout PAR NOM DE FICHIER, affiche le même jumeau plusieurs fois.
-          // L'index (unique dans le produit) désambiguïse. Studio (draft=false) inchangé.
-          if (draft && index !== originalImageIndex) filename = `${filename}-${index}`
-          mediaByIndex[index] = {
-            src: await productPublisher!.replaceSrcName(url, filename),
-            alt,
-          }
-          if (meta?.clientId) altByClientId.set(meta.clientId, { alt, filename })
-        })
-      )
-
-      // Passe 2 : jumeaux passe-partout (réutilisent l'alt/filename du mockup source, pas d'IA)
-      await Promise.all(
-        originalImageUrls.map(async (url, index) => {
-          const meta = imageMetas[index]
-          if (!meta?.passePartout) return
-          const base = (meta.passePartoutOf && altByClientId.get(meta.passePartoutOf)) || {
-            alt: mainArtworkAlt,
-            filename: mainArtworkFilename,
-          }
-          mediaByIndex[index] = {
-            src: await productPublisher!.replaceSrcName(url, base.filename + PP_FILENAME_SUFFIX),
-            alt: base.alt + PP_ALT_SUFFIX,
-          }
-        })
-      )
-
-      product.media = mediaByIndex.filter((m): m is { src: string; alt: string } => m !== null)
+      // Passe-partout (poster) : les jumeaux matés (passePartout=true) RÉUTILISENT l'alt/le filename
+      // de leur mockup source (suffixe « passe-partout », zéro appel IA). L'assemblage (2 passes,
+      // unicité des noms en brouillon) est factorisé dans composePosterMedia (PARTAGÉ avec le mode
+      // COPIE du batch posters). Ici, l'alt des « autres » mockups vient de l'IA (generateMockupAlt).
+      product.media = await composePosterMedia({
+        originalImageUrls,
+        imageMetas: checkedRequest.images,
+        originalImageIndex,
+        draft,
+        mainArtworkAlt,
+        mainArtworkFilename,
+        // getMockupContext(index) conserve le comportement d'origine (throw si contexte manquant).
+        resolveMockupAlt: (index) =>
+          aiService.generateMockupAlt(productPublisher!.getMockupContext(index), mockupMetadata),
+        replaceSrcName: (url, filename) => productPublisher!.replaceSrcName(url, filename),
+      })
 
       product.title = title
       product.descriptionHtml = descriptionHtml

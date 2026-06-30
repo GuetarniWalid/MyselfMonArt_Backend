@@ -1,6 +1,12 @@
 import type { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
 import Shopify from 'App/Services/Shopify'
+import ShopifyProductPublisher from 'App/Services/ShopifyProductPublisher'
+import {
+  composePosterMedia,
+  slugFromAlt,
+} from 'App/Services/ShopifyProductPublisher/composePosterMedia'
 import { posterCollectionFor } from 'App/Services/BulkPosters/collectionMap'
+import { CreateProduct } from 'Types/Product'
 
 /**
  * Batch « posters en masse depuis les toiles ».
@@ -103,6 +109,265 @@ export default class BulkPostersController {
 
     const candidates = limit > 0 ? eligible.slice(0, limit) : eligible
     return { success: true, data: { ratio, total: eligible.length, pending, candidates, skipped } }
+  }
+
+  /**
+   * POST /api/bulk-posters/create-one
+   *   { toileId, ratio, collectionId, collectionTitle, title, descriptionHtml, seoTitle,
+   *     seoDescription, images: [{ base64Image, type, mockupContext?, clientId?, passePartout?, passePartoutOf? }] }
+   *
+   * Mode COPIE (pivot 30/06) : crée le BROUILLON poster SANS AUCUN appel IA. Le texte (title H1,
+   * descriptionHtml, SEO) est fourni par l'agent ; tout le reste est COPIÉ de la toile ou FORCÉ.
+   *   - COPIÉ de la toile : title.short, painting.color, shopify.color-pattern, shopify.theme,
+   *     painting.layout, mm-google-shopping/mc-facebook.google_product_category, tags.
+   *   - FORCÉ : artwork.type=poster, templateSuffix=painting, link.mother_collection=collection POSTER
+   *     (mapping, PAS celle de la toile), likes.number=0.
+   *   - DU MODÈLE (webhook products/create, inchangé) : 7 variantes + frames_poster/sizes/fixations.
+   *
+   * Ordre clé « zéro IA payante » : on pose shopify.color-pattern / shopify.theme AVANT artwork.type.
+   * Le webhook ne traite le poster (copie modèle + détection couleurs/thèmes OpenAI) QUE si
+   * artwork.type=poster ; quand il lit ces metafields, color-pattern/theme sont déjà présents →
+   * detectAndSetColors / detectAndSetThemes SAUTENT (hasExistingColors/hasExistingThemes). Aucun
+   * appel OpenAI. (Le webhook attend en plus le chargement des médias, ce qui laisse une marge
+   * confortable après cette requête.)
+   *
+   * Le brouillon reste invisible (status DRAFT) ; le batch le FINALISE (publish + liens) via
+   * /finalize quand ses variantes sont complètes — réutilise status/finalize/delete-draft existants.
+   */
+  public async createOne({ request, response }: HttpContextContract) {
+    const toileId: string = request.input('toileId')
+    const ratio: string = request.input('ratio')
+    const collectionId: string = request.input('collectionId')
+    const collectionTitle: string = request.input('collectionTitle') || ''
+    const title: string = request.input('title')
+    const descriptionHtml: string = request.input('descriptionHtml')
+    const seoTitle: string = request.input('seoTitle')
+    const seoDescription: string = request.input('seoDescription')
+    const images = request.input('images')
+
+    // Validation déterministe (le contrôleur n'utilise pas le validator studio).
+    if (!toileId || !/^gid:\/\/shopify\/Product\/\d+$/.test(toileId)) {
+      return response.status(422).json({ success: false, message: 'toileId (GID produit) requis' })
+    }
+    if (ratio !== 'portrait' && ratio !== 'landscape') {
+      return response
+        .status(422)
+        .json({ success: false, message: 'ratio invalide (portrait|landscape)' })
+    }
+    if (!collectionId || !/^gid:\/\/shopify\/Collection\/\d+$/.test(collectionId)) {
+      return response
+        .status(422)
+        .json({ success: false, message: 'collectionId (GID collection) requis' })
+    }
+    if (!title || !descriptionHtml || !seoTitle || !seoDescription) {
+      return response
+        .status(422)
+        .json({
+          success: false,
+          message: 'title, descriptionHtml, seoTitle, seoDescription requis',
+        })
+    }
+    if (!Array.isArray(images) || images.length < 2) {
+      return response
+        .status(422)
+        .json({ success: false, message: 'images: au moins 2 (mockup + œuvre)' })
+    }
+    const originalImageIndex = images.findIndex((i: any) => i?.type === 'original')
+    if (originalImageIndex === -1) {
+      return response
+        .status(422)
+        .json({ success: false, message: 'une image doit avoir type:"original"' })
+    }
+
+    const shopify = new Shopify()
+
+    // Garde-fou anti-doublon : un poster terminé existe déjà pour cette toile ?
+    const toile = (await shopify.product.getProductById(toileId)) as any
+    if (!toile) {
+      return response.status(404).json({ success: false, message: 'toile introuvable' })
+    }
+    const toileEdges = toile.metafields?.edges || []
+    const findMf = (ns: string, key: string) =>
+      toileEdges.find((e: any) => e.node?.namespace === ns && e.node?.key === key)?.node
+    if (findMf('link', 'poster')?.value) {
+      return response
+        .status(409)
+        .json({ success: false, message: 'cette toile a déjà un poster lié' })
+    }
+    // Anti-doublon AU NIVEAU BROUILLON : un brouillon est déjà en cours pour cette toile (reprise via
+    // /finalize-pending, pas une 2e création). Rend create-one idempotent face à un double déclenchement.
+    if (findMf('link', 'poster_draft')?.value) {
+      return response
+        .status(409)
+        .json({ success: false, message: 'un brouillon poster est déjà en cours pour cette toile' })
+    }
+
+    // Le service ShopifyProductPublisher gère le stockage local des images (Shopify les fetche par URL)
+    // + le renommage SEO. Aucun appel IA (pas de compression/data-uri ici).
+    const productPublisher = new ShopifyProductPublisher({
+      images,
+      ratio: ratio as any,
+      productType: 'poster',
+      parentCollection: { id: collectionId, title: collectionTitle },
+    })
+
+    let backgrounded = false
+    // Atomicité « tout-ou-rien » : si une étape ÉCHOUE APRÈS la création du brouillon (catégorie,
+    // metafields, artwork.type…), on supprime ce brouillon — pas d'orphelin invisible non suivi.
+    let createdId: string | null = null
+    try {
+      const originalImageUrls = await productPublisher.processAllImages()
+
+      // Alts DÉTERMINISTES (zéro IA) : l'œuvre/1er mockup réutilisent le titre H1 ; les autres
+      // mockups = titre + contexte du mockup. Filenames slugifiés ; l'unicité (suffixe d'index en
+      // brouillon) + les jumeaux passe-partout sont gérés par composePosterMedia (PARTAGÉ studio).
+      const mainArtworkAlt = title
+      const mainArtworkFilename = slugFromAlt(title)
+      const media = await composePosterMedia({
+        originalImageUrls,
+        imageMetas: images,
+        originalImageIndex,
+        draft: true,
+        mainArtworkAlt,
+        mainArtworkFilename,
+        resolveMockupAlt: async (_index, mockupContext) => {
+          const ctx = mockupContext || 'Mockup'
+          return { alt: `${title} — ${ctx}`, filename: slugFromAlt(`${title}-${ctx}`) }
+        },
+        replaceSrcName: (url, filename) => productPublisher.replaceSrcName(url, filename),
+      })
+
+      // Métafields COPIÉS de la toile, posables AU MOMENT de la création (indépendants de la catégorie).
+      const copyAtCreate: Array<{ namespace: string; key: string; value: string; type: string }> =
+        []
+      const pushCopy = (ns: string, key: string) => {
+        const n = findMf(ns, key)
+        if (n?.value) copyAtCreate.push({ namespace: ns, key, value: n.value, type: n.type })
+      }
+      pushCopy('title', 'short')
+      pushCopy('mm-google-shopping', 'google_product_category')
+      pushCopy('mc-facebook', 'google_product_category')
+
+      const product = {} as CreateProduct
+      product.title = title
+      product.descriptionHtml = descriptionHtml
+      product.seo = { title: seoTitle, description: seoDescription }
+      product.tags = Array.isArray(toile.tags) ? toile.tags : [] // tags COPIÉS de la toile
+      product.productType = 'poster'
+      product.templateSuffix = 'painting' // FORCÉ : même modèle de thème que les toiles
+      product.media = media
+      product.status = 'DRAFT' // brouillon invisible (tout-ou-rien)
+      product.metafields = [
+        // FORCÉ : collection mère = la collection POSTER (mapping), JAMAIS celle de la toile.
+        {
+          namespace: 'link',
+          key: 'mother_collection',
+          value: collectionId,
+          type: 'collection_reference',
+        },
+        { namespace: 'likes', key: 'number', value: '0', type: 'number_integer' },
+        ...copyAtCreate,
+      ]
+
+      const created = await shopify.product.create(product)
+      createdId = created.id
+
+      // Catégorie depuis le modèle poster (requise AVANT les metafields taxonomie + artwork.type).
+      const modelTag = ratio === 'landscape' ? 'paysage model' : 'portrait model'
+      const model = (await shopify.product.getProductByTag(modelTag, 'poster')) as any
+      if (model?.category?.id) {
+        await shopify.category.setProductCategory(created.id, model.category.id)
+      }
+
+      // GUARDS « ZÉRO IA » (shopify.color-pattern + shopify.theme) : posés AVANT artwork.type pour que
+      // le webhook saute la détection OpenAI (hasExistingColors/hasExistingThemes). Leur écriture est
+      // BLOQUANTE : un échec remonte au catch → rollback du brouillon (repris au prochain run) plutôt
+      // que de laisser le webhook lancer un appel IA payant qui écraserait en plus les valeurs copiées.
+      let colorThemeFromAI = false
+      for (const [ns, key] of [
+        ['shopify', 'color-pattern'],
+        ['shopify', 'theme'],
+      ] as const) {
+        const n = findMf(ns, key)
+        if (n?.value) {
+          await shopify.metafield.update(created.id, ns, key, n.value, n.type)
+        } else {
+          // La toile n'a pas ce metafield (détection jamais aboutie, import…) : le webhook fera UNE
+          // détection IA. Rare ; le poster reste correct (couleurs/thèmes détectés), mais ce n'est pas
+          // « zéro IA » → on le signale (log + drapeau renvoyé à l'agent pour son rapport).
+          colorThemeFromAI = true
+          console.warn(
+            `[bulk-posters] toile ${toileId} sans ${ns}.${key} → le webhook fera une détection IA`
+          )
+        }
+      }
+      // painting.color (filtre couleur du storefront) + painting.layout (format) : best-effort, sans
+      // incidence sur la détection IA — un échec ne justifie pas de tout annuler.
+      for (const [ns, key] of [
+        ['painting', 'color'],
+        ['painting', 'layout'],
+      ] as const) {
+        const n = findMf(ns, key)
+        if (n?.value) {
+          try {
+            await shopify.metafield.update(created.id, ns, key, n.value, n.type)
+          } catch (e: any) {
+            console.warn(`[bulk-posters] copie metafield ${ns}.${key} échouée:`, e?.message)
+          }
+        }
+      }
+
+      // FORCÉ : artwork.type=poster (déclenche la copie du modèle poster par le webhook). EN DERNIER.
+      await shopify.metafield.update(created.id, 'artwork', 'type', 'poster')
+
+      // Marqueur « brouillon en cours » sur la toile (anti-doublon/reprise) — BLOQUANT : sans lui, la
+      // toile serait re-listée comme candidate neuve au prochain run → DOUBLON + orphelin invisible.
+      // Un échec remonte donc au catch (rollback). link.poster/link.painting sont posés au finalize.
+      await shopify.metafield.update(
+        toileId,
+        'link',
+        'poster_draft',
+        created.id,
+        'product_reference'
+      )
+
+      // Réponse anticipée (anti-524). Le poll des médias + le nettoyage des fichiers locaux partent
+      // en arrière-plan (supprimer trop tôt effacerait les images pendant que Shopify les fetche).
+      backgrounded = true
+      ;(async () => {
+        try {
+          await shopify.product.waitForMediaProcessing(created.id, 30, 2000)
+        } catch (bgErr: any) {
+          console.error('[bulk-posters] background media poll error:', bgErr?.message)
+        } finally {
+          try {
+            await productPublisher.cleanupSavedImages()
+          } catch (cleanupErr: any) {
+            console.error('[bulk-posters] background cleanup error:', cleanupErr?.message)
+          }
+        }
+      })()
+
+      return { success: true, productId: created.id, colorThemeFromAI }
+    } catch (error: any) {
+      console.error('[bulk-posters] create-one error:', error?.message)
+      // Rollback : pas de brouillon orphelin si l'échec survient après la création.
+      if (createdId) {
+        await shopify.product
+          .delete(createdId)
+          .catch((delErr: any) =>
+            console.error('[bulk-posters] rollback delete failed:', delErr?.message)
+          )
+        await shopify.metafield.delete(toileId, 'link', 'poster_draft').catch(() => {})
+      }
+      return response
+        .status(500)
+        .json({ success: false, message: error?.message || 'Erreur création brouillon poster' })
+    } finally {
+      if (!backgrounded) {
+        await productPublisher.cleanupSavedImages().catch(() => {})
+      }
+    }
   }
 
   /**
