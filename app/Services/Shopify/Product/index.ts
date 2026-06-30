@@ -34,6 +34,25 @@ export default class Product extends Authentication {
     return response.productCreate.product as ShopifyProduct
   }
 
+  /**
+   * Supprime définitivement un produit. Utilisé par le batch posters pour le « tout ou rien » :
+   * si un brouillon de poster échoue après les tentatives, on le supprime (rien d'incomplet ne traîne).
+   */
+  public async delete(productId: string): Promise<string | null> {
+    const id = isNaN(Number(productId)) ? productId : `gid://shopify/Product/${productId}`
+    const query = `mutation productDelete($input: ProductDeleteInput!) {
+      productDelete(input: $input) {
+        deletedProductId
+        userErrors { field message }
+      }
+    }`
+    const response = await this.fetchGraphQL(query, { input: { id } })
+    if (response.productDelete.userErrors?.length) {
+      throw new Error(response.productDelete.userErrors[0].message)
+    }
+    return response.productDelete.deletedProductId ?? null
+  }
+
   private getCreateQuery(product: CreateProduct) {
     return {
       query: `mutation ProductCreate($product: ProductCreateInput!, $media: [CreateMediaInput!]) {
@@ -93,7 +112,9 @@ export default class Product extends Authentication {
               type: metafield.type,
             })) || [],
           seo: product.seo,
-          status: 'ACTIVE',
+          // Défaut ACTIVE (comportement studio inchangé) ; le batch posters crée en DRAFT
+          // (brouillon invisible) et ne passe ACTIVE qu'au finalize, quand le produit est 100 % complet.
+          status: product.status ?? 'ACTIVE',
           productType: product.productType,
           tags: product.tags,
           templateSuffix: product.templateSuffix,

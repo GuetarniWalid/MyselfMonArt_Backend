@@ -105,6 +105,21 @@ export default class Metafield extends Authentication {
     }
   }
 
+  /** Supprime un metafield (owner/namespace/key). Best-effort : ignore l'absence. */
+  public async delete(ownerId: string, namespace: string, key: string): Promise<void> {
+    const query = `mutation MetafieldsDelete($metafields: [MetafieldIdentifierInput!]!) {
+      metafieldsDelete(metafields: $metafields) {
+        deletedMetafields { key namespace }
+        userErrors { field message }
+      }
+    }`
+    try {
+      await this.fetchGraphQL(query, { metafields: [{ ownerId, namespace, key }] })
+    } catch {
+      // le metafield n'existe peut-être pas — non bloquant
+    }
+  }
+
   /** Resolve a metaobject definition id by its type (e.g. "shopify--color-pattern"). */
   public async getMetaobjectDefinitionIdByType(type: string): Promise<string | null> {
     const query = `query DefByType($type: String!) {

@@ -19,6 +19,7 @@ export type CreateProduct = {
     type: string
   }[]
   templateSuffix?: 'painting' | 'poster' | 'tapestry'
+  status?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED'
 }
 
 export type Image = {

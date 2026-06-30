@@ -23,6 +23,16 @@ export default class ShopifyProductPublishersController {
     const idempotencyKey: string | undefined = request.input('idempotencyKey')
     const idemKey = idempotencyKey ? `publish:${idempotencyKey}` : null
 
+    // Mode brouillon (batch « posters en masse ») : crée le produit en DRAFT (invisible) et NE
+    // publie PAS ici. Le finalize du batch basculera ACTIVE + publiera SEULEMENT quand le produit
+    // sera 100 % complet (7 variantes + médias). Garantit qu'aucun semi-produit n'apparaît en ligne.
+    // Le studio (draft absent/false) garde exactement son comportement.
+    const draft = request.input('draft') === true
+    // Batch posters : id de la toile source. En mode brouillon, on marque la toile
+    // « link.poster_draft = ce brouillon » pour qu'une reprise (après cap) FINALISE ce brouillon
+    // au lieu d'en recréer un (anti-doublon). link.poster (= terminé) n'est posé qu'au finalize.
+    const linkedPaintingId: string | undefined = request.input('linkedPaintingId')
+
     // Garde d'idempotence PARTAGÉE entre workers : réservation atomique via la table MySQL
     // (la contrainte UNIQUE arbitre les requêtes concurrentes, quel que soit le worker touché).
     if (idemKey) {
@@ -216,6 +226,8 @@ export default class ShopifyProductPublishersController {
         },
       ]
 
+      // Brouillon (batch) vs ACTIVE (studio) — cf. `draft` plus haut.
+      product.status = draft ? 'DRAFT' : 'ACTIVE'
       const productCreated = await shopify.product.create(product)
 
       // Step 2: Get model product to copy category from
@@ -239,7 +251,24 @@ export default class ShopifyProductPublishersController {
 
       // Step 4: Now set artwork.type metafield (requires category to be set first)
       await shopify.metafield.update(productCreated.id, 'artwork', 'type', productType)
-      await shopify.publications.publishProductOnAll(productCreated.id)
+      // En mode brouillon, on NE publie pas ici : le finalize du batch publiera après
+      // vérification des 7 variantes — jamais de produit incomplet exposé.
+      if (!draft) await shopify.publications.publishProductOnAll(productCreated.id)
+
+      // Marqueur « brouillon en cours » sur la toile (best-effort : ne bloque pas la création).
+      if (draft && linkedPaintingId) {
+        try {
+          await shopify.metafield.update(
+            linkedPaintingId,
+            'link',
+            'poster_draft',
+            productCreated.id,
+            'product_reference'
+          )
+        } catch (markErr: any) {
+          console.warn('[bulk-posters] poster_draft marker failed:', markErr?.message)
+        }
+      }
 
       // The product is created and published — respond NOW. Previously we polled
       // Shopify media processing here (up to ~60s), which kept the request open long
@@ -248,6 +277,9 @@ export default class ShopifyProductPublishersController {
       // request path.
       const result = {
         success: true,
+        // productId : exploité par le batch posters (status/finalize/liens). En mode brouillon,
+        // onlineStoreUrl est null (produit pas encore publié) — attendu.
+        productId: productCreated.id,
         data: { link: productCreated.onlineStoreUrl },
       }
       if (idemKey) {

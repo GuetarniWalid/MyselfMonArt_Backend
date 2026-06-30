@@ -34,6 +34,13 @@ Route.get('/publisher/reimage', async ({ view }) => {
   const renderBase = Env.get('RENDER_ENGINE_URL') || 'https://render.myselfmonart.com'
   return view.render('pages/publisher', { renderBase, mode: 'reimage' })
 }).middleware(['auth'])
+// Page « posters en masse » : crée 1 poster par toile (mockups favoris dédiés + texte IA), par
+// ratio, avec lien bidirectionnel toile↔poster. Même pattern que /publisher (Edge + JS vanilla,
+// moteur de rendu du PC injecté). cf. BulkPostersController.
+Route.get('/bulk-posters', async ({ view }) => {
+  const renderBase = Env.get('RENDER_ENGINE_URL') || 'https://render.myselfmonart.com'
+  return view.render('pages/bulk-posters', { renderBase })
+}).middleware(['auth'])
 Route.post('/', 'WebhooksController.handle')
 Route.post('/webhooks', 'WebhooksController.handle')
 
@@ -146,6 +153,17 @@ Route.group(() => {
   Route.post('/clean-mockup', 'CleanMockupController.generate').middleware(['auth']) // démarre le job
   Route.get('/clean-mockup/result', 'CleanMockupController.result').middleware(['auth']) // état (polling)
 }).prefix('/api')
+
+// Batch « posters en masse » (cf. BulkPostersController). Auth : lectures + mutations Shopify.
+// La création du brouillon réutilise /api/shopify-product-publisher/publish en mode draft:true.
+Route.group(() => {
+  Route.get('/candidates', 'BulkPostersController.candidates')
+  Route.get('/status', 'BulkPostersController.status')
+  Route.post('/finalize', 'BulkPostersController.finalize')
+  Route.post('/delete-draft', 'BulkPostersController.deleteDraft')
+})
+  .prefix('/api/bulk-posters')
+  .middleware(['auth'])
 
 // CustomArt (poster personnalisé foot) — API publique du studio, rate-limitée.
 // Génération asynchrone : POST /jobs répond immédiatement (jobId), le front polle
