@@ -168,6 +168,12 @@ export default class ShopifyProductPublishersController {
             ;({ alt, filename } = await aiService.generateMockupAlt(mockupContext, mockupMetadata))
           }
 
+          // Batch posters (draft) : garantir un nom de fichier UNIQUE par mockup. Sinon des mockups
+          // au contexte identique (ex. plusieurs décors IA tous « Décor sur-mesure (IA) ») reçoivent
+          // le MÊME slug de l'IA → leurs jumeaux passe-partout partagent le slug → le thème, qui
+          // apparie image↔passe-partout PAR NOM DE FICHIER, affiche le même jumeau plusieurs fois.
+          // L'index (unique dans le produit) désambiguïse. Studio (draft=false) inchangé.
+          if (draft && index !== originalImageIndex) filename = `${filename}-${index}`
           mediaByIndex[index] = {
             src: await productPublisher!.replaceSrcName(url, filename),
             alt,
