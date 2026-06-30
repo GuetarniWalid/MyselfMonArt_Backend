@@ -40,8 +40,6 @@ Server.middleware.register([() => import('@ioc:Adonis/Core/BodyParser')])
 */
 Server.middleware.registerNamed({
   auth: () => import('App/Middleware/Auth'),
-  // Batch posters : jeton de service (moteur de rendu PC) OU session. cf. App/Middleware/BulkAuth.
-  bulkAuth: () => import('App/Middleware/BulkAuth'),
   // Rate limiting mémoire (fenêtre fixe IP+route) : .middleware(['throttle:10,60'])
   throttle: () => import('App/Middleware/Throttle'),
 })

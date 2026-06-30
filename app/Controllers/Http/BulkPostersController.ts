@@ -160,12 +160,10 @@ export default class BulkPostersController {
         .json({ success: false, message: 'collectionId (GID collection) requis' })
     }
     if (!title || !descriptionHtml || !seoTitle || !seoDescription) {
-      return response
-        .status(422)
-        .json({
-          success: false,
-          message: 'title, descriptionHtml, seoTitle, seoDescription requis',
-        })
+      return response.status(422).json({
+        success: false,
+        message: 'title, descriptionHtml, seoTitle, seoDescription requis',
+      })
     }
     if (!Array.isArray(images) || images.length < 2) {
       return response
@@ -439,18 +437,34 @@ export default class BulkPostersController {
   }
 
   /**
-   * POST /api/bulk-posters/delete-draft { productId, toileId? }
+   * POST /api/bulk-posters/delete-draft { productId, toileId }
    * Suppression d'un brouillon raté + de son marqueur (rollback « tout ou rien »).
+   *
+   * Endpoint NON authentifié (comme /publish) : GARDE-FOU obligatoire — on ne supprime que si la toile
+   * porte bien `link.poster_draft = productId`. Donc on ne peut effacer QUE le brouillon réellement
+   * enregistré pour cette toile, jamais un produit publié ni un produit arbitraire passé par un tiers.
    */
   public async deleteDraft({ request, response }: HttpContextContract) {
     const productId = request.input('productId')
     const toileId = request.input('toileId')
-    if (!productId) {
-      return response.status(422).json({ success: false, message: 'productId requis' })
+    if (!productId || !toileId) {
+      return response.status(422).json({ success: false, message: 'productId + toileId requis' })
     }
     const shopify = new Shopify()
+    const toile = (await shopify.product.getProductById(toileId)) as any
+    const draftRef = (toile?.metafields?.edges || []).find(
+      (e: any) => e.node?.namespace === 'link' && e.node?.key === 'poster_draft'
+    )?.node?.value
+    if (draftRef !== productId) {
+      // Le brouillon en cours de cette toile n'est pas ce productId (ou la toile n'en a aucun) :
+      // on refuse — c'est exactement la garde qui empêche toute suppression non sollicitée.
+      return response.status(409).json({
+        success: false,
+        message: "productId n'est pas le brouillon en cours de cette toile — suppression refusée",
+      })
+    }
     const deletedProductId = await shopify.product.delete(productId)
-    if (toileId) await shopify.metafield.delete(toileId, 'link', 'poster_draft')
+    await shopify.metafield.delete(toileId, 'link', 'poster_draft')
     return { success: true, deletedProductId }
   }
 
