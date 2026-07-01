@@ -3,6 +3,7 @@ import type { Board, PinterestPin, PinterestPinFormat } from 'Types/Pinterest'
 import type { Product as ShopifyProduct } from 'Types/Product'
 import Pinterest from 'App/Services/Pinterest'
 import PinterestFormatSelector from 'App/Services/Pinterest/PinterestFormatSelector'
+import PinterestPublicationSelector from 'App/Services/Pinterest/PublicationSelector'
 import PinFormatter from 'App/Services/Pinterest/PinFormatter'
 import Shopify from 'App/Services/Shopify'
 import SocialPublication from 'App/Models/SocialPublication'
@@ -28,7 +29,8 @@ export default class DailyPublication {
       shopify.collection.getAll(),
     ])
 
-    const pinterest = new Pinterest(products, collections)
+    const publishedPairs = await this.getPublishedProductBoardKeys()
+    const pinterest = new Pinterest(products, collections, publishedPairs)
     await pinterest.initialize()
     await pinterest.autoCreateMissingBoards()
 
@@ -109,5 +111,26 @@ export default class DailyPublication {
   private async getPinterestPublicationCount(): Promise<number> {
     const result = await SocialPublication.query().where('channel', 'pinterest').count('* as total')
     return Number(result[0].$extras.total ?? 0)
+  }
+
+  /**
+   * Toutes les paires (produit, board) qu'on a déjà publiées sur Pinterest,
+   * lues depuis NOTRE base (source fiable qu'on maîtrise). Injectées dans le
+   * sélecteur pour garantir qu'un produit n'est jamais re-pinné sur un board
+   * déjà utilisé — quel que soit le format (image/carrousel/vidéo) et sans
+   * dépendre de ce que l'API Pinterest renvoie pour les pins existants.
+   */
+  private async getPublishedProductBoardKeys(): Promise<Set<string>> {
+    const rows = await SocialPublication.query()
+      .where('channel', 'pinterest')
+      .whereNotNull('external_board_id')
+      .select('shopify_product_id', 'external_board_id')
+    return new Set(
+      rows
+        .filter((row) => row.externalBoardId)
+        .map((row) =>
+          PinterestPublicationSelector.pairKey(row.shopifyProductId, row.externalBoardId!)
+        )
+    )
   }
 }

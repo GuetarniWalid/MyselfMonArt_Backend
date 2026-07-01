@@ -8,8 +8,21 @@ export default class PublicationSelector {
   constructor(
     private readonly boards: Board[],
     private readonly pins: PinterestPin[],
-    private readonly shopifyProducts: ShopifyProduct[]
+    private readonly shopifyProducts: ShopifyProduct[],
+    // (product, board) paires déjà publiées d'après NOTRE base social_publications
+    // (channel='pinterest'). Source de vérité fiable pour la dédup « 1 fois par
+    // board » — indépendante de ce que l'API Pinterest veut bien nous renvoyer.
+    private readonly publishedProductBoardKeys: Set<string> = new Set()
   ) {}
+
+  /**
+   * Clé stable d'une paire (produit, board). Utilisée ici ET par l'appelant
+   * (DailyPublication) qui alimente `publishedProductBoardKeys` depuis la base,
+   * pour que les deux côtés s'accordent sur le format de clé.
+   */
+  public static pairKey(productId: string, boardId: string): string {
+    return `${productId}::${boardId}`
+  }
 
   public async selectNextProductToPublish(): Promise<{
     product: ShopifyProduct
@@ -32,9 +45,23 @@ export default class PublicationSelector {
       if (!this.hasPublishableImage(product)) return false
       const matchingBoards = this.matcher.getMatchingBoards(product, this.boards)
       if (matchingBoards.length === 0) return false
-      const usedBoardIds = new Set(this.getProductPins(product.id).map((pin) => pin.board_id))
-      return matchingBoards.some((board) => !usedBoardIds.has(board.id))
+      return matchingBoards.some((board) => !this.isBoardUsedForProduct(product.id, board.id))
     })
+  }
+
+  /**
+   * Un board est « déjà utilisé » pour un produit si SOIT on a notre propre trace
+   * de l'avoir pinné là (social_publications — la source qu'on maîtrise), SOIT
+   * Pinterest montre encore un pin live pour ce produit sur ce board. S'appuyer
+   * sur nos traces (et pas seulement sur les pins live) garantit qu'un produit
+   * n'est pinné qu'une fois par board, même si l'API Pinterest omet le lien de
+   * tracking d'un pin (auquel cas la détection par pin live échouerait).
+   */
+  private isBoardUsedForProduct(productId: string, boardId: string): boolean {
+    if (this.publishedProductBoardKeys.has(PublicationSelector.pairKey(productId, boardId))) {
+      return true
+    }
+    return this.getProductPins(productId).some((pin) => pin.board_id === boardId)
   }
 
   /**
@@ -79,8 +106,9 @@ export default class PublicationSelector {
 
   private getNextAvailableBoard(product: ShopifyProduct): Board {
     const matchingBoards = this.matcher.getMatchingBoards(product, this.boards)
-    const usedBoardIds = new Set(this.getProductPins(product.id).map((pin) => pin.board_id))
-    const availableBoards = matchingBoards.filter((board) => !usedBoardIds.has(board.id))
+    const availableBoards = matchingBoards.filter(
+      (board) => !this.isBoardUsedForProduct(product.id, board.id)
+    )
     return availableBoards[Math.floor(Math.random() * availableBoards.length)]
   }
 }
