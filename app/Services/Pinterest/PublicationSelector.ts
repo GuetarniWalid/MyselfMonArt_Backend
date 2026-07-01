@@ -28,12 +28,23 @@ export default class PublicationSelector {
 
   private getEligibleProducts(): ShopifyProduct[] {
     return this.shopifyProducts.filter((product) => {
+      if (!this.isPainting(product)) return false
       if (!this.hasPublishableImage(product)) return false
       const matchingBoards = this.matcher.getMatchingBoards(product, this.boards)
       if (matchingBoards.length === 0) return false
       const usedBoardIds = new Set(this.getProductPins(product.id).map((pin) => pin.board_id))
       return matchingBoards.some((board) => !usedBoardIds.has(board.id))
     })
+  }
+
+  /**
+   * On ne promeut sur les réseaux QUE les toiles (artwork.type === 'painting').
+   * Posters, tapisseries et tout autre type sont ignorés — un produit sans le
+   * metafield est ignoré aussi, plutôt que de risquer de publier un non-tableau
+   * (liste blanche : on échoue en sautant, jamais en publiant par erreur).
+   */
+  private isPainting(product: ShopifyProduct): boolean {
+    return product.artworkTypeMetafield?.value === 'painting'
   }
 
   private hasPublishableImage(product: ShopifyProduct): boolean {

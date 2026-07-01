@@ -2,10 +2,11 @@ import type { Product as ShopifyProduct } from 'Types/Product'
 
 /**
  * Selects the next product to publish on the Instagram feed, fully independent
- * from Pinterest. A product is eligible when it has a publishable image, a
- * usable store URL, and has not yet been posted to the IG feed (tracked via
- * `social_publications`, channel='instagram'). Among eligible products the most
- * recently created one wins; `null` means the whole catalog is already posted.
+ * from Pinterest. A product is eligible when it is a canvas (artwork.type ===
+ * 'painting'), has a publishable image, a usable store URL, and has not yet been
+ * posted to the IG feed (tracked via `social_publications`, channel='instagram').
+ * Among eligible products the most recently created one wins; `null` means the
+ * whole (canvas) catalog is already posted.
  */
 export default class PublicationSelector {
   // Same priority as PostFormatter / PinFormatter: index 2 is the
@@ -26,9 +27,20 @@ export default class PublicationSelector {
   }
 
   private isEligible(product: ShopifyProduct): boolean {
+    if (!this.isPainting(product)) return false
     if (this.alreadyPostedProductIds.has(product.id)) return false
     if (!this.hasPublishableImage(product)) return false
     return this.hasUsableStoreUrl(product)
+  }
+
+  /**
+   * On ne promeut sur les réseaux QUE les toiles (artwork.type === 'painting').
+   * Posters, tapisseries et tout autre type sont ignorés — un produit sans le
+   * metafield est ignoré aussi, plutôt que de risquer de publier un non-tableau
+   * (liste blanche : on échoue en sautant, jamais en publiant par erreur).
+   */
+  private isPainting(product: ShopifyProduct): boolean {
+    return product.artworkTypeMetafield?.value === 'painting'
   }
 
   private hasPublishableImage(product: ShopifyProduct): boolean {
