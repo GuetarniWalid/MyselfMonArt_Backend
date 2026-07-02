@@ -566,6 +566,44 @@ export class ShopifyClient {
     }
     return this.graphql(mutation, variables)
   }
+  async createProductMedia(productId, media) {
+    const mutation = `
+      mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+        productCreateMedia(productId: $productId, media: $media) {
+          media {
+            ... on MediaImage {
+              id
+              status
+              image {
+                url
+                width
+                height
+              }
+            }
+            alt
+            mediaContentType
+          }
+          mediaUserErrors {
+            field
+            message
+            code
+          }
+          product {
+            id
+          }
+        }
+      }
+    `
+    const variables = {
+      productId,
+      media: media.map((item) => ({
+        originalSource: item.originalSource,
+        mediaContentType: item.mediaContentType || 'IMAGE',
+        ...(item.alt !== undefined && { alt: item.alt }),
+      })),
+    }
+    return this.graphql(mutation, variables)
+  }
   // Order operations
   async getOrders(params) {
     const query = `

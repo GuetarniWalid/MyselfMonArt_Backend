@@ -482,6 +482,79 @@ function registerTools(server, shopifyClient) {
       }
     }
   )
+  server.tool(
+    'createProductMedia',
+    'Attach media (images) to a product GALLERY via productCreateMedia. Each item needs an originalSource: a publicly accessible URL (e.g. a Shopify CDN file URL from uploadFile/createFile) or the resourceUrl returned by createStagedUpload. The ORDER of the media array = the order the images are appended to the gallery. Media is processed ASYNCHRONOUSLY: the returned status is usually UPLOADED or PROCESSING and image.url may still be null — re-read with getProduct once READY. Set alt text for SEO/accessibility.',
+    {
+      productId: z.string().describe('The product ID (e.g., gid://shopify/Product/123)'),
+      media: z
+        .array(
+          z.object({
+            originalSource: z
+              .string()
+              .describe(
+                'Publicly accessible URL of the media (e.g. https://cdn.shopify.com/...) or a staged upload resourceUrl'
+              ),
+            alt: z
+              .string()
+              .optional()
+              .describe('Alt text describing the media (SEO + accessibility)'),
+            mediaContentType: z
+              .enum(['IMAGE', 'VIDEO', 'EXTERNAL_VIDEO', 'MODEL_3D'])
+              .optional()
+              .default('IMAGE')
+              .describe('Media content type (default IMAGE)'),
+          })
+        )
+        .min(1)
+        .max(10)
+        .describe(
+          '1 to 10 media items. Array order = order the media are appended to the product gallery.'
+        ),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.createProductMedia(args.productId, args.media)
+        const payload = result.data.productCreateMedia
+        if (payload.mediaUserErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error creating product media: ${JSON.stringify(payload.mediaUserErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  media: payload.media,
+                  product: payload.product,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error creating product media: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
   // Order Tools
   server.tool(
     'listOrders',
