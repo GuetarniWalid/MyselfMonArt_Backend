@@ -2587,6 +2587,139 @@ function registerTools(server, shopifyClient) {
       }
     }
   )
+  server.tool(
+    'createMetafieldDefinition',
+    'Create a metafield DEFINITION — the schema that makes a metafield editable / uploadable and visible in the admin (maps to metafieldDefinitionCreate). Without a definition a metafield can hold a value but NO editable field appears on the resource page; create one to expose e.g. an image-upload slot on a product. `type` is a Shopify METAFIELD type (single_line_text_field, multi_line_text_field, number_integer, number_decimal, boolean, color, url, date, date_time, json, rich_text_field, money, file_reference, product_reference, collection_reference, metaobject_reference and their list.* variants, e.g. list.file_reference) — NOT a metaobject field type. Set access.storefront=PUBLIC_READ only for fields the theme must read (e.g. studio.config); keep it NONE (default) for secrets (e.g. studio.recipe). Idempotent: if the definition already exists (same owner+namespace+key) the existing one is returned instead of erroring.',
+    {
+      ownerType: z
+        .string()
+        .optional()
+        .default('PRODUCT')
+        .describe(
+          'MetafieldOwnerType enum: PRODUCT (default), PRODUCTVARIANT, COLLECTION, CUSTOMER, ORDER, PAGE, BLOG, ARTICLE, LOCATION, COMPANY, MARKET, SHOP, …'
+        ),
+      namespace: z.string().describe('Metafield namespace, e.g. "studio"'),
+      key: z.string().describe('Metafield key, e.g. "references"'),
+      name: z.string().describe('Admin display label, e.g. "Références studio"'),
+      type: z
+        .string()
+        .describe(
+          'Shopify metafield type, e.g. "single_line_text_field", "json", "boolean", "url", "file_reference", "list.file_reference"'
+        ),
+      description: z.string().optional().describe('Administrative description of the definition'),
+      validations: z
+        .array(z.object({ name: z.string(), value: z.string() }))
+        .optional()
+        .describe(
+          'Type validations, e.g. [{ name: "file_type_options", value: "[\\"Image\\"]" }] to restrict a (list.)file_reference to images'
+        ),
+      pin: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'Pin the definition so the field is shown DIRECTLY on the resource page, without extra manipulation (default true)'
+        ),
+      access: z
+        .object({
+          admin: z
+            .enum(['MERCHANT_READ', 'MERCHANT_READ_WRITE', 'PRIVATE', 'PUBLIC_READ'])
+            .optional()
+            .describe(
+              'Admin/merchant access. Usually omit — an app-owned definition inherits the app grant and Shopify may reject narrowing it (e.g. "must be one of [public_read_write]").'
+            ),
+          storefront: z
+            .enum(['NONE', 'PUBLIC_READ'])
+            .optional()
+            .describe(
+              'Storefront read access. PUBLIC_READ = readable by the theme; NONE (default) = never exposed — use NONE for secrets.'
+            ),
+        })
+        .optional()
+        .describe(
+          'Access controls (omit entirely for the common case). Only what you set is sent: storefront defaults to NONE (set PUBLIC_READ for theme-readable fields, NEVER for secrets); admin is best left to Shopify (the app grant applies).'
+        ),
+    },
+    async (args) => {
+      try {
+        const params = {
+          ownerType: args.ownerType,
+          namespace: args.namespace,
+          key: args.key,
+          name: args.name,
+          type: args.type,
+          pin: args.pin,
+        }
+        if (args.description !== undefined) params.description = args.description
+        if (args.validations !== undefined) params.validations = args.validations
+        // Access: pass through only what the caller explicitly set. Do NOT force an
+        // admin value — an app-owned definition inherits the app's admin grant and
+        // Shopify rejects setting a narrower one (e.g. MERCHANT_READ_WRITE →
+        // "must be one of [public_read_write]"). storefront stays at Shopify's
+        // default (NONE) unless PUBLIC_READ is explicitly requested.
+        if (args.access) {
+          const access = {}
+          if (args.access.admin !== undefined) access.admin = args.access.admin
+          if (args.access.storefront !== undefined) access.storefront = args.access.storefront
+          if (Object.keys(access).length > 0) params.access = access
+        }
+        const result = await shopifyClient.createMetafieldDefinition(params)
+        const payload = result.data.metafieldDefinitionCreate
+        if (payload.userErrors.length > 0) {
+          // Idempotence: an "already taken" error means the definition exists —
+          // resolve and return it instead of failing.
+          const alreadyExists = payload.userErrors.some(
+            (e) => e.code === 'TAKEN' || /taken|already/i.test(e.message || '')
+          )
+          if (alreadyExists) {
+            const existing = await shopifyClient.getMetafieldDefinition(
+              args.ownerType,
+              args.namespace,
+              args.key
+            )
+            const node = existing.data.metafieldDefinitions.edges[0]?.node
+            if (node) {
+              return {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify({ ...node, alreadyExisted: true }, null, 2),
+                  },
+                ],
+              }
+            }
+          }
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error creating metafield definition: ${JSON.stringify(payload.userErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(payload.createdDefinition, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error creating metafield definition: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
   // Markets & Internationalization Tools
   server.tool(
     'listMarkets',

@@ -2096,6 +2096,64 @@ export class ShopifyClient {
     if (params.fieldDefinitions !== undefined) definition.fieldDefinitions = params.fieldDefinitions
     return this.graphql(mutation, { id, definition })
   }
+  async createMetafieldDefinition(params) {
+    const mutation = `
+      mutation createMetafieldDefinition($definition: MetafieldDefinitionInput!) {
+        metafieldDefinitionCreate(definition: $definition) {
+          createdDefinition {
+            id
+            name
+            namespace
+            key
+            type {
+              name
+            }
+            ownerType
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `
+    const definition = {
+      ownerType: params.ownerType,
+      namespace: params.namespace,
+      key: params.key,
+      name: params.name,
+      type: params.type,
+    }
+    if (params.description !== undefined) definition.description = params.description
+    if (params.validations !== undefined) definition.validations = params.validations
+    if (params.pin !== undefined) definition.pin = params.pin
+    if (params.access !== undefined) definition.access = params.access
+    return this.graphql(mutation, { definition })
+  }
+  // Look up an existing metafield definition by (ownerType, namespace, key) —
+  // used to resolve the idempotent "already taken" case cleanly.
+  async getMetafieldDefinition(ownerType, namespace, key) {
+    const query = `
+      query getMetafieldDefinition($ownerType: MetafieldOwnerType!, $namespace: String, $key: String) {
+        metafieldDefinitions(first: 1, ownerType: $ownerType, namespace: $namespace, key: $key) {
+          edges {
+            node {
+              id
+              name
+              namespace
+              key
+              type {
+                name
+              }
+              ownerType
+            }
+          }
+        }
+      }
+    `
+    return this.graphql(query, { ownerType, namespace, key })
+  }
   // Markets operations
   async getMarkets(params) {
     const query = `
