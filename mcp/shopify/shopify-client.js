@@ -604,6 +604,50 @@ export class ShopifyClient {
     }
     return this.graphql(mutation, variables)
   }
+  async deleteProductMedia(productId, mediaIds) {
+    const mutation = `
+      mutation productDeleteMedia($productId: ID!, $mediaIds: [ID!]!) {
+        productDeleteMedia(productId: $productId, mediaIds: $mediaIds) {
+          deletedMediaIds
+          mediaUserErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `
+    const variables = {
+      productId,
+      mediaIds,
+    }
+    return this.graphql(mutation, variables)
+  }
+  async reorderProductMedia(productId, moves) {
+    const mutation = `
+      mutation productReorderMedia($id: ID!, $moves: [MoveInput!]!) {
+        productReorderMedia(id: $id, moves: $moves) {
+          job {
+            id
+            done
+          }
+          mediaUserErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `
+    const variables = {
+      id: productId,
+      moves: moves.map((move) => ({
+        id: move.id,
+        newPosition: String(move.newPosition),
+      })),
+    }
+    return this.graphql(mutation, variables)
+  }
   // Order operations
   async getOrders(params) {
     const query = `

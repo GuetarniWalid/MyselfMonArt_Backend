@@ -555,6 +555,122 @@ function registerTools(server, shopifyClient) {
       }
     }
   )
+  server.tool(
+    'deleteProductMedia',
+    'Remove media (images) from a product GALLERY via productDeleteMedia. This only detaches the media from the product gallery — the underlying file may remain in the store Files (use Files admin to delete it for good). Pass the media GIDs (gid://shopify/MediaImage/...) as returned by getProduct or createProductMedia.',
+    {
+      productId: z.string().describe('The product ID (e.g., gid://shopify/Product/123)'),
+      mediaIds: z
+        .array(z.string())
+        .min(1)
+        .max(50)
+        .describe(
+          '1 to 50 media IDs to remove from the gallery (e.g., gid://shopify/MediaImage/123)'
+        ),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.deleteProductMedia(args.productId, args.mediaIds)
+        const payload = result.data.productDeleteMedia
+        if (payload.mediaUserErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error deleting product media: ${JSON.stringify(payload.mediaUserErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  deletedMediaIds: payload.deletedMediaIds,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error deleting product media: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'reorderProductMedia',
+    'Reorder media (images) within a product GALLERY via productReorderMedia. Each move places one media at a new 0-based position. The operation is ASYNCHRONOUS: it returns a job — re-read the product with getProduct after ~2 seconds to verify the new order.',
+    {
+      productId: z.string().describe('The product ID (e.g., gid://shopify/Product/123)'),
+      moves: z
+        .array(
+          z.object({
+            id: z.string().describe('The media ID to move (e.g., gid://shopify/MediaImage/123)'),
+            newPosition: z
+              .union([z.string(), z.number()])
+              .describe(
+                'New 0-based position in the gallery. Shopify expects a String (e.g. "0"); numbers are converted automatically.'
+              ),
+          })
+        )
+        .min(1)
+        .describe('Moves to apply: each item is { id, newPosition }'),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.reorderProductMedia(args.productId, args.moves)
+        const payload = result.data.productReorderMedia
+        if (payload.mediaUserErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error reordering product media: ${JSON.stringify(payload.mediaUserErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  job: payload.job,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error reordering product media: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
   // Order Tools
   server.tool(
     'listOrders',
