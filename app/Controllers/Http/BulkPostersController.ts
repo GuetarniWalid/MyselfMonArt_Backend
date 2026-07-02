@@ -120,7 +120,7 @@ export default class BulkPostersController {
    * descriptionHtml, SEO) est fourni par l'agent ; tout le reste est COPIÉ de la toile ou FORCÉ.
    *   - COPIÉ de la toile : title.short, painting.color, shopify.color-pattern, shopify.theme,
    *     painting.layout, mm-google-shopping/mc-facebook.google_product_category, tags.
-   *   - FORCÉ : artwork.type=poster, templateSuffix=painting, link.mother_collection=collection POSTER
+   *   - FORCÉ : artwork.type=poster, templateSuffix=poster, link.mother_collection=collection POSTER
    *     (mapping, PAS celle de la toile), likes.number=0.
    *   - DU MODÈLE (webhook products/create, inchangé) : 7 variantes + frames_poster/sizes/fixations.
    *
@@ -252,7 +252,7 @@ export default class BulkPostersController {
       product.seo = { title: seoTitle, description: seoDescription }
       product.tags = Array.isArray(toile.tags) ? toile.tags : [] // tags COPIÉS de la toile
       product.productType = 'poster'
-      product.templateSuffix = 'painting' // FORCÉ : même modèle de thème que les toiles
+      product.templateSuffix = 'poster' // FORCÉ : modèle de thème DÉDIÉ poster (décision owner 02/07)
       product.media = media
       product.status = 'DRAFT' // brouillon invisible (tout-ou-rien)
       product.metafields = [
