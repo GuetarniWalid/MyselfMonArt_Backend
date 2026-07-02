@@ -32,7 +32,10 @@ export default class CustomArtReviewAdminController {
       .where('status', 'manual_review')
       .orderBy('created_at', 'asc')
 
-    const teamIds = [...new Set(jobs.map((j) => j.teamId))]
+    // teamId null = job GÉNÉRIQUE (recette produit) — pas d'équipe à charger
+    const teamIds = [...new Set(jobs.map((j) => j.teamId))].filter(
+      (id): id is number => id !== null
+    )
     const teams = teamIds.length > 0 ? await CustomArtTeam.query().whereIn('id', teamIds) : []
     const teamById = new Map(teams.map((t) => [t.id, t]))
 
@@ -41,11 +44,21 @@ export default class CustomArtReviewAdminController {
       data: {
         jobs: jobs.map((job) => ({
           uuid: job.uuid,
-          playerName: job.playerName,
+          // Générique : libellé du job (titre/tokens) — l'UI garde une colonne unique
+          playerName: job.playerName || job.displayLabel,
           playerNumber: job.playerNumber,
           format: job.format,
           frame: job.frame,
-          team: teamById.get(job.teamId)?.name || `équipe #${job.teamId}`,
+          team:
+            job.teamId !== null
+              ? teamById.get(job.teamId)?.name || `équipe #${job.teamId}`
+              : job.productType || 'générique',
+          // Entrées sanitizées du chemin générique (tokens/titre) : SANS ça l'artiste ne
+          // peut pas réaliser à la main un job famille en manual_review. null côté foot.
+          // ⚠️ inputs client uniquement — jamais la recette (prompts).
+          inputs: job.inputs
+            ? { tokens: job.inputs.tokens, title: job.inputs.title, values: job.inputs.values }
+            : null,
           reason: job.error || null,
           round: job.round,
           createdAt: job.createdAt?.toISO() || null,

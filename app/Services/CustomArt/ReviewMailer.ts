@@ -26,13 +26,17 @@ export default class ReviewMailer {
 
     const { job, teamName, reason } = input
     const queueUrl = `${Env.get('BACKEND_URL')}/custom-art-review`
-    const subject = `[Poster perso] Création à reprendre — ${job.playerName} ${job.playerNumber} (${teamName})`
+    // displayLabel : « WALID 10 » côté foot (sortie inchangée), titre/tokens côté générique
+    const who = job.displayLabel || '—'
+    const subject = teamName
+      ? `[Poster perso] Création à reprendre — ${who} (${teamName})`
+      : `[Poster perso] Création à reprendre — ${who}`
 
     const text = [
       'Un poster personnalisé attend une intervention humaine (promesse client : aperçu sous 24 h).',
       '',
-      `Prénom / numéro : ${job.playerName} ${job.playerNumber}`,
-      `Équipe : ${teamName}`,
+      `Création : ${who}`,
+      ...(teamName ? [`Équipe : ${teamName}`] : []),
       `Format / finition : ${job.format} / ${job.frame}`,
       `Raison : ${reason}`,
       `Job : ${job.uuid}`,
@@ -46,8 +50,8 @@ export default class ReviewMailer {
   <h2 style="margin:0 0 4px">Poster perso — création à reprendre</h2>
   <p style="margin:0 0 16px;color:#666">Promesse client : aperçu sous 24 h (écran « Faire réaliser par un artiste »).</p>
   <table style="border-collapse:collapse;margin-bottom:16px">
-    <tr><td style="padding:2px 12px 2px 0;color:#666">Prénom / numéro</td><td><strong>${this.escapeHtml(job.playerName)} ${job.playerNumber}</strong></td></tr>
-    <tr><td style="padding:2px 12px 2px 0;color:#666">Équipe</td><td>${this.escapeHtml(teamName)}</td></tr>
+    <tr><td style="padding:2px 12px 2px 0;color:#666">Création</td><td><strong>${this.escapeHtml(who)}</strong></td></tr>
+    ${teamName ? `<tr><td style="padding:2px 12px 2px 0;color:#666">Équipe</td><td>${this.escapeHtml(teamName)}</td></tr>` : ''}
     <tr><td style="padding:2px 12px 2px 0;color:#666">Format / finition</td><td>${this.escapeHtml(job.format)} / ${this.escapeHtml(job.frame)}</td></tr>
     <tr><td style="padding:2px 12px 2px 0;color:#666">Raison</td><td>${this.escapeHtml(reason)}</td></tr>
     <tr><td style="padding:2px 12px 2px 0;color:#666">Job</td><td><code>${this.escapeHtml(job.uuid)}</code></td></tr>

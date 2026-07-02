@@ -51,6 +51,23 @@ export interface CustomArtCosts {
 }
 
 /**
+ * Entrées SANITIZÉES d'un job GÉNÉRIQUE (chemin piloté par recette produit, contrat
+ * growth/STUDIO-GENERATION-RECIPE-CONTRACT.md §6). NULL = job foot (legacy).
+ * ⚠️ Ne contient JAMAIS la recette (prompts) — seulement les valeurs client validées
+ * + le produit porteur ; le worker relit la recette via l'Admin API (cache 5 min).
+ */
+export interface CustomArtGenericInputs {
+  /** GID produit Shopify (ex 'gid://shopify/Product/123') — clé de relecture de la recette */
+  productId: string
+  /** Textes par personne, gauche -> droite (découpés, nettoyés, contrôlés) */
+  tokens: string[]
+  /** Champs sources du titre (sanitizés), ex { familyName: 'Martin' } */
+  values: Record<string, string>
+  /** Titre assemblé depuis inputs.title.template de la recette, null si non configuré */
+  title: string | null
+}
+
+/**
  * Job de génération CustomArt, persisté en MySQL (restart-safe, contrairement à la
  * queue mémoire MockupQueue). Consommé par App/Services/CustomArt/Worker.
  */
@@ -72,20 +89,33 @@ export default class CustomArtJob extends BaseModel {
   @column()
   public photoPath: string
 
+  /** NULL pour les jobs GÉNÉRIQUES (recette produit) — toujours renseigné côté foot. */
   @column()
-  public teamId: number
+  public teamId: number | null
 
+  /** NULL pour les jobs GÉNÉRIQUES — toujours renseigné côté foot. */
   @column()
-  public playerName: string
+  public playerName: string | null
 
+  /** NULL pour les jobs GÉNÉRIQUES — toujours renseigné côté foot. */
   @column()
-  public playerNumber: number
+  public playerNumber: number | null
 
   @column()
   public format: CustomArtFormat
 
   @column()
   public frame: string
+
+  /**
+   * Entrées sanitizées du chemin GÉNÉRIQUE (cf. CustomArtGenericInputs) : c'est LE
+   * discriminant de routage du worker (inputs présent => processGeneric). NULL = foot.
+   */
+  @column({
+    prepare: (value: any) => (value === null ? null : JSON.stringify(value)),
+    consume: (value: any) => (typeof value === 'string' ? JSON.parse(value) : value),
+  })
+  public inputs: CustomArtGenericInputs | null
 
   /**
    * Type de produit envoyé par le studio (même vocabulaire que le photo-check) : clé de
@@ -191,6 +221,19 @@ export default class CustomArtJob extends BaseModel {
 
   @belongsTo(() => CustomArtTeam, { foreignKey: 'teamId' })
   public team: BelongsTo<typeof CustomArtTeam>
+
+  /**
+   * Libellé humain de la création (emails admin, files de revue/print) — foot :
+   * « WALID 10 » (sortie inchangée) ; générique : titre assemblé, sinon tokens joints.
+   */
+  public get displayLabel(): string {
+    if (this.playerName) {
+      return `${this.playerName} ${this.playerNumber ?? ''}`.trim()
+    }
+    if (this.inputs?.title) return this.inputs.title
+    if (this.inputs?.tokens?.length) return this.inputs.tokens.join(', ')
+    return ''
+  }
 
   /** Ajoute un coût au compteur du job (mutation en place, à sauvegarder par l'appelant). */
   public addCost(step: string, eur: number, provider?: string): void {

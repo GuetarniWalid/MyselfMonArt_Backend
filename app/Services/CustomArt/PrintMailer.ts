@@ -62,7 +62,8 @@ export default class PrintMailer {
       intro,
       '',
       `Commande : ${order.orderName || order.shopifyOrderId}`,
-      job ? `Prénom / numéro : ${job.playerName} ${job.playerNumber}` : `Job : #${order.jobId}`,
+      // displayLabel : « WALID 10 » foot (inchangé), titre/tokens pour un job générique
+      job ? `Création : ${job.displayLabel}` : `Job : #${order.jobId}`,
       `Équipe : ${teamName}`,
       job ? `Format / finition : ${job.format} / ${job.frame}` : '',
       reason ? `Erreur : ${reason}` : '',
@@ -72,7 +73,7 @@ export default class PrintMailer {
 
     const rows = [
       ['Commande', order.orderName || order.shopifyOrderId],
-      job ? ['Prénom / numéro', `${job.playerName} ${job.playerNumber}`] : null,
+      job ? ['Création', job.displayLabel] : null,
       ['Équipe', teamName],
       job ? ['Format / finition', `${job.format} / ${job.frame}`] : null,
       job ? ['Job', job.uuid] : null,

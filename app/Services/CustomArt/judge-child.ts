@@ -5,8 +5,11 @@
  * worker le rattrape et le job se termine proprement (candidat non-pass). Voir JudgeRunner.ts.
  *
  * Protocole (sans @ioc, pour rester chargeable hors Adonis) :
- *   argv[2] = chemin d'un JSON d'entrée { candidatePath, photoPath, kitPaths[], kitFiles[],
- *             playerName, playerNumber, fidelityNotes, model }
+ *   argv[2] = chemin d'un JSON d'entrée —
+ *     foot (défaut)      : { candidatePath, photoPath, kitPaths[], kitFiles[],
+ *                            playerName, playerNumber, fidelityNotes, model }
+ *     générique (§7)     : { kind:'generic', candidatePath, tokens[], title, n,
+ *                            referenceTexts{title,slots[]}, checks{text,figureCount}, model }
  *   argv[3] = chemin où écrire le JSON de résultat (JudgeResult)
  *   argv[4] = chemin où écrire l'APERÇU (JPEG) du candidat
  *   clé API : process.env.ANTHROPIC_API_KEY (injectée par le parent)
@@ -21,6 +24,7 @@
 import fs from 'node:fs'
 import Anthropic from '@anthropic-ai/sdk'
 import JudgeService from './JudgeService'
+import GenericJudgeService from './GenericJudgeService'
 import PreviewService from './PreviewService'
 
 async function main() {
@@ -46,10 +50,29 @@ async function main() {
   sharp.cache(false)
 
   const candidateBuffer = fs.readFileSync(input.candidatePath)
+  const anthropic = new Anthropic({ apiKey })
+
+  // Chemin GÉNÉRIQUE (recette produit, §7) : candidat seul + contexte texte — la passe
+  // anatomie foot ne s'applique pas (décision Q6).
+  if (input.kind === 'generic') {
+    const result = await new GenericJudgeService(anthropic).judge({
+      candidateBuffer,
+      tokens: input.tokens || [],
+      title: input.title ?? null,
+      n: Number(input.n) || 0,
+      referenceTexts: input.referenceTexts || { title: null, slots: [] },
+      checks: input.checks || { text: true, figureCount: true },
+      model: input.model,
+    })
+    const preview = await PreviewService.makePreview(candidateBuffer)
+    fs.writeFileSync(previewPath, preview)
+    fs.writeFileSync(outputPath, JSON.stringify(result))
+    process.exit(0)
+  }
+
   const photoBuffer = fs.readFileSync(input.photoPath)
   const kitRefBuffers: Buffer[] = (input.kitPaths || []).map((p: string) => fs.readFileSync(p))
 
-  const anthropic = new Anthropic({ apiKey })
   const result = await new JudgeService(anthropic).judge({
     candidateBuffer,
     photoBuffer,

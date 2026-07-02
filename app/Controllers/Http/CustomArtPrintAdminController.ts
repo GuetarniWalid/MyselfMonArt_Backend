@@ -37,7 +37,10 @@ export default class CustomArtPrintAdminController {
     const jobs = jobIds.length > 0 ? await CustomArtJob.query().whereIn('id', jobIds) : []
     const jobById = new Map(jobs.map((j) => [j.id, j]))
 
-    const teamIds = [...new Set(jobs.map((j) => j.teamId))]
+    // teamId null = job générique (recette produit) — pas d'équipe à charger
+    const teamIds = [...new Set(jobs.map((j) => j.teamId))].filter(
+      (id): id is number => id !== null
+    )
     const teams = teamIds.length > 0 ? await CustomArtTeam.query().whereIn('id', teamIds) : []
     const teamById = new Map(teams.map((t) => [t.id, t]))
 
@@ -73,11 +76,15 @@ export default class CustomArtPrintAdminController {
             job: job
               ? {
                   uuid: job.uuid,
-                  playerName: job.playerName,
+                  // Générique : libellé du job (titre/tokens) à la place du prénom foot
+                  playerName: job.playerName || job.displayLabel,
                   playerNumber: job.playerNumber,
                   format: job.format,
                   frame: job.frame,
-                  team: teamById.get(job.teamId)?.name || `équipe #${job.teamId}`,
+                  team:
+                    job.teamId !== null
+                      ? teamById.get(job.teamId)?.name || `équipe #${job.teamId}`
+                      : job.productType || 'générique',
                 }
               : null,
           }
@@ -183,16 +190,17 @@ export default class CustomArtPrintAdminController {
     if (order.customerEmail) {
       const job = await CustomArtJob.find(order.jobId)
       if (job) {
-        const team = await CustomArtTeam.find(job.teamId)
+        // Jobs génériques : pas d'équipe ni de numéro — libellé du job (cf. OrderMailItem)
+        const team = job.teamId !== null ? await CustomArtTeam.find(job.teamId) : null
         const chosen = chosenCandidate(job, order.candidateRank)
         void new OrderMailer()
           .sendInProduction({
             email: order.customerEmail,
             orderName: order.orderName,
             item: {
-              playerName: job.playerName,
+              playerName: job.playerName || job.displayLabel,
               playerNumber: job.playerNumber,
-              teamName: team?.name || 'votre équipe',
+              teamName: job.teamId !== null ? team?.name || 'votre équipe' : null,
               format: job.format,
               frame: job.frame,
               previewUrl: chosen?.previewPath

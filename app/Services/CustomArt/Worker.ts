@@ -4,7 +4,7 @@ import Logger from '@ioc:Adonis/Core/Logger'
 import axios from 'axios'
 import sharp from 'sharp'
 import { DateTime } from 'luxon'
-import CustomArtJob, { CustomArtCandidate } from 'App/Models/CustomArtJob'
+import CustomArtJob, { CustomArtCandidate, CustomArtGenericInputs } from 'App/Models/CustomArtJob'
 import CustomArtTeam from 'App/Models/CustomArtTeam'
 import { mapResizeError } from 'App/Services/ArtworkResizer/jobStore'
 import CustomArtStorage from './Storage'
@@ -12,10 +12,18 @@ import { affectedRows } from './db'
 import MockupRenderer from './MockupRenderer'
 import PreviewService from './PreviewService'
 import { JUDGE_EST_COST_EUR } from './JudgeService'
+import { GENERIC_JUDGE_EST_COST_EUR } from './GenericJudgeService'
 import JudgeRunner from './JudgeRunner'
 import ReviewMailer from './ReviewMailer'
 import { buildMasterPrompt } from './prompt'
-import { resolveProviderChain, resolveForcedProvider, fakeProviderEnabled } from './providers'
+import RecipeService, { LoadedRecipe } from './RecipeService'
+import { buildGenericPrompt } from './genericPrompt'
+import {
+  resolveProviderChain,
+  resolveForcedProvider,
+  fakeProviderEnabled,
+  makeProvider,
+} from './providers'
 import type { CustomArtProvider, GenerateParams, GenerateResult } from './providers/types'
 
 // Cadence de scrutation des jobs pending (le polling client est à 2 s aussi)
@@ -267,6 +275,13 @@ export default class CustomArtWorker {
   }
 
   private static async process(job: CustomArtJob): Promise<void> {
+    // Routage worker (contrat recette §3) : `inputs` présent = job GÉNÉRIQUE (recette
+    // produit). Dispatch AVANT le try foot : le chemin générique a sa propre gestion
+    // d'erreur (le catch foot fait un lookup d'équipe sans objet ici).
+    if (job.inputs) {
+      return CustomArtWorker.processGeneric(job)
+    }
+
     const t0 = Date.now()
     try {
       // Disjoncteur de dépense : si le plafond du jour est atteint, on ne génère/juge pas
@@ -431,6 +446,312 @@ export default class CustomArtWorker {
   }
 
   /**
+   * Traitement d'un job GÉNÉRIQUE (recette produit `studio.recipe` — contrat
+   * growth/STUDIO-GENERATION-RECIPE-CONTRACT.md §3-§7). Même machine que le foot :
+   * lots de `candidates` générations parallèles, jugement isolé par candidat, relance
+   * silencieuse jusqu'à `maxAttempts` lots, sinon manual_review (essai non décompté).
+   * Invariant conservé : ready => >= 1 candidat validé, non-pass jamais révélé.
+   *
+   * La RECETTE est relue AU TRAITEMENT (cache 5 min) : une édition admin du metafield
+   * (prompt resserré) s'applique aux jobs suivants sans redéploiement. Les INPUTS client
+   * restent ceux figés/sanitizés à la création (colonne `inputs`).
+   *
+   * v1 : pas de chaîne de secours (un seul engine/modèle par recette) — un refus
+   * modération total bascule directement en repli artiste. Le maillon imposé de la file
+   * admin (« relancer avec X ») et le mode factice (M10) restent honorés.
+   */
+  private static async processGeneric(job: CustomArtJob): Promise<void> {
+    const t0 = Date.now()
+    const gi = job.inputs as CustomArtGenericInputs
+    try {
+      // Disjoncteur de dépense : même barrière que le foot, AVANT toute génération.
+      if (await CustomArtWorker.dailyCostExceeded()) {
+        await CustomArtWorker.toManualReview(
+          job,
+          '',
+          'Plafond de coût quotidien atteint — bascule en revue manuelle.',
+          t0
+        )
+        return
+      }
+
+      // Recette disparue (rollback admin) entre création et traitement -> repli artiste
+      // propre (le client a déjà son jobId, on ne l'abandonne pas sur une erreur).
+      const loaded: LoadedRecipe | null = await RecipeService.forProduct(gi.productId)
+      if (!loaded) {
+        await CustomArtWorker.toManualReview(
+          job,
+          '',
+          `Recette studio absente pour ${gi.productId} (rollback produit ?)`,
+          t0
+        )
+        return
+      }
+      const { recipe, referenceUrls } = loaded
+
+      const photoBuffer = await CustomArtStorage.get(job.photoPath)
+      const fake = fakeProviderEnabled()
+
+      // Provider : maillon imposé (file admin), mode factice (M10), sinon le modèle de
+      // la recette (IDs -preview déjà mappés vers le stable par RecipeService).
+      let provider: CustomArtProvider | null
+      if (job.forcedProvider) {
+        provider = resolveForcedProvider(job.forcedProvider)
+        if (!provider) {
+          throw new Error(`Provider imposé introuvable ou non configuré: ${job.forcedProvider}`)
+        }
+      } else if (fake) {
+        provider = resolveProviderChain()[0] || null
+      } else {
+        const built = makeProvider(`gemini:${recipe.model}`)
+        provider = built && built.isAvailable() ? built : null
+      }
+      if (!provider) {
+        throw new Error('Aucun provider de génération configuré (clé API absente).')
+      }
+
+      // Références de style (studio.references, CDN Shopify) — ordre admin préservé
+      // (contrat §5 : photo client d'abord, puis les réfs). Rien en mode factice.
+      const refBuffers = fake
+        ? []
+        : await Promise.all(referenceUrls.map((url) => CustomArtWorker.fetchBuffer(url)))
+
+      const prompt = buildGenericPrompt({ recipe, tokens: gi.tokens, title: gi.title })
+
+      while (true) {
+        job.status = 'generating'
+        await job.save()
+
+        const generations = await Promise.all(
+          Array.from({ length: recipe.candidates }, () =>
+            CustomArtWorker.generateOneGeneric(
+              provider as CustomArtProvider,
+              {
+                photoBuffer,
+                kitRefBuffers: refBuffers,
+                sceneRefBuffer: null,
+                prompt,
+                aspect: recipe.aspect,
+              },
+              job
+            )
+          )
+        )
+        const produced = generations.filter(
+          (g): g is Extract<GenerationOutcome, { kind: 'ok' }> => g.kind === 'ok'
+        )
+        if (produced.length === 0 && generations.every((g) => g.kind === 'refused')) {
+          // Photo refusée par le filtre d'entrée (IMAGE_SAFETY) : pas de chaîne de
+          // secours v1 -> repli artiste direct (essai non décompté, règle existante).
+          await CustomArtWorker.toManualReview(
+            job,
+            '',
+            'Photo refusée par le filtre du modèle (IMAGE_SAFETY)',
+            t0
+          )
+          return
+        }
+
+        job.status = 'judging'
+        await job.save()
+
+        if (produced.length > 0) {
+          await CustomArtWorker.judgeAndStoreGeneric(job, gi, recipe, produced)
+        }
+
+        const candidates = job.candidates || []
+        const best = CustomArtWorker.rankCandidates(candidates)
+        await job.save()
+
+        if (best && best.pass) {
+          job.chosenIndex = candidates.indexOf(best)
+          job.revealedCount = 1
+          job.provider = best.provider
+          job.status = 'ready'
+          job.error = null
+          // Durée réelle création -> ready : même stat glissante que le foot, le bucket
+          // est le productType du job (JobEstimate déjà générique).
+          if (job.createdAt) {
+            job.readyDurationMs = Math.max(0, Math.round(Date.now() - job.createdAt.toMillis()))
+          }
+          await job.save()
+          Logger.info(
+            'custom-art (generic) READY uuid=%s round=%s score=%s provider=%s %ss',
+            job.uuid,
+            job.round,
+            best.score,
+            best.provider,
+            Math.round((Date.now() - t0) / 1000)
+          )
+          if (!fake) {
+            void MockupRenderer.renderForJob(job)
+          }
+          return
+        }
+
+        if (job.round >= recipe.maxAttempts) {
+          await CustomArtWorker.toManualReview(
+            job,
+            '',
+            `Aucun candidat validé par le juge après ${job.round} lot(s) (${candidates.length} candidat(s) jugé(s))`,
+            t0
+          )
+          return
+        }
+
+        // Lot suivant silencieux (le front garde le storytelling d'attente)
+        job.round = job.round + 1
+        await job.save()
+        Logger.warn(
+          'custom-art (generic) lot %s relancé uuid=%s (0 validé au lot précédent)',
+          job.round,
+          job.uuid
+        )
+      }
+    } catch (error) {
+      // Même politique que le foot (décision 2026-06-24) : tout échec technique bascule
+      // en repli artiste soigné, jamais d'erreur générique côté client.
+      Logger.error(
+        'custom-art (generic) FAIL->MANUAL_REVIEW uuid=%s %ss: %s',
+        job.uuid,
+        Math.round((Date.now() - t0) / 1000),
+        (error as any)?.message || error
+      )
+      await CustomArtWorker.toManualReview(
+        job,
+        '',
+        `Échec technique : ${mapResizeError(error)}`,
+        t0
+      ).catch(() => {})
+    }
+  }
+
+  /**
+   * Une génération générique : provider unique (pas de chaîne v1), refus modération et
+   * échec technique distingués comme côté foot (le refus TOTAL déclenche le repli artiste).
+   */
+  private static async generateOneGeneric(
+    provider: CustomArtProvider,
+    params: GenerateParams,
+    job: CustomArtJob
+  ): Promise<GenerationOutcome> {
+    try {
+      const result = await provider.generate(params)
+      if (result.providerMeta.refused || !result.imageBuffer) {
+        Logger.warn(
+          'custom-art (generic) uuid=%s provider=%s refus: %s',
+          job.uuid,
+          provider.key,
+          result.providerMeta.refused
+        )
+        return { kind: 'refused' }
+      }
+      job.addCost('generation', result.providerMeta.estCostEur, provider.key)
+      return { kind: 'ok', result, provider }
+    } catch (error) {
+      Logger.warn(
+        'custom-art (generic) uuid=%s provider=%s échec: %s',
+        job.uuid,
+        provider.key,
+        (error as any)?.message || error
+      )
+      return { kind: 'failed' }
+    }
+  }
+
+  /**
+   * Juge chaque candidat GÉNÉRIQUE (JudgeRunner.judgeGeneric : process enfant isolé,
+   * passe unique textes + figures + qualité §7), uploade HD privé + aperçu public.
+   * Mêmes garanties que le foot : concurrence bornée, candidat sans aperçu écarté
+   * (tout candidat conservé est réellement servable).
+   */
+  private static async judgeAndStoreGeneric(
+    job: CustomArtJob,
+    gi: CustomArtGenericInputs,
+    recipe: LoadedRecipe['recipe'],
+    produced: Array<{ result: GenerateResult; provider: CustomArtProvider }>
+  ): Promise<void> {
+    const judge = new JudgeRunner()
+    const existing = job.candidates || []
+    const concurrency = Number(Env.get('CUSTOM_ART_JUDGE_CONCURRENCY')) || JUDGE_CONCURRENCY_DEFAULT
+
+    const judged = await CustomArtWorker.mapWithConcurrency(
+      produced,
+      concurrency,
+      async (item, i): Promise<CustomArtCandidate | null> => {
+        const { result, provider } = item
+        const buffer = result.imageBuffer as Buffer
+        const index = existing.length + i
+
+        let verdict: any
+        let preview: Buffer | null = null
+        if (fakeProviderEnabled()) {
+          verdict = CustomArtWorker.fakeVerdict(index)
+          preview = await PreviewService.makePreview(buffer)
+        } else {
+          try {
+            const outcome = await judge.judgeGeneric({
+              candidateBuffer: buffer,
+              tokens: gi.tokens,
+              title: gi.title,
+              n: gi.tokens.length,
+              referenceTexts: recipe.referenceTexts,
+              checks: recipe.judge,
+            })
+            verdict = outcome.verdict
+            preview = outcome.preview
+            job.addCost('judge', GENERIC_JUDGE_EST_COST_EUR, 'claude')
+          } catch (error) {
+            Logger.error(
+              'custom-art (generic) judge KO uuid=%s: %s',
+              job.uuid,
+              (error as any)?.message
+            )
+            verdict = {
+              scores: {},
+              verdicts: { judgeError: true },
+              pass: false,
+              score: 0,
+              suspicion: 0,
+              reason: 'Juge indisponible',
+            } as any
+          }
+        }
+
+        if (!preview) {
+          Logger.warn(
+            'custom-art (generic) uuid=%s candidat #%s écarté (juge KO, aucun aperçu)',
+            job.uuid,
+            index
+          )
+          return null
+        }
+
+        const path = `custom-art/jobs/${job.uuid}/candidate-${index}.jpg`
+        const previewPath = `custom-art/jobs/${job.uuid}/preview-${index}.jpg`
+        await CustomArtStorage.put(path, buffer, { isPublic: false })
+        await CustomArtStorage.put(previewPath, preview, { isPublic: true })
+
+        return {
+          path,
+          previewPath,
+          provider: provider.key,
+          model: result.providerMeta.model,
+          latencyMs: result.providerMeta.latencyMs,
+          estCostEur: result.providerMeta.estCostEur,
+          score: verdict.score,
+          pass: verdict.pass,
+          suspicion: verdict.suspicion ?? 0,
+          verdicts: { ...verdict.verdicts, reason: verdict.reason },
+          rank: 0, // recalculé sur l'ensemble juste après (rankCandidates)
+        }
+      }
+    )
+
+    job.candidates = [...existing, ...judged.filter((c): c is CustomArtCandidate => c !== null)]
+  }
+
+  /**
    * Bascule en manual_review (fallback artiste, décision §0.15) : la raison technique
    * est gardée dans `error` pour la file admin (le client, lui, voit l'écran soigné
    * « Faire réaliser par un artiste ») + notification email à Walid (best-effort).
@@ -476,8 +797,10 @@ export default class CustomArtWorker {
           sceneRefBuffer: useScene ? inputs.sceneRefBuffer : null,
           prompt: buildMasterPrompt({
             teamName: inputs.teamName,
-            playerName: job.playerName,
-            playerNumber: job.playerNumber,
+            // Coercition de type uniquement : toujours renseignés sur le chemin foot
+            // (colonnes passées nullable pour les jobs génériques, qui ne passent pas ici)
+            playerName: job.playerName || '',
+            playerNumber: job.playerNumber ?? 0,
             kitRefFiles: inputs.kitRefFiles,
             useSceneRef: useScene,
             fidelityNotes: inputs.fidelityNotes,
@@ -559,8 +882,9 @@ export default class CustomArtWorker {
               photoBuffer: inputs.photoBuffer,
               kitRefBuffers: inputs.kitRefBuffers,
               kitRefFiles: inputs.kitRefFiles,
-              playerName: job.playerName,
-              playerNumber: job.playerNumber,
+              // Toujours renseignés côté foot (nullabilité = jobs génériques uniquement)
+              playerName: job.playerName || '',
+              playerNumber: job.playerNumber ?? 0,
               fidelityNotes: inputs.fidelityNotes,
             })
             verdict = outcome.verdict

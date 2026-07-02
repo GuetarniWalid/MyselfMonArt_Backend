@@ -148,17 +148,26 @@ export default class PhotoCheck {
     // `null` = cran inconnu / non fourni : le juge ignore la contrainte d'angle (cf.
     // normalizeFaceAngle) — tous les AUTRES contrôles (visage, netteté, nsfw…) s'appliquent.
     faceAngle: FaceAngle | null
+    /**
+     * Mode GROUPE (photo de famille — contrat recette §8, convention figée
+     * `faceAngle:"group"` dans studio.config) : plusieurs visages OK (`multiple_faces`
+     * non émis), contrôles net/sombre/qualité/nsfw conservés, contraintes propres au
+     * portrait solo ignorées (angle, visage trop petit, visage masqué). Le cache
+     * d'évaluation intrinsèque est PARTAGÉ avec le mode solo (dérivation en code).
+     */
+    group?: boolean
     hash: string | null
     productType?: string | null
   }): Promise<PhotoCheckVerdict> {
     const hash = this.sanitizeHash(input.hash)
+    const group = Boolean(input.group)
 
     // 2) Cache par hash (avant tout appel payant). Verdict recalculé pour l'angle demandé.
     if (hash) {
       const cached = await this.getCached(hash)
       if (cached) {
-        const verdict = this.deriveVerdict(cached, input.faceAngle, true)
-        this.log(verdict, 'cache', input.faceAngle, 0)
+        const verdict = this.deriveVerdict(cached, input.faceAngle, true, group)
+        this.log(verdict, 'cache', input.faceAngle, 0, group)
         return verdict
       }
     }
@@ -167,16 +176,16 @@ export default class PhotoCheck {
     const pre = await this.prefilter(input.photo)
     if (pre) {
       if (hash) await this.putCached(hash, pre)
-      const verdict = this.deriveVerdict(pre, input.faceAngle, false)
-      this.log(verdict, 'prefilter', input.faceAngle, 0)
+      const verdict = this.deriveVerdict(pre, input.faceAngle, false, group)
+      this.log(verdict, 'prefilter', input.faceAngle, 0, group)
       return verdict
     }
 
     // 3) Appel LLM cheap (Gemini Flash, sortie structurée).
     const assessment = await this.assessWithLlm(input.photo)
     if (hash) await this.putCached(hash, assessment)
-    const verdict = this.deriveVerdict(assessment, input.faceAngle, false)
-    this.log(verdict, 'llm', input.faceAngle, EST_COST_PHOTO_CHECK_EUR)
+    const verdict = this.deriveVerdict(assessment, input.faceAngle, false, group)
+    this.log(verdict, 'llm', input.faceAngle, EST_COST_PHOTO_CHECK_EUR, group)
     return verdict
   }
 
@@ -187,7 +196,8 @@ export default class PhotoCheck {
   private deriveVerdict(
     a: PhotoAssessment,
     faceAngle: FaceAngle | null,
-    cached: boolean
+    cached: boolean,
+    group: boolean = false
   ): PhotoCheckVerdict {
     // Angle DÉTECTÉ exposé tel quel (jamais l'angle demandé). Les 4 crans canoniques passent
     // verbatim ; 'none' du LLM (aucun visage) ET null du pré-filtre (visage non évalué) se
@@ -214,6 +224,12 @@ export default class PhotoCheck {
 
     // Évaluation liée au visage : ignorée si le LLM n'a pas tourné (pré-filtre, faceCount null).
     if (a.faceCount !== null) {
+      // Mode GROUPE (§8) : au moins un visage requis, tout le reste des contrôles visage
+      // (multi-visages, angle, visage trop petit/masqué — calibrés portrait solo) ignoré.
+      if (group) {
+        if (a.faceCount === 0) issues.push('no_face')
+        return base(issues)
+      }
       if (a.faceCount > 1) {
         issues.push('multiple_faces')
       } else if (faceAngle !== 'back') {
@@ -470,14 +486,15 @@ Sois bienveillant mais attentif à la lisibilité du visage. Réponds uniquement
     verdict: PhotoCheckVerdict,
     source: 'cache' | 'prefilter' | 'llm',
     faceAngle: FaceAngle | null,
-    costEur: number
+    costEur: number,
+    group: boolean = false
   ): void {
     Logger.info(
       'custom-art photo-check ok=%s issues=[%s] angle=%s/%s source=%s cached=%s costEur=%s',
       verdict.ok,
       verdict.issues.join(','),
       verdict.faceAngleDetected, // détecté (toujours présent : un des 5 buckets, dont 'none')
-      faceAngle || 'any', // 'any' = cran inconnu, contrainte d'angle ignorée
+      group ? 'group' : faceAngle || 'any', // 'group' = mode famille ; 'any' = cran inconnu
       source,
       verdict.cached,
       costEur.toFixed(4)

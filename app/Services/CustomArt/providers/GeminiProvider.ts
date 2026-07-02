@@ -68,7 +68,8 @@ export default class GeminiProvider implements CustomArtProvider {
       contents,
       config: {
         responseModalities: ['IMAGE'],
-        imageConfig: { aspectRatio: '3:4' }, // poster portrait
+        // Ratio piloté par l'appelant (recette générique) ; défaut poster portrait (foot)
+        imageConfig: { aspectRatio: params.aspect || '3:4' },
       },
     }
 

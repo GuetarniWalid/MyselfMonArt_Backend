@@ -7,6 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import JudgeService, { DEFAULT_JUDGE_MODEL, JudgeResult } from './JudgeService'
+import GenericJudgeService from './GenericJudgeService'
 import PreviewService from './PreviewService'
 
 export interface JudgeInput {
@@ -17,6 +18,16 @@ export interface JudgeInput {
   playerName: string
   playerNumber: number
   fidelityNotes?: string | null
+}
+
+/** Entrée du juge GÉNÉRIQUE (recette produit §7) : contexte {tokens, title, n} + réf. */
+export interface GenericJudgeRunnerInput {
+  candidateBuffer: Buffer
+  tokens: string[]
+  title: string | null
+  n: number
+  referenceTexts: { title: string | null; slots: string[] }
+  checks: { text: boolean; figureCount: boolean }
 }
 
 /** Verdict + aperçu, tous deux produits hors du process principal en prod. */
@@ -81,6 +92,84 @@ export default class JudgeRunner {
       String(verdict.reason || '').slice(0, 120)
     )
     return outcome
+  }
+
+  /**
+   * Jugement d'un candidat GÉNÉRIQUE (§7) — même isolation que le foot : process enfant
+   * en prod (kind:'generic' dans le protocole), in-process en dev. Un crash de l'enfant
+   * est propagé à l'appelant (candidat non-pass), le worker survit.
+   */
+  public async judgeGeneric(input: GenericJudgeRunnerInput): Promise<JudgeOutcome> {
+    const t0 = Date.now()
+    const model = Env.get('CUSTOM_ART_JUDGE_MODEL') || DEFAULT_JUDGE_MODEL
+    const childJs = path.join(__dirname, 'judge-child.js')
+
+    const childExists = await fs
+      .access(childJs)
+      .then(() => true)
+      .catch(() => false)
+
+    let outcome: JudgeOutcome
+    if (childExists) {
+      outcome = await this.judgeGenericInChild(childJs, model, input)
+    } else {
+      const anthropic = new Anthropic({ apiKey: Env.get('ANTHROPIC_API_KEY') })
+      const verdict = await new GenericJudgeService(anthropic).judge({ ...input, model })
+      const preview = await PreviewService.makePreview(input.candidateBuffer)
+      outcome = { verdict, preview }
+    }
+
+    const { verdict } = outcome
+    Logger.info(
+      'custom-art judge(generic) %sms pass=%s score=%s codes=[%s] figures=%s%s (%s)',
+      Math.round(Date.now() - t0),
+      verdict.pass,
+      verdict.score,
+      (verdict.verdicts?.textCodes || []).join(','),
+      verdict.verdicts?.figureCount,
+      childExists ? '' : ' [in-process]',
+      String(verdict.reason || '').slice(0, 120)
+    )
+    return outcome
+  }
+
+  /** Variante enfant du juge générique : candidat + contexte texte via input.json. */
+  private async judgeGenericInChild(
+    childJs: string,
+    model: string,
+    input: GenericJudgeRunnerInput
+  ): Promise<JudgeOutcome> {
+    const dir = path.join(os.tmpdir(), `ca-judge-${randomUUID()}`)
+    await fs.mkdir(dir, { recursive: true })
+    try {
+      const candidatePath = path.join(dir, 'candidate.jpg')
+      await fs.writeFile(candidatePath, input.candidateBuffer)
+      const inputPath = path.join(dir, 'input.json')
+      const outputPath = path.join(dir, 'output.json')
+      const previewPath = path.join(dir, 'preview.jpg')
+      await fs.writeFile(
+        inputPath,
+        JSON.stringify({
+          kind: 'generic',
+          candidatePath,
+          tokens: input.tokens,
+          title: input.title,
+          n: input.n,
+          referenceTexts: input.referenceTexts,
+          checks: input.checks,
+          model,
+        })
+      )
+
+      await this.runChild(childJs, inputPath, outputPath, previewPath)
+      const [raw, preview] = await Promise.all([
+        fs.readFile(outputPath, 'utf8'),
+        fs.readFile(previewPath),
+      ])
+      return { verdict: JSON.parse(raw) as JudgeResult, preview }
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => {})
+    }
   }
 
   /** Écrit les images en fichiers temp, lance l'enfant, lit verdict + aperçu, nettoie. */

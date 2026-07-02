@@ -6,7 +6,7 @@ import { randomUUID, createHash } from 'crypto'
 import { promises as fs } from 'fs'
 import { DateTime } from 'luxon'
 import sharp from 'sharp'
-import CustomArtJob, { CustomArtCandidate } from 'App/Models/CustomArtJob'
+import CustomArtJob, { CustomArtCandidate, CustomArtFormat } from 'App/Models/CustomArtJob'
 import CustomArtSession from 'App/Models/CustomArtSession'
 import CustomArtTeam from 'App/Models/CustomArtTeam'
 import CustomArtJobValidator from 'App/Validators/CustomArtJobValidator'
@@ -15,6 +15,7 @@ import CustomArtPhotoCheckValidator from 'App/Validators/CustomArtPhotoCheckVali
 import PhotoCheck, { normalizeFaceAngle } from 'App/Services/CustomArt/PhotoCheck'
 import CustomArtStorage from 'App/Services/CustomArt/Storage'
 import CustomArtVariantMapping from 'App/Services/CustomArt/VariantMapping'
+import RecipeService, { LoadedRecipe, RecipeError } from 'App/Services/CustomArt/RecipeService'
 import JobEstimate, { normalizeProductType } from 'App/Services/CustomArt/JobEstimate'
 import { affectedRows } from 'App/Services/CustomArt/db'
 import { chosenCandidate } from 'App/Services/CustomArt/chosenCandidate'
@@ -179,6 +180,18 @@ export default class CustomArtController {
         return response.badRequest({ success: false, message: 'Requête invalide.' })
       }
 
+      // 0) Routage §3 (contrat recette) : la présence de `studio.recipe` sur le PRODUIT
+      // de la variante bascule sur le chemin GÉNÉRIQUE — AVANT le validateur foot (le
+      // payload générique n'a ni teamId ni playerName). Recette absente => chemin foot
+      // VERBATIM ci-dessous. La recette ne transite JAMAIS dans une réponse API.
+      const routed = await this.resolveGenericRoute(request)
+      if (routed.kind === 'invalid') {
+        return response.status(422).json({ success: false, message: routed.message })
+      }
+      if (routed.kind === 'generic') {
+        return await this.createGeneric(ctx, routed)
+      }
+
       // 1) Champs texte
       const payload = await request.validate(CustomArtJobValidator)
 
@@ -197,7 +210,9 @@ export default class CustomArtController {
       let frame = payload.frame ?? null
       if (payload.variantId) {
         const mapped = await CustomArtVariantMapping.resolve(payload.variantId)
-        if (mapped) {
+        // format null = options non dérivables (le mapping remonte désormais aussi le
+        // productId pour le routage recette) : on garde le secours format/frame explicites.
+        if (mapped?.format) {
           format = mapped.format
           frame = mapped.frame
         }
@@ -353,9 +368,16 @@ export default class CustomArtController {
       // faceAngle arrive verbatim du studio : normalisé ici (underscore→tiret, casse) vers
       // l'enum canonique. Un cran inconnu => null => le juge ignore la contrainte d'angle
       // (jamais de fallback silencieux sur 'front' qui recalerait à tort une photo 3/4).
+      // Mode GROUPE (contrat recette §8, convention figée) : `faceAngle:"group"` dans
+      // studio.config — plusieurs visages OK, contrôles net/sombre/nsfw conservés.
+      const group =
+        String(payload.faceAngle || '')
+          .trim()
+          .toLowerCase() === 'group'
       const verdict = await new PhotoCheck().check({
         photo: buffer,
         faceAngle: normalizeFaceAngle(payload.faceAngle),
+        group,
         hash: payload.hash ?? null,
         productType: payload.productType ?? null,
       })
@@ -726,6 +748,10 @@ export default class CustomArtController {
       playerNumber: job.playerNumber,
       format: job.format,
       frame: job.frame,
+      // Chemin générique : `inputs` porte productId + textes sanitizés (le worker route
+      // dessus). `productType` recopié pour les deux chemins (bucket JobEstimate).
+      inputs: job.inputs,
+      productType: job.productType,
       revealedCount: 0,
       round: 1,
     })
@@ -894,6 +920,204 @@ export default class CustomArtController {
         dailyCostCapEur:
           Number(Env.get('CUSTOM_ART_DAILY_COST_CAP_EUR')) || DEFAULT_DAILY_COST_CAP_EUR,
       },
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Chemin GÉNÉRIQUE (recette produit `studio.recipe` — contrat §3/§6)
+  // --------------------------------------------------------------------------
+
+  /**
+   * Routage §3 : variante -> produit (mapping caché 10 min) -> recette (cache 5 min).
+   *  - pas de variantId / variante irrésolue / recette absente => 'legacy' (foot verbatim) ;
+   *  - recette présente mais INVALIDE => 'invalid' 422 propre (produit mal configuré —
+   *    jamais de fallback foot silencieux ; détails en logs serveur uniquement) ;
+   *  - panne Shopify (hors RecipeError) => 'legacy' : même dégradation qu'aujourd'hui
+   *    (le foot vit sur ses champs de secours ; un produit générique tombera sur le 422
+   *    du validateur foot pendant la fenêtre d'indisponibilité).
+   */
+  private async resolveGenericRoute(request: HttpContextContract['request']): Promise<
+    | { kind: 'legacy' }
+    | { kind: 'invalid'; message: string }
+    | {
+        kind: 'generic'
+        productId: string
+        format: CustomArtFormat
+        frame: string
+        loaded: LoadedRecipe
+      }
+  > {
+    const variantId = String(request.input('variantId') || '').trim()
+    if (!variantId) return { kind: 'legacy' }
+
+    const mapped = await CustomArtVariantMapping.resolve(variantId)
+    if (!mapped?.productId) return { kind: 'legacy' }
+
+    let loaded: LoadedRecipe | null
+    try {
+      loaded = await RecipeService.forProduct(mapped.productId)
+    } catch (error) {
+      if (error instanceof RecipeError) {
+        Logger.error(
+          'custom-art routage: recette invalide product=%s: %s',
+          mapped.productId,
+          error.message
+        )
+        return { kind: 'invalid', message: 'Produit non configuré pour la génération.' }
+      }
+      Logger.warn(
+        'custom-art routage: lecture recette impossible product=%s (%s) — chemin legacy',
+        mapped.productId,
+        (error as any)?.message || error
+      )
+      return { kind: 'legacy' }
+    }
+    if (!loaded) return { kind: 'legacy' }
+
+    if (!mapped.format || !mapped.frame) {
+      return {
+        kind: 'invalid',
+        message: 'Variante inconnue : impossible de déterminer le format et la finition.',
+      }
+    }
+    return {
+      kind: 'generic',
+      productId: mapped.productId,
+      format: mapped.format,
+      frame: mapped.frame,
+      loaded,
+    }
+  }
+
+  /**
+   * POST /jobs — chemin GÉNÉRIQUE (§6) : validation pilotée par la recette (tokens,
+   * champs du titre), photo aux mêmes contraintes que le foot, MÊMES session/caps/
+   * comptage (contrat §1), job persisté avec `inputs` sanitizés (jamais la recette).
+   * Réponse identique au foot : { jobId, token, estimatedMs }.
+   */
+  private async createGeneric(
+    ctx: HttpContextContract,
+    generic: { productId: string; format: CustomArtFormat; frame: string; loaded: LoadedRecipe }
+  ) {
+    const { request, response } = ctx
+    try {
+      const { recipe } = generic.loaded
+
+      // consent requis sur ce chemin (contrat §6)
+      const consent = String(request.input('consent') || '')
+        .trim()
+        .toLowerCase()
+      if (!['1', 'true', 'on', 'yes'].includes(consent)) {
+        return response.status(422).json({ success: false, message: 'Le consentement est requis.' })
+      }
+
+      // Champs texte pilotés par la recette (découpage, charset, blocklist, titre)
+      const validated = RecipeService.validateGenericPayload(recipe, (name) => request.input(name))
+      if (!validated.ok) {
+        return response.status(422).json({ success: false, message: validated.message })
+      }
+
+      // Photo (v1 : toujours consommée par la recette) — mêmes contraintes que le foot
+      const photo = await this.readGenericPhoto(request)
+      if (!photo.ok) {
+        return response.status(422).json({ success: false, message: photo.message })
+      }
+
+      // Session + caps : mêmes helpers, même comptage que le foot (contrat §1)
+      const session = await this.resolveSession(ctx)
+      await this.attachEmailIfMissing(session, request.input('email'))
+      const capError = await this.checkCaps(session)
+      if (capError) {
+        return response.status(429).json(capError)
+      }
+
+      const uuid = randomUUID()
+      const photoPath = `custom-art/jobs/${uuid}/source.jpg`
+      await CustomArtStorage.put(photoPath, photo.normalized, { isPublic: false })
+
+      const productType = normalizeProductType(request.input('productType'))
+
+      await CustomArtJob.create({
+        uuid,
+        sessionId: session.id,
+        status: 'pending',
+        photoPath,
+        format: generic.format,
+        frame: generic.frame,
+        productType,
+        revealedCount: 0,
+        round: 1,
+        // Set sanitizé UNIQUEMENT (contrat §6) — la recette est relue par le worker
+        inputs: {
+          productId: generic.productId,
+          tokens: validated.inputs.tokens,
+          values: validated.inputs.values,
+          title: validated.inputs.title,
+        },
+      })
+
+      session.essaisCount = session.essaisCount + 1
+      await session.save()
+
+      const estimatedMs = await JobEstimate.forProductType(productType)
+
+      Logger.info(
+        'custom-art job START (generic) uuid=%s product=%s format=%s tokens=%s title=%s',
+        uuid,
+        generic.productId,
+        generic.format,
+        validated.inputs.tokens.length,
+        Boolean(validated.inputs.title)
+      )
+      return { success: true, data: { jobId: uuid, token: session.sessionToken, estimatedMs } }
+    } catch (error) {
+      Logger.error('custom-art create (generic): %s', (error as any)?.message || error)
+      return response.status(500).json({
+        success: false,
+        message: 'Impossible de démarrer la création. Réessaie dans un instant.',
+      })
+    }
+  }
+
+  /**
+   * Photo du chemin générique : contraintes IDENTIQUES au foot (formats, 12 Mo, plancher
+   * 200 px aligné photo-check, EXIF appliqué, JPEG 2048 max) — dupliquées à dessein pour
+   * ne pas toucher le bloc foot de create() (zéro régression).
+   */
+  private async readGenericPhoto(
+    request: HttpContextContract['request']
+  ): Promise<{ ok: true; normalized: Buffer } | { ok: false; message: string }> {
+    const photo = request.file('photo', { size: PHOTO_MAX_SIZE, extnames: PHOTO_EXTNAMES })
+    if (!photo) {
+      return { ok: false, message: 'La photo est requise.' }
+    }
+    if (!photo.isValid) {
+      return {
+        ok: false,
+        message: 'Photo refusée : formats acceptés JPG, PNG, WEBP ou HEIC, taille maximale 12 Mo.',
+      }
+    }
+    const raw = await fs.readFile(photo.tmpPath!)
+    try {
+      const meta = await sharp(raw).metadata()
+      const minSide = Math.min(meta.width || 0, meta.height || 0)
+      if (minSide < PHOTO_MIN_PX) {
+        return {
+          ok: false,
+          message: `Photo trop petite : il nous faut au moins ${PHOTO_MIN_PX} px de côté.`,
+        }
+      }
+      const normalized = await sharp(raw)
+        .rotate() // applique l'orientation EXIF (et supprime les métadonnées)
+        .resize(2048, 2048, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 90, mozjpeg: true })
+        .toBuffer()
+      return { ok: true, normalized }
+    } catch {
+      return {
+        ok: false,
+        message: 'Impossible de lire cette photo sur nos serveurs. Envoie-la en JPG ou PNG.',
+      }
     }
   }
 

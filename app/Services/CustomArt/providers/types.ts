@@ -7,16 +7,21 @@
 export interface GenerateParams {
   /** Photo client normalisée (JPEG, max 2048px, EXIF appliqué) */
   photoBuffer: Buffer
-  /** 1-2 images de référence du maillot (bibliothèque équipe) */
+  /**
+   * Images de référence jointes après la photo (images 2..n) : réfs maillot côté foot,
+   * réf(s) de style `studio.references` côté générique — même slot, même ordre d'envoi.
+   */
   kitRefBuffers: Buffer[]
   /** Image de référence scène/pose (figée J1), optionnelle tant qu'elle n'est pas fournie */
   sceneRefBuffer?: Buffer | null
   /** Prompt maître complet (style pictural + pose + consignes texte) */
   prompt: string
-  /** Prénom à rendre sur le maillot (orthographe vérifiée par le juge) */
-  playerName: string
-  /** Numéro 1-99 */
-  playerNumber: number
+  /** Ratio de sortie (imageConfig.aspectRatio) — défaut '3:4' (posters portrait) */
+  aspect?: string
+  /** Prénom à rendre sur le maillot (foot uniquement — absent côté générique) */
+  playerName?: string | null
+  /** Numéro 1-99 (foot uniquement — absent côté générique) */
+  playerNumber?: number | null
 }
 
 export interface ProviderMeta {

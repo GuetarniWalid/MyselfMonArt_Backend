@@ -82,13 +82,25 @@ function renderQueue() {
           </span>`
         )
         .join('')
+      // Jobs génériques (recette produit) : pas de numéro — playerName porte le libellé
+      // (titre/tokens) et `inputs` détaille les textes que l'artiste doit reproduire.
+      const title =
+        job.playerNumber != null
+          ? `${esc(job.playerName)} · n°${esc(job.playerNumber)}`
+          : esc(job.playerName || '—')
+      const inputsLine = job.inputs
+        ? `<span class="review-meta">textes : ${esc((job.inputs.tokens || []).join(' · '))}${
+            job.inputs.title ? ` — titre : « ${esc(job.inputs.title)} »` : ''
+          }</span>`
+        : ''
       return `
       <article class="review-card" data-uuid="${esc(job.uuid)}">
         <img class="review-photo" src="${esc(job.photoUrl)}" alt="photo client" loading="lazy">
         <div class="review-main">
           <div class="review-head">
-            <span class="review-title">${esc(job.playerName)} · n°${esc(job.playerNumber)}</span>
+            <span class="review-title">${title}</span>
             <span class="review-meta">${esc(job.team)} — ${esc(job.format)} / ${esc(job.frame)}</span>
+            ${inputsLine}
             <span class="review-meta">reçu le ${esc(fmtDate(job.createdAt))}</span>
           </div>
           ${job.reason ? `<p class="review-reason">${esc(job.reason)}</p>` : ''}

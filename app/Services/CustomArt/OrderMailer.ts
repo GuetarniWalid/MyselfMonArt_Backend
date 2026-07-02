@@ -8,9 +8,12 @@ const RESEND_ENDPOINT = 'https://api.resend.com/emails'
 
 /** Un article personnalisé de la commande (aperçu + mises en situation). */
 export interface OrderMailItem {
+  /** Libellé de la création : « WALID » côté foot, titre/tokens côté générique */
   playerName: string
-  playerNumber: number
-  teamName: string
+  /** null pour une création GÉNÉRIQUE (pas de numéro de maillot) */
+  playerNumber: number | null
+  /** null pour une création GÉNÉRIQUE (pas d'équipe) */
+  teamName: string | null
   /** '30x40' | '60x80' — converti en libellé lisible (« 30 × 40 cm »). */
   format: string
   /** Slug de finition ('none', 'chene'…) — converti en libellé lisible. */
@@ -48,7 +51,7 @@ export default class OrderMailer {
     const textItems = items
       .map(
         (item) =>
-          `- ${item.playerName} n°${item.playerNumber} (${item.teamName}), ` +
+          `- ${this.itemLabel(item)}, ` +
           `${this.formatLabel(item.format)}, ${this.frameLabel(item.frame)}`
       )
       .join('\n')
@@ -109,7 +112,7 @@ export default class OrderMailer {
       '',
       `Bonne nouvelle : votre tableau personnalisé${orderLabel} part en production !`,
       '',
-      `${item.playerName} n°${item.playerNumber} (${item.teamName}), ` +
+      `${this.itemLabel(item)}, ` +
         `${this.formatLabel(item.format)}, ${this.frameLabel(item.frame)}.`,
       '',
       'Votre visuel a été vérifié en haute définition par notre équipe.',
@@ -154,8 +157,10 @@ export default class OrderMailer {
           .join('')
       : ''
 
+    const who =
+      item.playerNumber !== null ? `${item.playerName} n°${item.playerNumber}` : item.playerName
     return `<div style="margin:0 0 8px;padding:12px 16px;border:1px solid #eee;border-radius:8px">
-    <p style="margin:0 0 8px"><strong>${this.escapeHtml(item.playerName)} n°${item.playerNumber}</strong> — ${this.escapeHtml(item.teamName)}<br>
+    <p style="margin:0 0 8px"><strong>${this.escapeHtml(who)}</strong>${item.teamName ? ` — ${this.escapeHtml(item.teamName)}` : ''}<br>
     <span style="color:#666">${this.escapeHtml(this.formatLabel(item.format))} · ${this.escapeHtml(this.frameLabel(item.frame))}</span></p>
     ${
       item.previewUrl
@@ -164,6 +169,13 @@ export default class OrderMailer {
     }
     ${mockups}
   </div>`
+  }
+
+  /** Ligne d'identité d'un article : « WALID n°10 (PSG) » foot, « La famille Martin » générique. */
+  private itemLabel(item: OrderMailItem): string {
+    const who =
+      item.playerNumber !== null ? `${item.playerName} n°${item.playerNumber}` : item.playerName
+    return item.teamName ? `${who} (${item.teamName})` : who
   }
 
   private formatLabel(format: string): string {

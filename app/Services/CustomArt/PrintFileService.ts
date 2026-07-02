@@ -284,6 +284,8 @@ export default class PrintFileService {
   }
 
   private static async teamName(job: CustomArtJob): Promise<string> {
+    // Job générique (recette produit) : pas d'équipe — libellé neutre pour les emails print
+    if (job.teamId === null) return job.productType || 'générique'
     const team = await CustomArtTeam.find(job.teamId)
     return team?.name || `équipe #${job.teamId}`
   }

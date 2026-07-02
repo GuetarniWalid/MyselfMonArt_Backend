@@ -61,9 +61,14 @@ export default class RemindCustomArtSaves extends BaseTask {
       .minus({ hours: REMINDER_MIN_AGE_H })
       .toSQL({ includeOffset: false }) as string
 
-    // 1) Créations candidates : prêtes, jamais relancées, dans la fenêtre 20-28 h
+    // 1) Créations candidates : prêtes, jamais relancées, dans la fenêtre 20-28 h.
+    // ⚠️ FOOT UNIQUEMENT (player_name non NULL) : la copy de l'email (« son maillot, son
+    // prénom et son numéro floqués », « légende ») est spécifique au poster foot — les
+    // jobs GÉNÉRIQUES (recette produit) sont exclus tant qu'une copy dédiée n'existe pas
+    // (décision de marque, P1+ côté thème).
     const jobs = await CustomArtJob.query()
       .where('status', 'ready')
+      .whereNotNull('player_name')
       .whereNull('reminder_sent_at')
       .where('created_at', '>=', windowStart)
       .where('created_at', '<', windowEnd)
@@ -133,6 +138,7 @@ export default class RemindCustomArtSaves extends BaseTask {
         (await CustomArtJob.query()
           .where('session_id', sessionId)
           .where('status', 'ready')
+          .whereNotNull('player_name') // copy foot : jamais illustré par un job générique
           .orderBy('id', 'desc')
           .first()) || sessionJobs[sessionJobs.length - 1]
 
@@ -142,7 +148,7 @@ export default class RemindCustomArtSaves extends BaseTask {
         email: session.email!,
         jobUuid: featured.uuid,
         previewUrl: chosen ? CustomArtStorage.publicUrl(chosen.previewPath) : null,
-        playerName: featured.playerName,
+        playerName: featured.playerName || '',
       })
 
       if (ok) {

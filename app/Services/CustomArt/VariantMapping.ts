@@ -18,8 +18,15 @@ import type { CustomArtFormat } from 'App/Models/CustomArtJob'
  */
 
 export interface VariantMappingResult {
-  format: CustomArtFormat
-  frame: string
+  /** null si les options de la variante ne permettent pas de dériver le format */
+  format: CustomArtFormat | null
+  frame: string | null
+  /**
+   * GID du produit porteur ('gid://shopify/Product/…') — clé de lecture de la recette
+   * studio (routage générique §3) : dérivé CÔTÉ SERVEUR de la variante (jamais du
+   * payload), la même requête remonte déjà product.id. null si non résolu.
+   */
+  productId: string | null
 }
 
 const CACHE_TTL_MS = 10 * 60 * 1000
@@ -64,7 +71,7 @@ export default class CustomArtVariantMapping {
     try {
       const variant = await new Variant().getVariantWithOptions(id)
       value = CustomArtVariantMapping.fromOptions(variant)
-      if (!value) {
+      if (!value?.format) {
         Logger.warn(
           'custom-art variant-mapping: options non résolues pour variantId=%s (titre="%s")',
           id,
@@ -93,7 +100,7 @@ export default class CustomArtVariantMapping {
     return match ? match[1] : null
   }
 
-  /** Dérive { format, frame } des selectedOptions (et du titre en dernier recours). */
+  /** Dérive { format, frame, productId } des selectedOptions (et du titre en dernier recours). */
   private static fromOptions(variant: any): VariantMappingResult | null {
     if (!variant) return null
     const options: Array<{ name: string; value: string }> = variant.selectedOptions || []
@@ -119,7 +126,12 @@ export default class CustomArtVariantMapping {
       format = detectFormat(String(variant.title))
     }
 
-    if (!format) return null
-    return { format, frame: frame || 'none' }
+    // format null = variante existante mais options non dérivables : on remonte quand même
+    // productId (routage recette §3) ; les appelants gardent leur secours format/frame.
+    return {
+      format,
+      frame: format ? frame || 'none' : frame,
+      productId: variant.product?.id || null,
+    }
   }
 }

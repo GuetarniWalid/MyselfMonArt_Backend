@@ -607,14 +607,15 @@ export default class WebhooksController {
         })
       })
 
-      // Contenu de l'email de confirmation client (aperçu de la version ACHETÉE + mockups)
-      const team = await CustomArtTeam.find(job.teamId)
+      // Contenu de l'email de confirmation client (aperçu de la version ACHETÉE + mockups).
+      // Jobs GÉNÉRIQUES (recette produit) : pas d'équipe ni de numéro — libellé du job.
+      const team = job.teamId !== null ? await CustomArtTeam.find(job.teamId) : null
       const chosen = chosenCandidate(job, order.candidateRank)
       createdJobUuids.push(job.uuid)
       createdItems.push({
-        playerName: job.playerName,
+        playerName: job.playerName || job.displayLabel,
         playerNumber: job.playerNumber,
-        teamName: team?.name || 'votre équipe',
+        teamName: job.teamId !== null ? team?.name || 'votre équipe' : null,
         format: job.format,
         frame: job.frame,
         previewUrl: chosen?.previewPath ? CustomArtStorage.publicUrl(chosen.previewPath) : null,
