@@ -9,6 +9,8 @@ import PublishAlertMailer from 'App/Services/PublishAlertMailer'
 import IdempotencyStore from 'App/Services/IdempotencyStore'
 import { CreateProduct } from 'Types/Product'
 import Shopify from 'App/Services/Shopify'
+import { validatePersonalized, extractProductType } from 'App/Services/StudioConfig'
+import StudioTranslator from 'App/Services/ChatGPT/StudioTranslator'
 
 export default class ShopifyProductPublishersController {
   // Idempotence PARTAGÉE entre workers (cluster PM2) via une table MySQL — cf. IdempotencyStore.
@@ -345,6 +347,76 @@ export default class ShopifyProductPublishersController {
       return response.status(500).json({
         success: false,
         message: 'Internal server error',
+        error: error.message || 'An unexpected error occurred',
+      })
+    }
+  }
+
+  /**
+   * POST /api/shopify-product-publisher/validate-personalized — étage serveur du builder
+   * « poster personnalisé » (plan §5.2, défense en profondeur). Re-valide config + recette
+   * (mêmes règles que le front) puis vérifie l'unicité du slug productType (lookup metafields,
+   * brouillons compris). Protégée par auth. La recette n'est JAMAIS renvoyée (contrat §2).
+   */
+  public async validatePersonalized({ request, response }: HttpContextContract) {
+    try {
+      const studioConfig = request.input('studioConfig')
+      const studioRecipe = request.input('studioRecipe')
+
+      const errors = validatePersonalized(studioConfig, studioRecipe)
+
+      // Unicité du slug productType : aucun autre produit (publié OU brouillon) ne doit déjà
+      // porter ce productType dans son studio.config. Skip si le slug est déjà en erreur/absent.
+      const slug = studioConfig?.productType
+      const slugAlreadyInvalid = errors.some((e) => e.where === 'config.productType')
+      if (typeof slug === 'string' && slug && !slugAlreadyInvalid) {
+        const shopify = new Shopify()
+        const withConfig = await shopify.product.getAllProductsWithMetafield(
+          'studio',
+          'config',
+          true
+        )
+        const collision = withConfig.find((p) => extractProductType(p.value) === slug)
+        if (collision) {
+          errors.push({
+            where: 'config.productType',
+            message: `Le slug « ${slug} » est déjà utilisé par un autre produit — choisis-en un unique.`,
+          })
+        }
+      }
+
+      return { success: true, ok: errors.length === 0, errors }
+    } catch (error) {
+      console.error('[Personalized] validate error:', error.message)
+      return response.status(500).json({
+        success: false,
+        message: 'Internal server error',
+        error: error.message || 'An unexpected error occurred',
+      })
+    }
+  }
+
+  /**
+   * POST /api/shopify-product-publisher/translate-batch — traduit un lot de libellés FR
+   * du builder studio vers EN/DE/NL/ES (un seul appel OpenAI). Protégée par auth (appel IA
+   * payant). Entrée { items:[{id,fr}] } -> { success, items:[{id,en,de,nl,es}] }.
+   */
+  public async translateBatch({ request, response }: HttpContextContract) {
+    try {
+      const items = request.input('items')
+      if (!Array.isArray(items) || !items.length) {
+        return response.status(400).json({ success: false, message: 'items (tableau) requis' })
+      }
+      if (items.length > 200) {
+        return response.status(400).json({ success: false, message: 'Trop de libellés (200 max)' })
+      }
+      const translated = await new StudioTranslator().translateBatch(items)
+      return { success: true, items: translated }
+    } catch (error) {
+      console.error('[Personalized] translate-batch error:', error.message)
+      return response.status(500).json({
+        success: false,
+        message: 'Traduction impossible',
         error: error.message || 'An unexpected error occurred',
       })
     }

@@ -129,6 +129,21 @@ Route.group(() => {
     'ShopifyProductPublishersController.replaceImages'
   ).middleware(['auth'])
 
+  // Mode « poster personnalisé » — étage serveur de validation (config + recette + unicité slug).
+  // Auth obligatoire comme /replace-images (lecture boutique) ; PAS comme /publish (non authentifié).
+  Route.post(
+    '/shopify-product-publisher/validate-personalized',
+    'ShopifyProductPublishersController.validatePersonalized'
+  ).middleware(['auth'])
+
+  // Mode « poster personnalisé » — traduction FR -> EN/DE/NL/ES d'un lot de libellés du builder.
+  // Auth obligatoire : déclenche un appel IA PAYANT (les fetch same-origin de /publisher envoient
+  // le cookie de session).
+  Route.post(
+    '/shopify-product-publisher/translate-batch',
+    'ShopifyProductPublishersController.translateBatch'
+  ).middleware(['auth'])
+
   // Mode « reimage » : recherche du produit à refaire + contexte (orientation
   // verrouillée, type, collection, images actuelles). Auth (données boutique).
   Route.get('/products/search', 'ShopifyProductPublishersController.searchProducts').middleware([

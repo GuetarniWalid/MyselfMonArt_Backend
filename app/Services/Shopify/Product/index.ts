@@ -410,20 +410,24 @@ export default class Product extends Authentication {
   }
 
   /**
-   * Paginated scan: every published product that carries a value for the given metafield.
+   * Paginated scan: every product that carries a value for the given metafield.
    * Returns [{ id, value }] with the raw metafield value string (e.g. a JSON GID list).
+   * includeUnpublished=true also covers DRAFT products (required by the personalized-poster
+   * productType uniqueness check: those products are created as drafts).
    */
   public async getAllProductsWithMetafield(
     namespace: string,
-    key: string
+    key: string,
+    includeUnpublished: boolean = false
   ): Promise<Array<{ id: string; value: string }>> {
     const found: Array<{ id: string; value: string }> = []
     let cursor: string | null = null
     let hasNextPage = true
+    const statusQuery = includeUnpublished ? '' : ', query: "published_status:published"'
 
     while (hasNextPage) {
       const query = `query ProductsWithMetafieldScan($cursor: String) {
-        products(first: 250, after: $cursor, query: "published_status:published") {
+        products(first: 250, after: $cursor${statusQuery}) {
           edges {
             cursor
             node {
