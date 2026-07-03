@@ -123,64 +123,70 @@ export default class PersonalizedSetup {
     }
 
     // 3) Metafields -----------------------------------------------------------------
-    // Critiques (throw si échec) : le studio ne fonctionne pas sans eux.
-    await shopify.metafield.update(
-      productId,
-      'studio',
-      'config',
-      JSON.stringify(configToWrite),
-      'json'
-    )
-    await shopify.metafield.update(
-      productId,
-      'studio',
-      'recipe',
-      JSON.stringify(studioRecipe),
-      'json'
-    )
-    await shopify.metafield.update(
-      productId,
+    // Chaque set est tenté indépendamment ; on collecte les échecs (avec la clé, pour le
+    // diagnostic) au lieu d'aborter au premier. Les CRITIQUES ratés font throw à la fin (avec
+    // la liste) → le contrôleur supprime le brouillon. Les non-critiques deviennent des warnings.
+    const criticalFailures: string[] = []
+    const setMf = async (
+      ns: string,
+      key: string,
+      value: string,
+      type: string | undefined,
+      critical: boolean
+    ) => {
+      try {
+        await shopify.metafield.update(productId, ns, key, value, type)
+      } catch (e: any) {
+        const msg = `${ns}.${key} : ${e?.message || e}`
+        if (critical) criticalFailures.push(msg)
+        else warnings.push(msg)
+      }
+    }
+
+    await setMf('studio', 'config', JSON.stringify(configToWrite), 'json', true)
+    await setMf('studio', 'recipe', JSON.stringify(studioRecipe), 'json', true)
+    await setMf(
       'studio',
       'references',
       JSON.stringify([referenceFileId]),
-      'list.file_reference'
+      'list.file_reference',
+      true
     )
-    await shopify.metafield.update(productId, 'poster', 'isCustom', 'true', 'boolean')
-    await shopify.metafield.update(
-      productId,
+    await setMf('poster', 'isCustom', 'true', 'boolean', true)
+    await setMf(
       'painting_options',
       'sizes',
       JSON.stringify(SIZES_GIDS),
-      'list.metaobject_reference'
+      'list.metaobject_reference',
+      true
     )
-    await shopify.metafield.update(
-      productId,
+    await setMf(
       'painting_options',
       'frames_canvas',
       JSON.stringify(FRAMES_GIDS),
-      'list.metaobject_reference'
+      'list.metaobject_reference',
+      true
     )
-    await shopify.metafield.update(
-      productId,
+    await setMf(
       'painting_options',
       'fixations',
       JSON.stringify(FIXATIONS_GIDS),
-      'list.metaobject_reference'
+      'list.metaobject_reference',
+      true
     )
 
-    // Non critiques (best-effort) : catégories Google/Facebook. Type OMIS → Shopify utilise la
-    // définition d'app existante (ces metafields sont typés "string" côté apps mm-google/mc-facebook).
-    for (const ns of ['mm-google-shopping', 'mc-facebook']) {
-      try {
-        await shopify.metafield.update(
-          productId,
-          ns,
-          'google_product_category',
-          GOOGLE_PRODUCT_CATEGORY
-        )
-      } catch (e: any) {
-        warnings.push(`${ns}.google_product_category non posé : ${e?.message || e}`)
-      }
+    // Non critiques : catégories Google/Facebook. Type OMIS → Shopify utilise la définition d'app.
+    await setMf(
+      'mm-google-shopping',
+      'google_product_category',
+      GOOGLE_PRODUCT_CATEGORY,
+      undefined,
+      false
+    )
+    await setMf('mc-facebook', 'google_product_category', GOOGLE_PRODUCT_CATEGORY, undefined, false)
+
+    if (criticalFailures.length) {
+      throw new Error(`Metafields critiques non posés → ${criticalFailures.join(' | ')}`)
     }
 
     return { warnings, referenceFileId }
