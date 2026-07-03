@@ -10,7 +10,10 @@ import IdempotencyStore from 'App/Services/IdempotencyStore'
 import { CreateProduct } from 'Types/Product'
 import Shopify from 'App/Services/Shopify'
 import { validatePersonalized, extractProductType } from 'App/Services/StudioConfig'
+import type { PersonalizedError } from 'App/Services/StudioConfig'
 import StudioTranslator from 'App/Services/ChatGPT/StudioTranslator'
+import PersonalizedSetup from 'App/Services/ShopifyProductPublisher/PersonalizedSetup'
+import Env from '@ioc:Adonis/Core/Env'
 
 export default class ShopifyProductPublishersController {
   // Idempotence PARTAGÉE entre workers (cluster PM2) via une table MySQL — cf. IdempotencyStore.
@@ -26,11 +29,15 @@ export default class ShopifyProductPublishersController {
     const idempotencyKey: string | undefined = request.input('idempotencyKey')
     const idemKey = idempotencyKey ? `publish:${idempotencyKey}` : null
 
-    // Mode brouillon (batch « posters en masse ») : crée le produit en DRAFT (invisible) et NE
-    // publie PAS ici. Le finalize du batch basculera ACTIVE + publiera SEULEMENT quand le produit
-    // sera 100 % complet (7 variantes + médias). Garantit qu'aucun semi-produit n'apparaît en ligne.
-    // Le studio (draft absent/false) garde exactement son comportement.
-    const draft = request.input('draft') === true
+    // Mode « poster personnalisé » : bloc studioConfig/studioRecipe/référence. Le produit est
+    // TOUJOURS créé en brouillon (à tester par l'owner avant activation) et sa grille de variantes
+    // + ses metafields studio sont posés par PersonalizedSetup APRÈS le pipeline standard.
+    const personalized = request.input('personalized')
+
+    // Mode brouillon (batch « posters en masse » OU poster personnalisé) : crée le produit en DRAFT
+    // (invisible) et NE publie PAS ici. Le batch bascule ACTIVE au finalize ; le personnalisé reste
+    // brouillon jusqu'à validation manuelle. Le studio classique (draft absent/false) est inchangé.
+    const draft = request.input('draft') === true || !!personalized
     // Batch posters : id de la toile source. En mode brouillon, on marque la toile
     // « link.poster_draft = ce brouillon » pour qu'une reprise (après cap) FINALISE ce brouillon
     // au lieu d'en recréer un (anti-doublon). link.poster (= terminé) n'est posé qu'au finalize.
@@ -79,6 +86,24 @@ export default class ShopifyProductPublishersController {
           skipped: true,
           message: 'Format carré non proposé en poster — aucun produit créé.',
         })
+      }
+
+      // Poster personnalisé : on RE-VALIDE tout côté serveur (config + recette + unicité slug)
+      // AVANT toute IA/création — défense en profondeur (§7.3) et fail-fast. La recette n'est
+      // jamais renvoyée : seuls des messages neutres.
+      if (personalized) {
+        const perrors = await this.runPersonalizedValidation(
+          personalized.studioConfig,
+          personalized.studioRecipe
+        )
+        if (perrors.length) {
+          if (idemKey) await this.idem.release(idemKey)
+          return response.status(422).json({
+            success: false,
+            message: 'Produit personnalisé invalide',
+            errors: perrors,
+          })
+        }
       }
 
       // Save all images as originals (for Shopify publication)
@@ -157,7 +182,10 @@ export default class ShopifyProductPublishersController {
       }
       product.tags = suggestedTags
       product.productType = productType
-      product.templateSuffix = productType
+      // Personnalisé : templateSuffix dédié (studio) au lieu du type produit ; sinon comportement standard.
+      product.templateSuffix = personalized
+        ? String(personalized.templateSuffix || 'personalized-family')
+        : productType
 
       // Step 1: Create product WITHOUT category-dependent metafields
       product.metafields = [
@@ -206,6 +234,43 @@ export default class ShopifyProductPublishersController {
 
       // Step 4: Now set artwork.type metafield (requires category to be set first)
       await shopify.metafield.update(productCreated.id, 'artwork', 'type', productType)
+
+      // Poster personnalisé : grille de variantes dédiée + uploads Files + 9 metafields studio.
+      // « Tout ou rien » : un échec structurel supprime le brouillon (pas d'orphelin) et relance
+      // l'erreur (le catch externe libère l'idempotence -> renvoi corrigé possible sans doublon).
+      let personalizedWarnings: string[] = []
+      if (personalized) {
+        try {
+          const originalImg = (checkedRequest.images || []).find(
+            (im: any) => im.type === 'original'
+          )
+          const sameAsDesign = personalized.reference?.sameAsDesign !== false
+          const referenceBase64 = sameAsDesign
+            ? originalImg?.base64Image ?? null
+            : personalized.reference?.base64Image ?? null
+          const report = await new PersonalizedSetup().run({
+            productId: productCreated.id,
+            studioConfig: personalized.studioConfig,
+            studioRecipe: personalized.studioRecipe,
+            referenceBase64,
+            photoExamples: {
+              good: personalized.photoExamples?.good?.base64Image ?? null,
+              bad: personalized.photoExamples?.bad?.base64Image ?? null,
+            },
+            slug: String(personalized.studioConfig?.productType || 'custom'),
+            shopify,
+          })
+          personalizedWarnings = report.warnings
+        } catch (setupErr: any) {
+          try {
+            await shopify.product.delete(productCreated.id)
+          } catch (delErr: any) {
+            console.error('[Personalized] draft cleanup failed:', delErr?.message)
+          }
+          throw setupErr
+        }
+      }
+
       // En mode brouillon, on NE publie pas ici : le finalize du batch publiera après
       // vérification des 7 variantes — jamais de produit incomplet exposé.
       if (!draft) await shopify.publications.publishProductOnAll(productCreated.id)
@@ -230,12 +295,27 @@ export default class ShopifyProductPublishersController {
       // enough to hit the proxy/CDN timeout (524). The browser then retried and
       // created duplicates. The poll is best-effort status only, so move it off the
       // request path.
+      // Poster personnalisé : brouillon à tester avant activation -> on renvoie l'URL ADMIN
+      // (onlineStoreUrl est null tant que non publié) + un rappel + d'éventuels warnings non bloquants.
+      const adminUrl = personalized
+        ? `${Env.get('SHOPIFY_SHOP_URL')}/admin/products/${String(productCreated.id).split('/').pop()}`
+        : null
       const result = {
         success: true,
         // productId : exploité par le batch posters (status/finalize/liens). En mode brouillon,
         // onlineStoreUrl est null (produit pas encore publié) — attendu.
         productId: productCreated.id,
-        data: { link: productCreated.onlineStoreUrl },
+        data: {
+          link: adminUrl || productCreated.onlineStoreUrl,
+          ...(personalized
+            ? {
+                draft: true,
+                reminder:
+                  'Produit créé en BROUILLON. Teste le studio (Aperçu admin) puis active-le.',
+                warnings: personalizedWarnings,
+              }
+            : {}),
+        },
       }
       if (idemKey) {
         await this.idem.complete(idemKey, result)
@@ -358,33 +438,38 @@ export default class ShopifyProductPublishersController {
    * (mêmes règles que le front) puis vérifie l'unicité du slug productType (lookup metafields,
    * brouillons compris). Protégée par auth. La recette n'est JAMAIS renvoyée (contrat §2).
    */
+  /**
+   * Validation « poster personnalisé » complète (sync + unicité du slug côté Shopify).
+   * Partagée par l'endpoint /validate-personalized ET le publish (défense en profondeur §7.3).
+   */
+  private async runPersonalizedValidation(
+    studioConfig: any,
+    studioRecipe: any
+  ): Promise<PersonalizedError[]> {
+    const errors = validatePersonalized(studioConfig, studioRecipe)
+    // Unicité du slug productType : aucun autre produit (publié OU brouillon) ne doit déjà
+    // porter ce productType dans son studio.config. Skip si le slug est déjà en erreur/absent.
+    const slug = studioConfig?.productType
+    const slugAlreadyInvalid = errors.some((e) => e.where === 'config.productType')
+    if (typeof slug === 'string' && slug && !slugAlreadyInvalid) {
+      const shopify = new Shopify()
+      const withConfig = await shopify.product.getAllProductsWithMetafield('studio', 'config', true)
+      const collision = withConfig.find((p) => extractProductType(p.value) === slug)
+      if (collision) {
+        errors.push({
+          where: 'config.productType',
+          message: `Le slug « ${slug} » est déjà utilisé par un autre produit — choisis-en un unique.`,
+        })
+      }
+    }
+    return errors
+  }
+
   public async validatePersonalized({ request, response }: HttpContextContract) {
     try {
       const studioConfig = request.input('studioConfig')
       const studioRecipe = request.input('studioRecipe')
-
-      const errors = validatePersonalized(studioConfig, studioRecipe)
-
-      // Unicité du slug productType : aucun autre produit (publié OU brouillon) ne doit déjà
-      // porter ce productType dans son studio.config. Skip si le slug est déjà en erreur/absent.
-      const slug = studioConfig?.productType
-      const slugAlreadyInvalid = errors.some((e) => e.where === 'config.productType')
-      if (typeof slug === 'string' && slug && !slugAlreadyInvalid) {
-        const shopify = new Shopify()
-        const withConfig = await shopify.product.getAllProductsWithMetafield(
-          'studio',
-          'config',
-          true
-        )
-        const collision = withConfig.find((p) => extractProductType(p.value) === slug)
-        if (collision) {
-          errors.push({
-            where: 'config.productType',
-            message: `Le slug « ${slug} » est déjà utilisé par un autre produit — choisis-en un unique.`,
-          })
-        }
-      }
-
+      const errors = await this.runPersonalizedValidation(studioConfig, studioRecipe)
       return { success: true, ok: errors.length === 0, errors }
     } catch (error) {
       console.error('[Personalized] validate error:', error.message)

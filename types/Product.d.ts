@@ -18,7 +18,9 @@ export type CreateProduct = {
     value: string
     type: string
   }[]
-  templateSuffix?: 'painting' | 'poster' | 'tapestry'
+  // Suffixe de template : les artworks standards utilisent leur type ; le poster personnalisé
+  // pose un suffixe dédié (ex. 'personalized-family') -> string libre.
+  templateSuffix?: string
   status?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED'
 }
 
