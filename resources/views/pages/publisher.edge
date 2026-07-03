@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/publisher/style.css?v=20a1bff25c">
+<link rel="stylesheet" href="/publisher/style.css?v=f6ed681a32">
 </head>
 <body>
 <div class="app">
@@ -104,6 +104,20 @@
       </div>
       <div id="studioSteps" class="studio-steps"></div>
       <p id="studioEmpty" class="empty">Choisissez un preset : les étapes du parcours client se chargeront ici.</p>
+      <button id="studioAddStep" class="ghost-btn hidden">＋ Ajouter une étape</button>
+      <div id="studioTranslateWrap" class="studio-translate-wrap hidden">
+        <button id="studioTranslateAll" class="ghost-btn">🌍 Traduire tout (EN/DE/NL/ES)</button>
+        <span id="studioTranslateHint" class="hint"></span>
+      </div>
+      <div id="studioValidation" class="studio-validation hidden"></div>
+      <div id="studioPreviewWrap" class="studio-preview-wrap hidden">
+        <div class="pp-head">
+          <h3 class="card-subtitle">Aperçu du parcours client</h3>
+          <div id="studioPreviewLangs" class="studio-preview-langs"></div>
+        </div>
+        <div id="studioPreviewStepper" class="studio-preview-stepper"></div>
+        <div id="studioPreviewBody" class="studio-preview-body"></div>
+      </div>
     </section>
 
     <!-- 4. Recette IA (mode « poster personnalisé » uniquement).
@@ -303,6 +317,29 @@
     </div>
   </div>
 
+  <!-- Overlay d'édition d'une étape studio (mode personalized) — corps construit par personalized.js -->
+  <div id="studioStepOverlay" class="resize-overlay hidden">
+    <div class="resize-card">
+      <h3 id="studioStepTitle">Modifier l'étape</h3>
+      <div id="studioStepBody" class="studio-step-body"></div>
+      <div class="resize-actions">
+        <button id="studioStepSave" class="primary-btn">Enregistrer</button>
+        <button id="studioStepCancel" class="ghost-btn">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Overlay « Ajouter une étape » : choix du type (mode personalized) -->
+  <div id="studioTypeOverlay" class="resize-overlay hidden">
+    <div class="resize-card">
+      <h3>Ajouter une étape</h3>
+      <div id="studioTypeList" class="section-list"></div>
+      <div class="resize-actions">
+        <button id="studioTypeCancel" class="ghost-btn">Annuler</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Overlay de progression (publication) -->
   <div id="progress" class="progress-overlay hidden">
     <div class="progress-card">
@@ -328,6 +365,7 @@
   };
 </script>
 <script src="/publisher/app.js?v=4d683b3144"></script>
-<script src="/publisher/personalized.js?v=dbefaa3b8e"></script>
+<script src="/publisher/lib/validate-studio-config.js?v=0d31f38dda"></script>
+<script src="/publisher/personalized.js?v=8051957c3c"></script>
 </body>
 </html>
