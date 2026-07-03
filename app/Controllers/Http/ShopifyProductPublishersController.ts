@@ -12,7 +12,9 @@ import Shopify from 'App/Services/Shopify'
 import { validatePersonalized, extractProductType } from 'App/Services/StudioConfig'
 import type { PersonalizedError } from 'App/Services/StudioConfig'
 import StudioTranslator from 'App/Services/ChatGPT/StudioTranslator'
-import PersonalizedSetup from 'App/Services/ShopifyProductPublisher/PersonalizedSetup'
+import PersonalizedSetup, {
+  PERSONALIZED_POSTER_CATEGORY_GID,
+} from 'App/Services/ShopifyProductPublisher/PersonalizedSetup'
 import Env from '@ioc:Adonis/Core/Env'
 
 export default class ShopifyProductPublishersController {
@@ -25,7 +27,7 @@ export default class ShopifyProductPublishersController {
   // les workers (clé en cours → « pending » ; clé terminée → renvoie le produit déjà créé).
   private idem = new IdempotencyStore()
 
-  public async publishOnShopify({ request, response }: HttpContextContract) {
+  public async publishOnShopify({ request, response, auth }: HttpContextContract) {
     const idempotencyKey: string | undefined = request.input('idempotencyKey')
     const idemKey = idempotencyKey ? `publish:${idempotencyKey}` : null
 
@@ -86,6 +88,23 @@ export default class ShopifyProductPublishersController {
           skipped: true,
           message: 'Format carré non proposé en poster — aucun produit créé.',
         })
+      }
+
+      // Poster personnalisé : la route /publish est volontairement NON authentifiée (extension /
+      // bulk-posters), mais la branche personalized déclenche un scan boutique + IA payante +
+      // création produit + uploads Files. On EXIGE donc une session ici (comme validate-personalized
+      // et translate-batch) : les publications légitimes viennent de /publisher/personalized
+      // (page protégée) et envoient le cookie de session same-origin. Fermeture de l'abus non
+      // authentifié sans toucher au publish normal.
+      if (personalized) {
+        const authed = await auth.check()
+        if (!authed) {
+          if (idemKey) await this.idem.release(idemKey)
+          return response.status(401).json({
+            success: false,
+            message: 'Authentification requise pour publier un produit personnalisé.',
+          })
+        }
       }
 
       // Poster personnalisé : on RE-VALIDE tout côté serveur (config + recette + unicité slug)
@@ -227,7 +246,19 @@ export default class ShopifyProductPublishersController {
       // Step 3: Set category BEFORE setting artwork.type metafield
       // IMPORTANT: Category must be set first because artwork.type metafield
       // has constraints based on product category
-      if (modelProduct.category?.id) {
+      if (personalized) {
+        // Personnalisé : catégorie « Posters » (hg-3-4-2-1) EXIGÉE par la définition poster.isCustom.
+        await shopify.category.setProductCategory(
+          productCreated.id,
+          PERSONALIZED_POSTER_CATEGORY_GID
+        )
+        // ⚠️ COURSE P0 : poster.isCustom DOIT être posé AVANT artwork.type. Le webhook products/create
+        // ne déclenche la convergence Modelcopier que sur artwork.type∈{painting,poster} + media[1] ;
+        // s'il lit le produit alors qu'artwork.type=poster est visible mais pas encore poster.isCustom,
+        // la garde P0 est contournée et la grille dédiée est écrasée. En posant isCustom d'abord, aucun
+        // instantané ne montre le déclencheur sans la garde.
+        await shopify.metafield.update(productCreated.id, 'poster', 'isCustom', 'true', 'boolean')
+      } else if (modelProduct.category?.id) {
         console.log(`🏷️  Setting category from model: ${modelProduct.category.id}`)
         await shopify.category.setProductCategory(productCreated.id, modelProduct.category.id)
       }

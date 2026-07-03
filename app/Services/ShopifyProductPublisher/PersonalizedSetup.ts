@@ -43,7 +43,8 @@ const FIXATIONS_GIDS = [
 // La définition du metafield poster.isCustom est CONTRAINTE à cette catégorie précise : le parent
 // hg-3-4-2 copié du modèle poster est REFUSÉ par metafieldsSet (« Owner subtype does not match »).
 // Cf. commands/ShopifyFinishCustomProduct.ts (finalisation manuelle historique, même contrainte).
-const CATEGORIE_POSTERS_GID = 'gid://shopify/TaxonomyCategory/hg-3-4-2-1'
+// Posée + poster.isCustom AVANT artwork.type par le CONTRÔLEUR (course P0) — pas ici.
+export const PERSONALIZED_POSTER_CATEGORY_GID = 'gid://shopify/TaxonomyCategory/hg-3-4-2-1'
 
 // Grille de variantes : NOMS d'options résolus par regex côté thème (taille/cadre) + libellés/prix
 // EXACTS du produit famille live. L'ordre size×frame reproduit celui de Shopify (option1 en boucle
@@ -90,10 +91,8 @@ export default class PersonalizedSetup {
     // PRODUIT, mais pas ces fichiers de bibliothèque -> sinon orphelins à chaque échec structurel).
     const uploadedFileIds: string[] = []
 
-    // 0) Catégorie taxonomique "Posters" (hg-3-4-2-1) — EXIGÉE par la définition poster.isCustom.
-    // Doit précéder l'écriture des metafields (le contrôleur a posé le parent hg-3-4-2 du modèle,
-    // insuffisant). On écrase par la catégorie précise attendue.
-    await shopify.category.setProductCategory(productId, CATEGORIE_POSTERS_GID)
+    // NB : la catégorie « Posters » (hg-3-4-2-1) ET poster.isCustom=true sont posés par le
+    // CONTRÔLEUR AVANT artwork.type (course P0). Ici on ne s'occupe que du reste.
 
     // 1) Grille de variantes dédiée -------------------------------------------------
     await this.createVariantGrid(productId, shopify)
@@ -157,16 +156,10 @@ export default class PersonalizedSetup {
       }
     }
 
-    await setMf('studio', 'config', JSON.stringify(configToWrite), 'json', true)
-    await setMf('studio', 'recipe', JSON.stringify(studioRecipe), 'json', true)
-    await setMf(
-      'studio',
-      'references',
-      JSON.stringify([referenceFileId]),
-      'list.file_reference',
-      true
-    )
-    await setMf('poster', 'isCustom', 'true', 'boolean', true)
+    // poster.isCustom : posé par le CONTRÔLEUR avant artwork.type (course P0) — pas ici.
+    // studio.config est écrit EN DERNIER (cf. plus bas) : c'est LUI que lit la vérif d'unicité de
+    // slug ; s'il n'est jamais posé (échec d'un autre critique -> throw AVANT), aucun brouillon
+    // orphelin ne bloque un futur retry du même slug.
     await setMf(
       'painting_options',
       'sizes',
@@ -188,6 +181,14 @@ export default class PersonalizedSetup {
       'list.metaobject_reference',
       true
     )
+    await setMf('studio', 'recipe', JSON.stringify(studioRecipe), 'json', true)
+    await setMf(
+      'studio',
+      'references',
+      JSON.stringify([referenceFileId]),
+      'list.file_reference',
+      true
+    )
 
     // NB : mm-google-shopping / mc-facebook.google_product_category NE sont PAS posés ici — les
     // apps Google/Facebook les dérivent AUTOMATIQUEMENT de la catégorie taxonomique (Posters ->
@@ -195,8 +196,16 @@ export default class PersonalizedSetup {
     // blank » : namespace d'app sans définition accessible à notre token). Comme le script de
     // finalisation historique (ShopifyFinishCustomProduct), on laisse les apps s'en charger.
 
+    // Un critique a échoué AVANT studio.config -> on throw SANS l'écrire (pas de brouillon orphelin
+    // portant le slug, qui bloquerait la vérif d'unicité au retry).
     if (criticalFailures.length) {
-      // Échec structurel : on nettoie nos fichiers (le contrôleur supprimera le produit) puis throw.
+      await this.deleteFiles(shopify, uploadedFileIds)
+      throw new Error(`Metafields critiques non posés → ${criticalFailures.join(' | ')}`)
+    }
+
+    // studio.config EN DERNIER (porte le productType lu par la vérif d'unicité de slug).
+    await setMf('studio', 'config', JSON.stringify(configToWrite), 'json', true)
+    if (criticalFailures.length) {
       await this.deleteFiles(shopify, uploadedFileIds)
       throw new Error(`Metafields critiques non posés → ${criticalFailures.join(' | ')}`)
     }
@@ -250,7 +259,21 @@ export default class PersonalizedSetup {
     // puis on crée les 11 autres.
     const [firstVariant, ...rest] = variants
     await shopify.product.updateVariant(productId, defaultVariant.id, { price: firstVariant.price })
-    await shopify.product.createVariantsBulk(productId, rest)
+    try {
+      await shopify.product.createVariantsBulk(productId, rest)
+    } catch (e: any) {
+      // Cap Shopify 1000 variantes/jour (au-delà de 50k) : condition TRANSITOIRE, pas un bug. Le
+      // cron RepairIncompleteArtworks ne récupère pas un poster personnalisé (DRAFT + garde P0), donc
+      // on remonte un message clair (« réessaie demain ») ; le contrôleur supprime le brouillon et
+      // libère l'idempotence -> renvoi possible une fois le quota réinitialisé.
+      const msg = e instanceof Error ? e.message : String(e)
+      if (msg.includes('Daily variant')) {
+        throw new Error(
+          'Cap Shopify de création de variantes atteint pour aujourd’hui — réessaie demain (le brouillon a été annulé).'
+        )
+      }
+      throw e
+    }
   }
 
   /** Upload d'une image base64 (data URI) dans Shopify Files → { fileId, url }. */

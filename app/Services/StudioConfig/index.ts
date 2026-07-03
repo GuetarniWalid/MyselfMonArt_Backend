@@ -109,15 +109,45 @@ export function validatePersonalized(studioConfig: any, studioRecipe: any): Pers
     for (const r of reasons) errors.push({ where: 'recipe', message: r })
   }
 
-  // --- 6) Cohérence recette↔config : tokens.max === photoPolicy.people.max si les deux existent ---
-  if (parsedRecipe && parsedRecipe.tokens && studioConfig && Array.isArray(studioConfig.steps)) {
-    const photo = studioConfig.steps.find((s: any) => s && s.type === 'photo')
-    const peopleMax = photo?.photoPolicy?.people?.max
-    if (typeof peopleMax === 'number' && parsedRecipe.tokens.max !== peopleMax) {
-      errors.push({
-        where: 'recipe.inputs.tokens.max',
-        message: `inputs.tokens.max (${parsedRecipe.tokens.max}) doit égaler photoPolicy.people.max (${peopleMax}) — sinon le juge photo laisse passer plus de personnes que la recette ne peut nommer.`,
-      })
+  // --- 6) Cohérence recette↔config ---
+  if (parsedRecipe && studioConfig && Array.isArray(studioConfig.steps)) {
+    // Clés d'entrée disponibles = payloadKey (ou name) des étapes NON-format.
+    const inputKeys = new Set(
+      studioConfig.steps
+        .filter((s: any) => s && s.type !== 'format' && (s.payloadKey || s.name))
+        .map((s: any) => String(s.payloadKey || s.name))
+    )
+
+    // a) tokens.max === photoPolicy.people.max si les deux existent.
+    if (parsedRecipe.tokens) {
+      const photo = studioConfig.steps.find((s: any) => s && s.type === 'photo')
+      const peopleMax = photo?.photoPolicy?.people?.max
+      if (typeof peopleMax === 'number' && parsedRecipe.tokens.max !== peopleMax) {
+        errors.push({
+          where: 'recipe.inputs.tokens.max',
+          message: `inputs.tokens.max (${parsedRecipe.tokens.max}) doit égaler photoPolicy.people.max (${peopleMax}) — sinon le juge photo laisse passer plus de personnes que la recette ne peut nommer.`,
+        })
+      }
+      // b) tokens.from DOIT résoudre vers une clé d'étape existante (sinon découpage prénoms cassé
+      //    à la commande : un renommage de payloadKey laisse la recette pendante).
+      if (parsedRecipe.tokens.from && !inputKeys.has(parsedRecipe.tokens.from)) {
+        errors.push({
+          where: 'recipe.inputs.tokens.from',
+          message: `inputs.tokens.from « ${parsedRecipe.tokens.from} » ne correspond à aucune étape (payloadKey) de la config — la génération échouerait à la commande.`,
+        })
+      }
+    }
+
+    // c) chaque {champ} du template de titre DOIT résoudre vers une clé d'étape existante.
+    if (parsedRecipe.title && Array.isArray(parsedRecipe.title.fields)) {
+      for (const field of parsedRecipe.title.fields) {
+        if (!inputKeys.has(field)) {
+          errors.push({
+            where: 'recipe.inputs.title.template',
+            message: `Le champ « {${field}} » du titre ne correspond à aucune étape (payloadKey) de la config.`,
+          })
+        }
+      }
     }
   }
 
