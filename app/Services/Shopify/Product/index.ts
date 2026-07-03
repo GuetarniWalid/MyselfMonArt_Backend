@@ -522,6 +522,9 @@ export default class Product extends Authentication {
                       artworkTypeMetafield: metafield(namespace: "artwork", key: "type") {
                         value
                       }
+                      posterIsCustomMetafield: metafield(namespace: "poster", key: "isCustom") {
+                        value
+                      }
                       category {
                         id
                       }
@@ -669,6 +672,9 @@ export default class Product extends Authentication {
             value
           }
           artworkTypeMetafield: metafield(namespace: "artwork", key: "type") {
+            value
+          }
+          posterIsCustomMetafield: metafield(namespace: "poster", key: "isCustom") {
             value
           }
           metafields(first: 250) {

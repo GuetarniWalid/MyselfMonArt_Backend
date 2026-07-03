@@ -188,6 +188,9 @@ export interface Product {
   artworkTypeMetafield?: {
     value: string
   }
+  posterIsCustomMetafield?: {
+    value: string
+  }
   translations: {
     key: string
     locale: string
@@ -327,11 +330,16 @@ export interface ProductById {
   artworkTypeMetafield?: {
     value: string
   }
+  posterIsCustomMetafield?: {
+    value: string
+  }
   metafields: {
     edges: {
       node: {
         namespace: string
         key: string
+        value: string
+        type: string
         reference?: {
           id?: string
           type?: string

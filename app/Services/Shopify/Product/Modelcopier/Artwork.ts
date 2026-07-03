@@ -259,11 +259,30 @@ export default class ArtworkCopier extends ModelCopier {
     )
   }
 
+  /**
+   * Personalized studio posters (metafield poster.isCustom = true) carry a hand-built
+   * variant grid (30x40/60x80 × cadres, prix dédiés) that must NEVER be converged to
+   * the standard poster model matrix. Reads the aliased metafield when the query
+   * fetched it, and falls back to the generic metafields list so the guard holds no
+   * matter which product query produced the object.
+   */
+  public isCustomPoster(product: ProductById | Product): boolean {
+    if (product.posterIsCustomMetafield?.value === 'true') return true
+    const edges = product.metafields?.edges ?? []
+    return edges.some(
+      (edge) =>
+        edge.node.namespace === 'poster' &&
+        edge.node.key === 'isCustom' &&
+        edge.node.value === 'true'
+    )
+  }
+
   public canProcessProductCreate(product: ProductById | Product): boolean {
     if (!product) return false
     if (this.isModelProduct(product)) return false
     const artworkType = product.artworkTypeMetafield?.value
     if (artworkType !== 'painting' && artworkType !== 'poster') return false
+    if (this.isCustomPoster(product)) return false
     if (product.media.nodes.length < 1) return false
     if (!product.media.nodes[1].image) return false
     return true
@@ -457,6 +476,8 @@ export default class ArtworkCopier extends ModelCopier {
     return products.filter((p) => {
       const artworkType = p.artworkTypeMetafield?.value
       if (artworkType !== 'painting' && artworkType !== 'poster') return false
+
+      if (this.isCustomPoster(p)) return false
 
       const pSecondImage = p.media.nodes[1]
       if (!pSecondImage?.image) return false
