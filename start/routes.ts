@@ -34,6 +34,13 @@ Route.get('/publisher/reimage', async ({ view }) => {
   const renderBase = Env.get('RENDER_ENGINE_URL') || 'https://render.myselfmonart.com'
   return view.render('pages/publisher', { renderBase, mode: 'reimage' })
 }).middleware(['auth'])
+// Mode « personalized » : même UI Publisher, pour CRÉER un produit poster personnalisé
+// (studio de personnalisation piloté par metafields studio.config / studio.recipe).
+// Le template injecte mode='personalized' ; la logique front vit dans publisher/personalized.js.
+Route.get('/publisher/personalized', async ({ view }) => {
+  const renderBase = Env.get('RENDER_ENGINE_URL') || 'https://render.myselfmonart.com'
+  return view.render('pages/publisher', { renderBase, mode: 'personalized' })
+}).middleware(['auth'])
 // Page « posters en masse » : crée 1 poster par toile (mockups favoris dédiés + texte IA), par
 // ratio, avec lien bidirectionnel toile↔poster. Même pattern que /publisher (Edge + JS vanilla,
 // moteur de rendu du PC injecté). cf. BulkPostersController.
