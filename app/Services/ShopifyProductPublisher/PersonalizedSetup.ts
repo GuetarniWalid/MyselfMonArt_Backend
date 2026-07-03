@@ -39,7 +39,6 @@ const FIXATIONS_GIDS = [
   'gid://shopify/Metaobject/138270671195',
   'gid://shopify/Metaobject/138271359323',
 ]
-const GOOGLE_PRODUCT_CATEGORY = '500044'
 // Catégorie taxonomique "Home & Garden > … > Posters, Prints, & Visual Artwork > Posters".
 // La définition du metafield poster.isCustom est CONTRAINTE à cette catégorie précise : le parent
 // hg-3-4-2 copié du modèle poster est REFUSÉ par metafieldsSet (« Owner subtype does not match »).
@@ -87,6 +86,9 @@ export default class PersonalizedSetup {
     const { productId, studioConfig, studioRecipe, referenceBase64, photoExamples, slug, shopify } =
       params
     const warnings: string[] = []
+    // Fichiers uploadés dans Files : à supprimer si on throw ensuite (le contrôleur supprime le
+    // PRODUIT, mais pas ces fichiers de bibliothèque -> sinon orphelins à chaque échec structurel).
+    const uploadedFileIds: string[] = []
 
     // 0) Catégorie taxonomique "Posters" (hg-3-4-2-1) — EXIGÉE par la définition poster.isCustom.
     // Doit précéder l'écriture des metafields (le contrôleur a posé le parent hg-3-4-2 du modèle,
@@ -110,6 +112,7 @@ export default class PersonalizedSetup {
       `Référence de style — ${slug}`
     )
     const referenceFileId = reference.fileId
+    uploadedFileIds.push(referenceFileId)
 
     // Injection des URLs d'exemples dans une COPIE de la config (le thème accepte les URL complètes).
     const configToWrite = JSON.parse(JSON.stringify(studioConfig))
@@ -124,6 +127,7 @@ export default class PersonalizedSetup {
           `studio-photo-exemple-${slug}-${kind === 'good' ? 'bon' : 'mauvais'}.jpg`,
           `Exemple photo ${kind === 'good' ? 'à privilégier' : 'à éviter'} — ${slug}`
         )
+        uploadedFileIds.push(ex.fileId)
         if (photoStep && photoStep.examples && photoStep.examples[kind]) {
           photoStep.examples[kind].image = ex.url
         }
@@ -185,21 +189,29 @@ export default class PersonalizedSetup {
       true
     )
 
-    // Non critiques : catégories Google/Facebook. Type OMIS → Shopify utilise la définition d'app.
-    await setMf(
-      'mm-google-shopping',
-      'google_product_category',
-      GOOGLE_PRODUCT_CATEGORY,
-      undefined,
-      false
-    )
-    await setMf('mc-facebook', 'google_product_category', GOOGLE_PRODUCT_CATEGORY, undefined, false)
+    // NB : mm-google-shopping / mc-facebook.google_product_category NE sont PAS posés ici — les
+    // apps Google/Facebook les dérivent AUTOMATIQUEMENT de la catégorie taxonomique (Posters ->
+    // 500044), vérifié sur le produit test. Un metafieldsSet manuel échouait (« Type can't be
+    // blank » : namespace d'app sans définition accessible à notre token). Comme le script de
+    // finalisation historique (ShopifyFinishCustomProduct), on laisse les apps s'en charger.
 
     if (criticalFailures.length) {
+      // Échec structurel : on nettoie nos fichiers (le contrôleur supprimera le produit) puis throw.
+      await this.deleteFiles(shopify, uploadedFileIds)
       throw new Error(`Metafields critiques non posés → ${criticalFailures.join(' | ')}`)
     }
 
     return { warnings, referenceFileId }
+  }
+
+  /** Supprime des fichiers Shopify (best-effort : ne masque jamais l'erreur d'origine). */
+  private async deleteFiles(shopify: Shopify, fileIds: string[]): Promise<void> {
+    if (!fileIds.length) return
+    try {
+      await shopify.file.delete(fileIds)
+    } catch (e: any) {
+      console.error('[Personalized] cleanup fichiers échoué:', e?.message || e)
+    }
   }
 
   /**
