@@ -40,6 +40,11 @@ const FIXATIONS_GIDS = [
   'gid://shopify/Metaobject/138271359323',
 ]
 const GOOGLE_PRODUCT_CATEGORY = '500044'
+// Catégorie taxonomique "Home & Garden > … > Posters, Prints, & Visual Artwork > Posters".
+// La définition du metafield poster.isCustom est CONTRAINTE à cette catégorie précise : le parent
+// hg-3-4-2 copié du modèle poster est REFUSÉ par metafieldsSet (« Owner subtype does not match »).
+// Cf. commands/ShopifyFinishCustomProduct.ts (finalisation manuelle historique, même contrainte).
+const CATEGORIE_POSTERS_GID = 'gid://shopify/TaxonomyCategory/hg-3-4-2-1'
 
 // Grille de variantes : NOMS d'options résolus par regex côté thème (taille/cadre) + libellés/prix
 // EXACTS du produit famille live. L'ordre size×frame reproduit celui de Shopify (option1 en boucle
@@ -82,6 +87,11 @@ export default class PersonalizedSetup {
     const { productId, studioConfig, studioRecipe, referenceBase64, photoExamples, slug, shopify } =
       params
     const warnings: string[] = []
+
+    // 0) Catégorie taxonomique "Posters" (hg-3-4-2-1) — EXIGÉE par la définition poster.isCustom.
+    // Doit précéder l'écriture des metafields (le contrôleur a posé le parent hg-3-4-2 du modèle,
+    // insuffisant). On écrase par la catégorie précise attendue.
+    await shopify.category.setProductCategory(productId, CATEGORIE_POSTERS_GID)
 
     // 1) Grille de variantes dédiée -------------------------------------------------
     await this.createVariantGrid(productId, shopify)
