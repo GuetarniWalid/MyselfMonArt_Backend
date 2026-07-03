@@ -12,7 +12,7 @@ import CustomArtTeam from 'App/Models/CustomArtTeam'
 import CustomArtJobValidator from 'App/Validators/CustomArtJobValidator'
 import CustomArtSaveValidator from 'App/Validators/CustomArtSaveValidator'
 import CustomArtPhotoCheckValidator from 'App/Validators/CustomArtPhotoCheckValidator'
-import PhotoCheck, { normalizeFaceAngle } from 'App/Services/CustomArt/PhotoCheck'
+import PhotoCheck, { normalizeFaceAngle, parsePhotoPolicy } from 'App/Services/CustomArt/PhotoCheck'
 import CustomArtStorage from 'App/Services/CustomArt/Storage'
 import CustomArtVariantMapping from 'App/Services/CustomArt/VariantMapping'
 import RecipeService, { LoadedRecipe, RecipeError } from 'App/Services/CustomArt/RecipeService'
@@ -335,16 +335,20 @@ export default class CustomArtController {
   }
 
   /**
-   * POST /api/custom-art/photo-check — multipart photo + faceAngle (+ hash, productType).
+   * POST /api/custom-art/photo-check — multipart photo + faceAngle (+ hash, productType, policy).
    *
    * Valide la photo du visiteur AVANT toute génération (coût quasi nul, cf. App/Services/
    * CustomArt/PhotoCheck) et renvoie un verdict actionnable. Contrat front : HTTP 200 +
-   * { ok, issues[], faceAngleDetected, cached } pour tous les cas NORMAUX (y compris ok:false).
-   * `faceAngleDetected` (angle DÉTECTÉ : 'front'|'three-quarter'|'profile'|'back'|'none') est
-   * TOUJOURS présent — le studio le compare au cran demandé pour le badge 🟢/🟡. N'EXIGE PAS de
-   * session (ce check précède le POST /jobs, donc souvent sans
-   * token) — rate-limité par IP. En cas d'erreur réelle (5xx) le front fait fail-open : la
-   * panne de cet endpoint ne bloque jamais la vente (le pré-check de POST /jobs reste le filet).
+   * { ok, grade, issues[], faceAngleDetected, peopleCount?, cached } pour tous les cas NORMAUX
+   * (y compris ok:false). `grade` ('perfect'|'warn', contrat §9.5) est CALCULÉ CÔTÉ BACK en
+   * appliquant la `photoPolicy` du produit → 🟢 si ok+perfect, 🟡 si ok+warn, 🔴 si !ok.
+   * `faceAngleDetected` (angle DÉTECTÉ : 'front'|'three-quarter'|'profile'|'back'|'none') reste
+   * TOUJOURS présent (rétro-compat : un vieux front sans support `grade` retombe sur le calcul
+   * local). `policy` absent → shim `faceAngle` (foot inchangé au pixel). Nouveaux codes
+   * possibles sous policy groupe/en-pied : not_full_body, too_many_people, no_person. N'EXIGE
+   * PAS de session (ce check précède le POST /jobs, donc souvent sans token) — rate-limité par
+   * IP. En cas d'erreur réelle (5xx) le front fait fail-open : la panne de cet endpoint ne
+   * bloque jamais la vente (le pré-check de POST /jobs reste le filet).
    */
   public async photoCheck(ctx: HttpContextContract) {
     const { request, response } = ctx
@@ -365,19 +369,25 @@ export default class CustomArtController {
       }
 
       const buffer = await fs.readFile(photo.tmpPath)
+      // POLITIQUE PAR PRODUIT (contrat §9) : le front envoie éventuellement `policy` (JSON du
+      // bloc `photoPolicy`) — sujet solo/groupe, cadrage, bornes, mapping angle→grade. Parsé
+      // défensivement : absent/malformé → null → le service retombe sur le SHIM `faceAngle`
+      // (table §4 historique, foot inchangé). Le juge CLASSE, le code applique la policy.
+      const policy = parsePhotoPolicy(payload.policy)
       // faceAngle arrive verbatim du studio : normalisé ici (underscore→tiret, casse) vers
-      // l'enum canonique. Un cran inconnu => null => le juge ignore la contrainte d'angle
+      // l'enum canonique. Un cran inconnu => null => le shim ignore la contrainte d'angle
       // (jamais de fallback silencieux sur 'front' qui recalerait à tort une photo 3/4).
-      // Mode GROUPE (contrat recette §8, convention figée) : `faceAngle:"group"` dans
-      // studio.config — plusieurs visages OK, contrôles net/sombre/nsfw conservés.
-      const group =
+      // Convention DORMANTE `faceAngle:"group"` (recipe-contract §8) : mappée sur un shim
+      // groupe quand aucune `policy` n'est fournie ; la `policy` du front la remplace (§9.2).
+      const legacyGroup =
         String(payload.faceAngle || '')
           .trim()
           .toLowerCase() === 'group'
       const verdict = await new PhotoCheck().check({
         photo: buffer,
         faceAngle: normalizeFaceAngle(payload.faceAngle),
-        group,
+        policy,
+        legacyGroup,
         hash: payload.hash ?? null,
         productType: payload.productType ?? null,
       })
@@ -499,20 +509,40 @@ export default class CustomArtController {
    *  - manual_review / failed => écran artiste « déjà pris en charge » ;
    *  - pending/generating/judging/expired => exclus (=> 204) : pas de polling cross-session,
    *    et un job purgé n'est plus productible.
+   *
+   * SCOPING PRODUIT (addendum contrat 2026-07-03) : la session est PARTAGÉE par toutes les
+   * fiches perso → sans filtre, le dernier job foot « reprenait » sur la fiche famille. On
+   * expose donc `productType` (dans TOUTES les branches — le front discrimine dessus) et on
+   * honore le query param `?productType=` = dernier job DE CE TYPE (204 sinon). Un job SANS
+   * productType (antérieur au champ) est un foot → `?productType=foot` le capte aussi.
    */
   public async last(ctx: HttpContextContract) {
-    const { response } = ctx
+    const { request, response } = ctx
     // Réponse propre à la session : jamais mise en cache (CDN / navigateur)
     response.header('Cache-Control', 'private, no-store')
 
     const session = await this.callerSession(ctx)
     if (!session) return response.noContent() // 204 — aucune session connue
 
+    // Filtre produit optionnel (?productType=). Normalisé comme à la création (bucket stable).
+    // `foot` capte AUSSI les jobs sans productType (ère mono-produit foot).
+    const rawProductType = request.input('productType')
+    const wantProductType = rawProductType ? normalizeProductType(rawProductType) : null
+
     // Dernier job reprenable. On borne aux statuts exploitables : ainsi un reveal-next ayant
     // créé un nouveau 'pending' derrière ne masque pas le 'ready' encore utile.
-    const job = await CustomArtJob.query()
+    const query = CustomArtJob.query()
       .where('session_id', session.id)
       .whereIn('status', ['ready', 'manual_review', 'failed'])
+    if (wantProductType) {
+      if (wantProductType === 'foot') {
+        // Legacy : product_type NULL = job de l'ère foot (seul produit d'alors).
+        query.where((sub) => sub.where('product_type', 'foot').orWhereNull('product_type'))
+      } else {
+        query.where('product_type', wantProductType)
+      }
+    }
+    const job = await query
       .orderBy('id', 'desc') // récence ; couvert par l'index (session_id, created_at)
       .first()
     if (!job) return response.noContent() // 204 — rien à reprendre
@@ -520,6 +550,11 @@ export default class CustomArtController {
     const createdAt = job.createdAt ? job.createdAt.toISO() : null
     // Plancher de purge si non commandé (J+30, cf. PurgeCustomArt.UNPURCHASED_RETENTION_DAYS).
     const expiresAt = job.createdAt ? job.createdAt.plus({ days: 30 }).toISO() : null
+    // Type de produit exposé dans TOUTES les branches : le front rejette un job d'un autre
+    // produit (job sans productType = foot, ère mono-produit). Voir aussi le filtre serveur.
+    const productType = job.productType || 'foot'
+    // Saisies à réhydrater à la reprise (générique : famille…) — cf. lastJobFields.
+    const fields = this.lastJobFields(job)
 
     if (job.status === 'failed') {
       return {
@@ -528,6 +563,8 @@ export default class CustomArtController {
           uuid: job.uuid,
           status: 'failed',
           message: job.error || 'La génération a échoué. Réessaie.',
+          productType,
+          fields,
           createdAt,
           expiresAt,
         },
@@ -540,6 +577,8 @@ export default class CustomArtController {
           uuid: job.uuid,
           status: 'manual_review',
           message: MANUAL_REVIEW_MESSAGE,
+          productType,
+          fields,
           createdAt,
           expiresAt,
         },
@@ -569,6 +608,11 @@ export default class CustomArtController {
         remainingReveals: Math.max(0, this.revealableCount(job) - job.revealedCount),
         // Navigateur de versions : le studio rétablit le compteur « rank/total » à la reprise
         candidate: this.candidateMeta(job, chosen),
+        // Type de produit (le front rejette un job d'un autre produit) + saisies à réhydrater.
+        productType,
+        // Clés foot conservées en legacy (le front actuel les lit à plat) ; `fields` généralise
+        // la reprise aux produits recette (famille : { familyName, names } depuis `inputs`).
+        fields,
         playerName: job.playerName,
         playerNumber: job.playerNumber,
         teamId: job.teamId,
@@ -582,6 +626,36 @@ export default class CustomArtController {
         mockups: (job.mockups || []).map((m) => ({ psd: m.psd, status: m.status, url: m.url })),
       },
     }
+  }
+
+  /**
+   * Saisies d'un job à réhydrater à la reprise (`GET /jobs/last` → `data.fields`), sous forme
+   * générique `{ payloadKey: valeur }` — les mêmes clés que le front a POSTées, pour qu'il
+   * re-remplisse ses champs sans connaître le produit :
+   *  - job GÉNÉRIQUE (recette, ex. famille) : titre → `inputs.values` (déjà clés par champ) +
+   *    tokens joints sous leur clé d'origine `inputs.tokensFrom` (ex. `names`) ;
+   *  - job FOOT (legacy, `inputs` null) : clés à plat historiques `playerName` / `playerNumber`
+   *    / `teamId` (le front foot les lit déjà à plat en parallèle).
+   * Valeurs vides omises. Ne relit JAMAIS la recette (endpoint de reprise, zéro dépendance
+   * Shopify) : `tokensFrom` est mémorisé sur le job à la création.
+   */
+  private lastJobFields(job: CustomArtJob): Record<string, string | number> {
+    const fields: Record<string, string | number> = {}
+    if (job.inputs) {
+      for (const [key, value] of Object.entries(job.inputs.values || {})) {
+        if (value != null && value !== '') fields[key] = value
+      }
+      const from = job.inputs.tokensFrom
+      const tokens = job.inputs.tokens || []
+      // Tokens rejoints par « , » (le front re-split : recipe.tokens.split). Le charset des
+      // tokens exclut la virgule → jointure sans perte.
+      if (from && tokens.length) fields[from] = tokens.join(', ')
+      return fields
+    }
+    if (job.playerName != null) fields.playerName = job.playerName
+    if (job.playerNumber != null) fields.playerNumber = job.playerNumber
+    if (job.teamId != null) fields.teamId = job.teamId
+    return fields
   }
 
   /**
@@ -1053,6 +1127,9 @@ export default class CustomArtController {
           tokens: validated.inputs.tokens,
           values: validated.inputs.values,
           title: validated.inputs.title,
+          // Clé de payload d'origine des tokens (ex 'names') : la reprise `/jobs/last`
+          // réhydrate le champ de saisie sans relire la recette (cf. lastJobFields).
+          tokensFrom: recipe.tokens?.from ?? null,
         },
       })
 

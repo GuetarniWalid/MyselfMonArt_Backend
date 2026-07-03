@@ -65,6 +65,13 @@ export interface CustomArtGenericInputs {
   values: Record<string, string>
   /** Titre assemblé depuis inputs.title.template de la recette, null si non configuré */
   title: string | null
+  /**
+   * Clé de payload d'ORIGINE des tokens (recipe.tokens.from, ex 'names') — mémorisée pour
+   * réhydrater le bon champ de saisie à la reprise (`GET /jobs/last` → `fields`), SANS relire
+   * la recette (donc sans dépendre de Shopify sur un endpoint de reprise). NULL/absent = la
+   * recette ne consomme pas de tokens (ou job créé avant l'ajout du champ).
+   */
+  tokensFrom?: string | null
 }
 
 /**

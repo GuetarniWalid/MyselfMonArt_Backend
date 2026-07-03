@@ -14,6 +14,13 @@ import type { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
  * `hash` (SHA-256 de la photo originale, clé de cache) est OPTIONNEL à dessein : un hash
  * absent/malformé ne doit pas faire échouer la validation — le service tourne quand même,
  * simplement sans mémoriser le verdict. `productType` est purement indicatif.
+ *
+ * `policy` (contrat §9.3) = JSON du bloc `photoPolicy` envoyé VERBATIM, OPTIONNEL et STRING
+ * libre : absent → shim `faceAngle` (comportement historique) ; malformé → ignoré côté service
+ * (parsePhotoPolicy retombe sur le shim). Un JSON invalide ne doit JAMAIS faire échouer la
+ * validation (même philosophie que `faceAngle` : un 422 déclencherait le fail-open front et
+ * ferait perdre TOUS les contrôles). Plafond généreux (le blob peut porter des surcharges
+ * i18n `messages`, ignorées côté back).
  */
 export default class CustomArtPhotoCheckValidator {
   constructor(protected ctx: HttpContextContract) {}
@@ -22,6 +29,7 @@ export default class CustomArtPhotoCheckValidator {
     faceAngle: schema.string({ trim: true }, [rules.maxLength(40)]),
     hash: schema.string.optional({ trim: true }, [rules.maxLength(80)]),
     productType: schema.string.optional({ trim: true }, [rules.maxLength(40)]),
+    policy: schema.string.optional({ trim: true }, [rules.maxLength(4000)]),
   })
 
   public messages: CustomMessages = {
