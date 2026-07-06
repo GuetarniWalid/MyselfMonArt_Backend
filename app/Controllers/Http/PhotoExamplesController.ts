@@ -6,22 +6,27 @@ import * as ResizeJobs from 'App/Services/ArtworkResizer/jobStore'
 import type { PhotoExamplesPolicy } from 'App/Services/PhotoExamplesGenerator'
 
 /**
- * Génération IA de la PAIRE d'exemples photo du studio personnalisé (« bonne photo » /
- * « photo à éviter ») à partir de l'ŒUVRE et des règles du juge photo. Même patron
- * asynchrone que le décor (job + polling, jamais de 524 Cloudflare). Auth obligatoire
- * (appels Gemini payants) — les fetch same-origin de /publisher/personalized envoient
- * le cookie de session.
+ * Génération IA d'UN exemple photo du studio personnalisé (« bonne photo » OU « photo à
+ * éviter » — image par image, validées indépendamment côté UI) à partir de l'ŒUVRE, des
+ * règles du juge photo et d'une CONSIGNE courte optionnelle (réécrite en brief par IA).
+ * Même patron asynchrone que le décor (job + polling, jamais de 524 Cloudflare). Auth
+ * obligatoire (appels Gemini payants) — les fetch same-origin de /publisher/personalized
+ * envoient le cookie de session.
  */
 export default class PhotoExamplesController {
   private validationSchema = schema.create({
     artwork: schema.string(), // l'œuvre (data URI) — le photo-director en déduit le casting
+    kind: schema.enum(['good', 'bad'] as const), // quelle image : bonne ou à éviter
+    intent: schema.string.optional(), // consigne courte de Walid (réécrite par l'intent-rewriter)
     policy: schema.object.optional().anyMembers(), // photoPolicy simplifiée (whitelistée ci-dessous)
   })
 
   /** POST /api/generate-photo-examples — démarre le job, renvoie { jobId } immédiatement. */
   public async generate({ request, response }: HttpContextContract) {
     try {
-      const { artwork, policy } = await request.validate({ schema: this.validationSchema })
+      const { artwork, kind, intent, policy } = await request.validate({
+        schema: this.validationSchema,
+      })
       // Whitelist stricte de la policy (données front non fiables) : tout le reste est ignoré.
       const raw: any = policy || {}
       const angle = (v: any) =>
@@ -44,8 +49,15 @@ export default class PhotoExamplesController {
       }
       const jobId = randomUUID()
       await ResizeJobs.create(jobId)
-      ResizeJobs.startPhotoExamples(jobId, artwork, clean) // détaché : surtout PAS de await
-      Logger.info('photo-examples START job=%s subject=%s', jobId, clean.subject || '—')
+      // détaché : surtout PAS de await. Consigne bornée (l'intent-rewriter la réécrit).
+      ResizeJobs.startPhotoExamples(
+        jobId,
+        artwork,
+        kind,
+        clean,
+        (intent || '').trim().slice(0, 300) || undefined
+      )
+      Logger.info('photo-example START job=%s kind=%s intent=%s', jobId, kind, intent ? 'oui' : '—')
       return { success: true, data: { jobId } }
     } catch (error) {
       if (error.code === 'E_VALIDATION_FAILURE') {
@@ -81,7 +93,7 @@ export default class PhotoExamplesController {
     }
     if (job.status === 'done') {
       ResizeJobs.remove(id).catch(() => {})
-      return { success: true, status: 'done', data: { good: job.good, bad: job.bad } }
+      return { success: true, status: 'done', data: { image: job.image } }
     }
     if (job.status === 'error') {
       ResizeJobs.remove(id).catch(() => {})

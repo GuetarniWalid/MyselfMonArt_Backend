@@ -7,7 +7,7 @@ import ArtworkResizer from './index'
 import DecorGenerator, { DecorOptions } from '../DecorGenerator'
 import ArtworkInserter, { InsertOptions } from '../ArtworkInserter'
 import MockupCleaner, { CleanOptions } from '../MockupCleaner'
-import PhotoExamplesGenerator, { PhotoExamplesPolicy } from '../PhotoExamplesGenerator'
+import PhotoExamplesGenerator, { ExampleKind, PhotoExamplesPolicy } from '../PhotoExamplesGenerator'
 
 /**
  * Stockage de jobs de redimensionnement sur disque + exécution en arrière-plan.
@@ -26,8 +26,6 @@ interface Job {
   status: Status
   image?: string
   scene?: string // décor uniquement : brief art-director utilisé (rejoué pour les autres ratios)
-  good?: string // exemples photo (studio personnalisé) : la « bonne photo »
-  bad?: string // exemples photo : la « photo à éviter »
   error?: string
   createdAt: number
 }
@@ -83,8 +81,6 @@ async function finish(
     status: Status
     image?: string
     scene?: string
-    good?: string
-    bad?: string
     error?: string
   }
 ): Promise<void> {
@@ -282,10 +278,17 @@ export function startClean(
 }
 
 /**
- * Lance la génération de la PAIRE d'exemples photo du studio personnalisé (bonne/mauvaise)
- * en arrière-plan. Même réserve : NE PAS attendre dans le controller.
+ * Lance la génération d'UN exemple photo du studio personnalisé (bonne OU mauvaise, image
+ * par image — validation indépendante côté UI), avec consigne optionnelle de Walid réécrite
+ * par l'intent-rewriter. Même réserve : NE PAS attendre dans le controller.
  */
-export function startPhotoExamples(id: string, artwork: string, policy: PhotoExamplesPolicy): void {
+export function startPhotoExamples(
+  id: string,
+  artwork: string,
+  kind: ExampleKind,
+  policy: PhotoExamplesPolicy,
+  intent?: string
+): void {
   if (inflight.size >= MAX_INFLIGHT) {
     finish(id, {
       status: 'error',
@@ -303,13 +306,14 @@ export function startPhotoExamples(id: string, artwork: string, policy: PhotoExa
     const t0 = Date.now()
     try {
       const generator = new PhotoExamplesGenerator()
-      const { good, bad } = await generator.generate(artwork, policy)
-      await finish(id, { status: 'done', good, bad })
-      Logger.info('photo-examples OK job=%s %ss', id, Math.round((Date.now() - t0) / 1000))
+      const image = await generator.generateOne(artwork, kind, policy, intent)
+      await finish(id, { status: 'done', image })
+      Logger.info('photo-example %s OK job=%s %ss', kind, id, Math.round((Date.now() - t0) / 1000))
     } catch (error) {
       await finish(id, { status: 'error', error: mapResizeError(error) })
       Logger.error(
-        'photo-examples FAIL job=%s %ss: %s',
+        'photo-example %s FAIL job=%s %ss: %s',
+        kind,
         id,
         Math.round((Date.now() - t0) / 1000),
         (error && (error as any).message) || String(error)
