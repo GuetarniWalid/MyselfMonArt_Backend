@@ -19,10 +19,10 @@ import RecipeService, { RecipeError } from 'App/Services/CustomArt/RecipeService
  * La RECETTE n'est jamais renvoyée au client (contrat §2) : seuls des messages d'erreur neutres.
  */
 
-const STUDIO_LANGS = ['fr', 'en', 'de', 'nl', 'es']
 const PRODUCT_TYPE_RE = /^[a-z][a-z0-9-]*$/
 // Chemins de maps i18n considérés par étape (miroir de personalized.js:existingI18nMaps).
-const I18N_PATHS = [
+// Exporté : PersonalizedSetup s'en sert pour traduire automatiquement à la publication.
+export const I18N_PATHS = [
   'title',
   'checkpointLabel',
   'label',
@@ -41,7 +41,7 @@ export interface PersonalizedError {
   message: string
 }
 
-function getAtPath(root: any, dotPath: string): any {
+export function getAtPath(root: any, dotPath: string): any {
   let node = root
   for (const p of dotPath.split('.')) {
     if (!node || typeof node !== 'object') return undefined
@@ -50,7 +50,7 @@ function getAtPath(root: any, dotPath: string): any {
   return node
 }
 
-function isI18nMap(v: any): boolean {
+export function isI18nMap(v: any): boolean {
   return v && typeof v === 'object' && !Array.isArray(v)
 }
 
@@ -68,16 +68,17 @@ export function validatePersonalized(studioConfig: any, studioRecipe: any): Pers
     const base = validateConfig(studioConfig)
     for (const m of base.errors) errors.push({ where: 'config', message: m })
 
-    // --- 2) Règle builder : 5 langues sur toute map i18n présente ---
+    // --- 2) Règle builder : le FRANÇAIS suffit à la validation — les 4 autres langues sont
+    // GÉNÉRÉES automatiquement à la publication (PersonalizedSetup traduit chaque map depuis
+    // son map.fr ; le moteur du thème retombe sur le FR pour toute langue manquante).
     for (const step of Array.isArray(studioConfig.steps) ? studioConfig.steps : []) {
       for (const path of I18N_PATHS) {
         const map = getAtPath(step, path)
         if (!isI18nMap(map)) continue
-        const missing = STUDIO_LANGS.filter((l) => !(typeof map[l] === 'string' && map[l].trim()))
-        if (missing.length)
+        if (!(typeof map.fr === 'string' && map.fr.trim()))
           errors.push({
             where: `config.${step.name}.${path}`,
-            message: `Langue(s) manquante(s) : ${missing.join(', ')} (les 5 langues sont obligatoires).`,
+            message: 'Le texte français est vide.',
           })
       }
     }

@@ -1,4 +1,6 @@
 import Shopify from 'App/Services/Shopify'
+import StudioTranslator from 'App/Services/ChatGPT/StudioTranslator'
+import { I18N_PATHS, getAtPath, isI18nMap } from 'App/Services/StudioConfig'
 
 /**
  * Finalise un produit « poster personnalisé » APRÈS le pipeline publish standard
@@ -135,6 +137,14 @@ export default class PersonalizedSetup {
       }
     }
 
+    // 2b) Traduction AUTOMATIQUE des textes du studio ---------------------------------
+    // Le builder ne saisit que le FRANÇAIS (règle UX). Le cron TranslateProduct traduit la
+    // fiche Shopify via l'API Translations, que le moteur studio ne lit PAS : lui résout les
+    // maps i18n DANS le JSON studio.config (map[locale] || map.fr). On génère donc ici les
+    // 4 langues depuis le FR (1 appel OpenAI batch), en écrasant en/de/nl/es pour rester
+    // cohérent avec le FR édité. Échec = non bloquant : le thème retombe sur le français.
+    await this.translateConfigTexts(configToWrite, warnings)
+
     // 3) Metafields -----------------------------------------------------------------
     // Chaque set est tenté indépendamment ; on collecte les échecs (avec la clé, pour le
     // diagnostic) au lieu d'aborter au premier. Les CRITIQUES ratés font throw à la fin (avec
@@ -211,6 +221,43 @@ export default class PersonalizedSetup {
     }
 
     return { warnings, referenceFileId }
+  }
+
+  /**
+   * Génère en/de/nl/es depuis le FR pour TOUTES les maps i18n de la config (étapes ×
+   * I18N_PATHS), en un seul appel OpenAI batch. Mutation en place. Non bloquant : en cas
+   * d'échec, un warning est remonté et le studio retombera sur le français (comportement
+   * moteur : map[locale] || map.fr).
+   */
+  private async translateConfigTexts(config: any, warnings: string[]): Promise<void> {
+    const maps: Array<{ id: string; fr: string; map: any }> = []
+    for (const step of Array.isArray(config?.steps) ? config.steps : []) {
+      for (const path of I18N_PATHS) {
+        const map = getAtPath(step, path)
+        if (!isI18nMap(map)) continue
+        if (typeof map.fr === 'string' && map.fr.trim())
+          maps.push({ id: String(maps.length), fr: map.fr, map })
+      }
+    }
+    if (!maps.length) return
+    try {
+      const translated = await new StudioTranslator().translateBatch(
+        maps.map(({ id, fr }) => ({ id, fr }))
+      )
+      const byId = new Map(translated.map((t) => [t.id, t]))
+      for (const entry of maps) {
+        const out = byId.get(entry.id)
+        if (!out) continue
+        entry.map.en = out.en
+        entry.map.de = out.de
+        entry.map.nl = out.nl
+        entry.map.es = out.es
+      }
+    } catch (e: any) {
+      warnings.push(
+        `Traductions non générées (${e?.message || e}) — le studio affichera le français dans toutes les langues jusqu'à correction.`
+      )
+    }
   }
 
   /** Supprime des fichiers Shopify (best-effort : ne masque jamais l'erreur d'origine). */
