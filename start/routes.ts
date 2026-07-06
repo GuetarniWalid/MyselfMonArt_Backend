@@ -174,6 +174,13 @@ Route.group(() => {
   // ratio de l'œuvre, converti au type produit) via Nano Banana 2. Async (job+polling), auth (payant).
   Route.post('/clean-mockup', 'CleanMockupController.generate').middleware(['auth']) // démarre le job
   Route.get('/clean-mockup/result', 'CleanMockupController.result').middleware(['auth']) // état (polling)
+
+  // Exemples photo du studio personnalisé (bonne/mauvaise) générés par IA depuis l'œuvre +
+  // règles du juge photo. Async (job+polling), auth (appels Gemini payants).
+  Route.post('/generate-photo-examples', 'PhotoExamplesController.generate').middleware(['auth'])
+  Route.get('/generate-photo-examples/result', 'PhotoExamplesController.result').middleware([
+    'auth',
+  ])
 }).prefix('/api')
 
 // Batch « posters en masse » (cf. BulkPostersController). Appelé par le moteur de rendu PC (workflow

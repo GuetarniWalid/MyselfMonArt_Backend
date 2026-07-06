@@ -7,6 +7,7 @@ import ArtworkResizer from './index'
 import DecorGenerator, { DecorOptions } from '../DecorGenerator'
 import ArtworkInserter, { InsertOptions } from '../ArtworkInserter'
 import MockupCleaner, { CleanOptions } from '../MockupCleaner'
+import PhotoExamplesGenerator, { PhotoExamplesPolicy } from '../PhotoExamplesGenerator'
 
 /**
  * Stockage de jobs de redimensionnement sur disque + exécution en arrière-plan.
@@ -25,6 +26,8 @@ interface Job {
   status: Status
   image?: string
   scene?: string // décor uniquement : brief art-director utilisé (rejoué pour les autres ratios)
+  good?: string // exemples photo (studio personnalisé) : la « bonne photo »
+  bad?: string // exemples photo : la « photo à éviter »
   error?: string
   createdAt: number
 }
@@ -76,7 +79,14 @@ export async function remove(id: string): Promise<void> {
 
 async function finish(
   id: string,
-  patch: { status: Status; image?: string; scene?: string; error?: string }
+  patch: {
+    status: Status
+    image?: string
+    scene?: string
+    good?: string
+    bad?: string
+    error?: string
+  }
 ): Promise<void> {
   try {
     const raw = await fs.readFile(file(id), 'utf8').catch(() => null)
@@ -261,6 +271,45 @@ export function startClean(
       await finish(id, { status: 'error', error: mapResizeError(error) })
       Logger.error(
         'clean FAIL job=%s %ss: %s',
+        id,
+        Math.round((Date.now() - t0) / 1000),
+        (error && (error as any).message) || String(error)
+      )
+    }
+  })()
+  inflight.add(p)
+  p.finally(() => inflight.delete(p))
+}
+
+/**
+ * Lance la génération de la PAIRE d'exemples photo du studio personnalisé (bonne/mauvaise)
+ * en arrière-plan. Même réserve : NE PAS attendre dans le controller.
+ */
+export function startPhotoExamples(id: string, artwork: string, policy: PhotoExamplesPolicy): void {
+  if (inflight.size >= MAX_INFLIGHT) {
+    finish(id, {
+      status: 'error',
+      error: 'Service de génération occupé. Réessaie dans quelques secondes.',
+    }).catch(() => {})
+    Logger.warn(
+      'photo-examples REFUSED job=%s (inflight=%s >= %s)',
+      id,
+      inflight.size,
+      MAX_INFLIGHT
+    )
+    return
+  }
+  const p = (async () => {
+    const t0 = Date.now()
+    try {
+      const generator = new PhotoExamplesGenerator()
+      const { good, bad } = await generator.generate(artwork, policy)
+      await finish(id, { status: 'done', good, bad })
+      Logger.info('photo-examples OK job=%s %ss', id, Math.round((Date.now() - t0) / 1000))
+    } catch (error) {
+      await finish(id, { status: 'error', error: mapResizeError(error) })
+      Logger.error(
+        'photo-examples FAIL job=%s %ss: %s',
         id,
         Math.round((Date.now() - t0) / 1000),
         (error && (error as any).message) || String(error)
