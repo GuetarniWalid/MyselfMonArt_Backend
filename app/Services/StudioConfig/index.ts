@@ -90,14 +90,18 @@ export function validatePersonalized(studioConfig: any, studioRecipe: any): Pers
         message: 'payload.extra.consent = "1" obligatoire dès qu’une étape photo existe.',
       })
 
-    // --- 4) productType (slug) présent + regex (unicité = contrôleur) ---
+    // --- 4) productType (slug) : OPTIONNEL — absent/vide = généré automatiquement à la
+    // publication depuis le titre IA (contrôleur). S'il est fourni, il doit être conforme
+    // (unicité vérifiée par le contrôleur).
     const pt = studioConfig.productType
-    if (typeof pt !== 'string' || !PRODUCT_TYPE_RE.test(pt))
-      errors.push({
-        where: 'config.productType',
-        message:
-          'productType manquant ou invalide (minuscules/chiffres/tirets, commence par une lettre).',
-      })
+    if (pt !== undefined && pt !== null && pt !== '') {
+      if (typeof pt !== 'string' || !PRODUCT_TYPE_RE.test(pt))
+        errors.push({
+          where: 'config.productType',
+          message:
+            'productType invalide (minuscules/chiffres/tirets, commence par une lettre) — ou omets-le (généré automatiquement).',
+        })
+    }
   }
 
   // --- 5) Recette : clamps/contraintes de RecipeService (réutilisés, pas dupliqués) ---

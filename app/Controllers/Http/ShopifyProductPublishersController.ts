@@ -279,16 +279,24 @@ export default class ShopifyProductPublishersController {
           const referenceBase64 = sameAsDesign
             ? originalImg?.base64Image ?? null
             : personalized.reference?.base64Image ?? null
+          // Nom de code (productType) : s'il n'a pas été saisi dans le builder, on le DÉRIVE du
+          // titre généré par l'IA (aucune décision humaine) — slugifié, conforme, et UNIQUE parmi
+          // les studio.config existants (brouillons compris).
+          const finalSlug =
+            typeof personalized.studioConfig?.productType === 'string' &&
+            personalized.studioConfig.productType
+              ? personalized.studioConfig.productType
+              : await this.generateUniqueProductTypeSlug(title, shopify)
           const report = await new PersonalizedSetup().run({
             productId: productCreated.id,
-            studioConfig: personalized.studioConfig,
+            studioConfig: { ...personalized.studioConfig, productType: finalSlug },
             studioRecipe: personalized.studioRecipe,
             referenceBase64,
             photoExamples: {
               good: personalized.photoExamples?.good?.base64Image ?? null,
               bad: personalized.photoExamples?.bad?.base64Image ?? null,
             },
-            slug: String(personalized.studioConfig?.productType || 'custom'),
+            slug: finalSlug,
             shopify,
           })
           personalizedWarnings = report.warnings
@@ -494,6 +502,34 @@ export default class ShopifyProductPublishersController {
       }
     }
     return errors
+  }
+
+  /**
+   * Dérive un nom de code (productType) du titre généré par l'IA : slugifié, conforme
+   * ^[a-z][a-z0-9-]*$, et UNIQUE parmi les studio.config existants (brouillons compris) —
+   * suffixe -2, -3… en cas de collision. Aucune décision humaine.
+   */
+  private async generateUniqueProductTypeSlug(title: string, shopify: Shopify): Promise<string> {
+    const base =
+      String(title || '')
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '') // accents -> lettres nues (diacritiques combinants)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .replace(/^[^a-z]+/, '') // doit commencer par une lettre
+        .slice(0, 40)
+        .replace(/-+$/, '') || 'poster-perso'
+    const taken = new Set(
+      (await shopify.product.getAllProductsWithMetafield('studio', 'config', true))
+        .map((p) => extractProductType(p.value))
+        .filter((s): s is string => Boolean(s))
+    )
+    if (!taken.has(base)) return base
+    for (let i = 2; ; i++) {
+      const candidate = `${base}-${i}`
+      if (!taken.has(candidate)) return candidate
+    }
   }
 
   public async validatePersonalized({ request, response }: HttpContextContract) {
