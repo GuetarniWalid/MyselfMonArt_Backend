@@ -193,9 +193,11 @@ Route.group(() => {
 // publisher/publish (qui crée déjà des produits sans session) : aucun secret à poser nulle part.
 // Garde-fou ciblé : delete-draft ne supprime QUE le brouillon réellement enregistré sur la toile
 // (link.poster_draft = ce productId) — jamais un produit publié arbitraire.
-// create-one = mode COPIE (pivot 30/06) : crée le brouillon SANS IA, texte fourni par l'agent.
+// create-one = mode COPIE (pivot 30/06) : crée le brouillon SANS IA, texte fourni par l'agent —
+// OU, avec transpose:true (studio « toile → poster jumeau »), texte réécrit depuis la toile (1 appel Claude).
 Route.group(() => {
   Route.get('/candidates', 'BulkPostersController.candidates')
+  Route.get('/collection-map', 'BulkPostersController.collectionMap')
   Route.post('/create-one', 'BulkPostersController.createOne')
   Route.get('/status', 'BulkPostersController.status')
   Route.post('/finalize', 'BulkPostersController.finalize')

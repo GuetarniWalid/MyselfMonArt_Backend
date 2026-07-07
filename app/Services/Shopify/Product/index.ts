@@ -650,6 +650,11 @@ export default class Product extends Authentication {
           id
           title
           description
+          descriptionHtml
+          seo {
+            title
+            description
+          }
           handle
           hasOnlyDefaultVariant
           tags

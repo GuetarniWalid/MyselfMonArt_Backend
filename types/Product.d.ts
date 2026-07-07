@@ -307,6 +307,11 @@ export interface ProductById {
   id: string
   title: string
   description: string
+  descriptionHtml: string
+  seo?: {
+    title: string | null
+    description: string | null
+  }
   handle: string
   hasOnlyDefaultVariant: boolean
   tags: string[]

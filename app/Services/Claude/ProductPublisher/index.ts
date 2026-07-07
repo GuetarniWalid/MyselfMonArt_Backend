@@ -5,6 +5,7 @@ import ImageAnalyser from './ImageAnalyser'
 import TitleAndSeoGenerator from './TitleAndSeoGenerator'
 import TagPicker from './TagPicker'
 import MockupAltGenerator from './MockupAltGenerator'
+import PosterTransposer from './PosterTransposer'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import Env from '@ioc:Adonis/Core/Env'
 import type { IProductPublisher, MockupMetadata, ArtworkCategory } from 'Types/ProductPublisher'
@@ -202,6 +203,93 @@ export default class ProductPublisher extends Authentication implements IProduct
 
       return responseFormat.parse(toolUse.input)
     })
+  }
+
+  /**
+   * Transposition toile → poster (pipeline « toile → poster jumeau »).
+   * Réécrit le texte EXISTANT de la toile pour la fiche poster (règles runbook §5 :
+   * vocabulaire affiche/papier/à encadrer, référence iconique conservée, reformulation
+   * anti-cannibalisation). Texte seul — aucun envoi d'image. Un raté de validation zod
+   * (ex. metaDescription < 140) a droit à UNE reprise avant de remonter (retryOperation
+   * ne couvre que 429/529).
+   */
+  public async transposePosterText(
+    source: {
+      title: string
+      descriptionHtml: string
+      seoTitle: string
+      seoDescription: string
+    },
+    posterCollectionTitle: string
+  ): Promise<{
+    title: string
+    descriptionHtml: string
+    seoTitle: string
+    seoDescription: string
+  }> {
+    const attempt = () =>
+      this.retryOperation(async () => {
+        const transposer = new PosterTransposer()
+        const { responseFormat, systemPrompt } = transposer.prepareRequest()
+        const jsonSchema: any = zodToJsonSchema(responseFormat, 'transpose_poster_text')
+
+        // Ensure type field is present for Claude API
+        if (!jsonSchema.type) {
+          jsonSchema.type = 'object'
+        }
+
+        const response = await this.anthropic.messages.create(
+          {
+            model: Env.get('CLAUDE_MODEL'),
+            max_tokens: 4096,
+            tools: [
+              {
+                name: 'transpose_poster_text',
+                description: 'Transpose canvas product copy into poster product copy',
+                input_schema: jsonSchema,
+              },
+            ],
+            tool_choice: { type: 'tool', name: 'transpose_poster_text' },
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'text',
+                    text: `Collection poster de destination : "${posterCollectionTitle}".`,
+                  },
+                  {
+                    type: 'text',
+                    text: `Texte EXISTANT de la toile à transposer en poster :\n${JSON.stringify(
+                      source
+                    )}`,
+                  },
+                ],
+              },
+            ],
+            system: systemPrompt,
+          },
+          // Borné : l'appelant (create-one) doit rester sous la coupure proxy ~100 s. On plafonne
+          // aussi les retries SDK (qui honorent retry-after en SECONDES) pour ne pas empiler.
+          { timeout: 40000, maxRetries: 1 }
+        )
+
+        const toolUse = response.content.find((block) => block.type === 'tool_use')
+        if (!toolUse || toolUse.type !== 'tool_use') {
+          throw new Error('Claude did not return transposed poster text')
+        }
+
+        return responseFormat.parse(toolUse.input)
+      })
+
+    try {
+      return await attempt()
+    } catch (error: any) {
+      if (error?.name === 'ZodError') {
+        return await attempt()
+      }
+      throw error
+    }
   }
 
   /**

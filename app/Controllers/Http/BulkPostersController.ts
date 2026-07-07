@@ -1,6 +1,8 @@
 import type { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
+import Env from '@ioc:Adonis/Core/Env'
 import Shopify from 'App/Services/Shopify'
 import ShopifyProductPublisher from 'App/Services/ShopifyProductPublisher'
+import ClaudePublisher from 'App/Services/Claude/ProductPublisher'
 import {
   composePosterMedia,
   slugFromAlt,
@@ -118,6 +120,9 @@ export default class BulkPostersController {
    *
    * Mode COPIE (pivot 30/06) : crée le BROUILLON poster SANS AUCUN appel IA. Le texte (title H1,
    * descriptionHtml, SEO) est fourni par l'agent ; tout le reste est COPIÉ de la toile ou FORCÉ.
+   * EXCEPTION — `transpose: true` (pipeline « toile → poster jumeau » du studio, 07/07) : le texte
+   * n'est pas fourni, il est RÉÉCRIT ici depuis celui de la toile (1 appel Claude, PosterTransposer,
+   * règles runbook §5 anti-cannibalisation). Le reste du comportement est strictement identique.
    *   - COPIÉ de la toile : title.short, painting.color, shopify.color-pattern, shopify.theme,
    *     painting.layout, mm-google-shopping/mc-facebook.google_product_category, tags.
    *   - FORCÉ : artwork.type=poster, templateSuffix=poster, link.mother_collection=collection POSTER
@@ -139,10 +144,14 @@ export default class BulkPostersController {
     const ratio: string = request.input('ratio')
     const collectionId: string = request.input('collectionId')
     const collectionTitle: string = request.input('collectionTitle') || ''
-    const title: string = request.input('title')
-    const descriptionHtml: string = request.input('descriptionHtml')
-    const seoTitle: string = request.input('seoTitle')
-    const seoDescription: string = request.input('seoDescription')
+    // Mode TRANSPOSE (pipeline « toile → poster jumeau » du studio) : le texte n'est PAS fourni —
+    // il est RÉÉCRIT ici depuis celui de la toile (1 appel Claude, règles runbook §5). Sans ce
+    // flag, comportement historique inchangé : les 4 champs texte sont exigés (agent bulk).
+    const transpose: boolean = request.input('transpose') === true
+    let title: string = request.input('title')
+    let descriptionHtml: string = request.input('descriptionHtml')
+    let seoTitle: string = request.input('seoTitle')
+    let seoDescription: string = request.input('seoDescription')
     const images = request.input('images')
 
     // Validation déterministe (le contrôleur n'utilise pas le validator studio).
@@ -159,7 +168,7 @@ export default class BulkPostersController {
         .status(422)
         .json({ success: false, message: 'collectionId (GID collection) requis' })
     }
-    if (!title || !descriptionHtml || !seoTitle || !seoDescription) {
+    if (!transpose && (!title || !descriptionHtml || !seoTitle || !seoDescription)) {
       return response.status(422).json({
         success: false,
         message: 'title, descriptionHtml, seoTitle, seoDescription requis',
@@ -193,11 +202,52 @@ export default class BulkPostersController {
         .json({ success: false, message: 'cette toile a déjà un poster lié' })
     }
     // Anti-doublon AU NIVEAU BROUILLON : un brouillon est déjà en cours pour cette toile (reprise via
-    // /finalize-pending, pas une 2e création). Rend create-one idempotent face à un double déclenchement.
-    if (findMf('link', 'poster_draft')?.value) {
-      return response
-        .status(409)
-        .json({ success: false, message: 'un brouillon poster est déjà en cours pour cette toile' })
+    // /finalize, pas une 2e création). Rend create-one idempotent face à un double déclenchement.
+    // On renvoie le productId du brouillon (draftProductId) pour que le studio REPRENNE (poll +
+    // finalize) au lieu de recréer — cas re-clic après un 524 où la 1re réponse s'est perdue.
+    const existingDraft = findMf('link', 'poster_draft')?.value
+    if (existingDraft) {
+      return response.status(409).json({
+        success: false,
+        message: 'un brouillon poster est déjà en cours pour cette toile',
+        draftProductId: existingDraft,
+      })
+    }
+
+    // Mode TRANSPOSE : réécriture du texte de la toile en texte poster (anti-cannibalisation),
+    // AVANT toute création — un échec IA ici ne laisse rien à annuler côté Shopify. Borné à 45 s
+    // (Promise.race) pour que create-one reste SOUS la coupure proxy ~100 s : sinon un Claude lent
+    // (429/backoff) allongerait la fenêtre où un re-clic crée un 2e brouillon orphelin (le marqueur
+    // link.poster_draft n'est posé qu'en fin de requête). Sur timeout, l'owner re-clique (rien créé).
+    if (transpose) {
+      try {
+        const transposed: any = await Promise.race([
+          new ClaudePublisher().transposePosterText(
+            {
+              title: toile.title || '',
+              descriptionHtml: toile.descriptionHtml || toile.description || '',
+              seoTitle: toile.seo?.title || '',
+              seoDescription: toile.seo?.description || '',
+            },
+            collectionTitle
+          ),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Délai de réécriture dépassé')), 45000)
+          ),
+        ])
+        title = transposed.title
+        descriptionHtml = transposed.descriptionHtml
+        seoTitle = transposed.seoTitle
+        seoDescription = transposed.seoDescription
+      } catch (aiErr: any) {
+        console.error('[bulk-posters] transpose error:', aiErr?.message, aiErr?.name)
+        // ZodError = pavé JSON illisible dans l'overlay studio -> message court et actionnable.
+        const friendly =
+          aiErr?.name === 'ZodError'
+            ? 'Le texte du poster n’a pas pu être réécrit correctement. Réessaie.'
+            : 'Réécriture du texte impossible : ' + (aiErr?.message || 'erreur IA')
+        return response.status(500).json({ success: false, message: friendly })
+      }
     }
 
     // Le service ShopifyProductPublisher gère le stockage local des images (Shopify les fetche par URL)
@@ -433,7 +483,10 @@ export default class BulkPostersController {
     // Nettoyage du marqueur « brouillon en cours » (best-effort).
     await shopify.metafield.delete(toileId, 'link', 'poster_draft')
 
-    return { success: true, published: true, variantsCount, expected }
+    // link : « Voir le produit » côté studio (pipeline toile → poster jumeau). Admin plutôt que
+    // storefront : onlineStoreUrl peut mettre quelques secondes à exister après la publication.
+    const link = `${Env.get('SHOPIFY_SHOP_URL')}/admin/products/${String(productId).split('/').pop()}`
+    return { success: true, published: true, variantsCount, expected, link }
   }
 
   /**
@@ -466,6 +519,21 @@ export default class BulkPostersController {
     const deletedProductId = await shopify.product.delete(productId)
     await shopify.metafield.delete(toileId, 'link', 'poster_draft')
     return { success: true, deletedProductId }
+  }
+
+  /**
+   * GET /api/bulk-posters/collection-map?collectionId=<gid ou id numérique de la collection TOILE>
+   * Résout la collection poster jumelle via POSTER_COLLECTION_MAP (strict : non mappé → null).
+   * Utilisé par le studio pour décider d'enchaîner (ou non — cas « thème sans collection poster »)
+   * sur l'étape poster après la publication d'une toile.
+   */
+  public async collectionMap({ request, response }: HttpContextContract) {
+    const raw = request.input('collectionId')
+    if (!raw) {
+      return response.status(422).json({ success: false, message: 'collectionId requis' })
+    }
+    const collectionId = /^\d+$/.test(String(raw)) ? `gid://shopify/Collection/${raw}` : String(raw)
+    return { success: true, data: { posterCollection: posterCollectionFor(collectionId) } }
   }
 
   /** Nombre de variantes attendu = celui du produit-modèle poster pour ce ratio (mis en cache). */
