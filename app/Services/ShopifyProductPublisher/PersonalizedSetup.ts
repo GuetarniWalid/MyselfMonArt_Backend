@@ -1,4 +1,9 @@
+import Logger from '@ioc:Adonis/Core/Logger'
 import Shopify from 'App/Services/Shopify'
+import DesignTextReader, {
+  DesignStepInfo,
+  applyDesignTexts,
+} from 'App/Services/ShopifyProductPublisher/DesignTextReader'
 import StudioTranslator from 'App/Services/ChatGPT/StudioTranslator'
 import { I18N_PATHS, getAtPath, isI18nMap } from 'App/Services/StudioConfig'
 
@@ -145,6 +150,39 @@ export default class PersonalizedSetup {
     // cohérent avec le FR édité. Échec = non bloquant : le thème retombe sur le français.
     await this.translateConfigTexts(configToWrite, warnings)
 
+    // 2c) Table de remplacement des textes : LUE SUR LE DESIGN (vision) ----------------
+    // Le front n'édite plus reference.texts.title/slots ni inputs.title : ces valeurs décrivent
+    // le design lui-même. On les lit ici sur l'image de référence, associées aux étapes du
+    // parcours. Échec = non bloquant : la table du préréglage reste telle quelle (warning) et
+    // le produit naît en brouillon — Walid la voit à son test studio avant activation.
+    const recipeToWrite = JSON.parse(JSON.stringify(studioRecipe))
+    const stepsInfo: DesignStepInfo[] = (configToWrite.steps || [])
+      .filter((s: any) => s && s.type !== 'format' && s.type !== 'photo')
+      .map((s: any) => ({
+        payloadKey: String(s.payloadKey || s.name),
+        type: String(s.type),
+        titleFr: String((s.title && s.title.fr) || s.name),
+      }))
+    const designTexts = await new DesignTextReader().read(referenceBase64, stepsInfo)
+    if (designTexts) {
+      applyDesignTexts(
+        recipeToWrite,
+        designTexts,
+        stepsInfo.map((s) => s.payloadKey),
+        warnings
+      )
+      Logger.info(
+        'design-texts: title=%s slots=%s template=%s',
+        designTexts.title || '—',
+        designTexts.slots.length,
+        designTexts.titleTemplate || '—'
+      )
+    } else {
+      warnings.push(
+        'Lecture des textes du design impossible — table de remplacement du préréglage conservée, vérifie le brouillon.'
+      )
+    }
+
     // 3) Metafields -----------------------------------------------------------------
     // Chaque set est tenté indépendamment ; on collecte les échecs (avec la clé, pour le
     // diagnostic) au lieu d'aborter au premier. Les CRITIQUES ratés font throw à la fin (avec
@@ -191,7 +229,7 @@ export default class PersonalizedSetup {
       'list.metaobject_reference',
       true
     )
-    await setMf('studio', 'recipe', JSON.stringify(studioRecipe), 'json', true)
+    await setMf('studio', 'recipe', JSON.stringify(recipeToWrite), 'json', true)
     await setMf(
       'studio',
       'references',
