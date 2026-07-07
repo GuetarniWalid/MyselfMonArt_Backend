@@ -72,6 +72,14 @@ function priceFor(size: string, frame: string): string {
   return frame === 'Sans cadre' ? '44.90' : '94.90'
 }
 
+// Fragments de prompt STRUCTURELS : identiques pour tous les produits (aucune UI, aucun LLM) —
+// imposés ici à la publication. Le reste (base/perPerson/replaceTitle/add/removeExtra) est écrit
+// par RecipeDirector au chargement du design côté Publisher, puis relu par Walid.
+const PROMPT_IMAGE_ROLES =
+  'Two images are attached. IMAGE 1 is the CUSTOMER PHOTO: it is the ONLY source for the subjects — how many they are, their left-to-right order, relative sizes, apparent ages and distinctive features. IMAGE 2 is the STYLE REFERENCE: copy its art style, composition, framing, typography and layout EXACTLY, but never copy its subjects, their faces or its words.'
+const PROMPT_COUNT_LINE =
+  'The final illustration shows EXACTLY {n} person(s), in this left-to-right order: {tokens}. Render no other person, and no text other than the ones requested below.'
+
 export interface PersonalizedSetupParams {
   productId: string
   studioConfig: any
@@ -181,6 +189,23 @@ export default class PersonalizedSetup {
       warnings.push(
         'Lecture des textes du design impossible — table de remplacement du préréglage conservée, vérifie le brouillon.'
       )
+    }
+
+    // 2d) Fragments de prompt structurels : imposés (identiques pour tous les produits), et
+    // élagage cohérent avec la table lue — sans légendes par sujet (tokens), les fragments
+    // par-personne n'ont pas d'objet ; sans titre, pas de remplacement de titre.
+    recipeToWrite.prompt = recipeToWrite.prompt || {}
+    recipeToWrite.prompt.imageRoles = PROMPT_IMAGE_ROLES
+    if (recipeToWrite.inputs && recipeToWrite.inputs.tokens) {
+      recipeToWrite.prompt.countLine = PROMPT_COUNT_LINE
+    } else {
+      delete recipeToWrite.prompt.countLine
+      delete recipeToWrite.prompt.perPerson
+      delete recipeToWrite.prompt.addExtra
+      delete recipeToWrite.prompt.removeExtra
+    }
+    if (!(recipeToWrite.inputs && recipeToWrite.inputs.title)) {
+      delete recipeToWrite.prompt.replaceTitle
     }
 
     // 3) Metafields -----------------------------------------------------------------

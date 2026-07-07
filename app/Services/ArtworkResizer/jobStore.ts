@@ -8,6 +8,7 @@ import DecorGenerator, { DecorOptions } from '../DecorGenerator'
 import ArtworkInserter, { InsertOptions } from '../ArtworkInserter'
 import MockupCleaner, { CleanOptions } from '../MockupCleaner'
 import PhotoExamplesGenerator, { ExampleKind, PhotoExamplesPolicy } from '../PhotoExamplesGenerator'
+import RecipeDirector, { RecipeDirectorStepInfo, RecipePrompts } from '../RecipeDirector'
 
 /**
  * Stockage de jobs de redimensionnement sur disque + exécution en arrière-plan.
@@ -26,6 +27,7 @@ interface Job {
   status: Status
   image?: string
   scene?: string // décor uniquement : brief art-director utilisé (rejoué pour les autres ratios)
+  prompts?: RecipePrompts // analyse de design (poster personnalisé) : fragments de prompt écrits
   error?: string
   createdAt: number
 }
@@ -81,6 +83,7 @@ async function finish(
     status: Status
     image?: string
     scene?: string
+    prompts?: RecipePrompts
     error?: string
   }
 ): Promise<void> {
@@ -314,6 +317,49 @@ export function startPhotoExamples(
       Logger.error(
         'photo-example %s FAIL job=%s %ss: %s',
         kind,
+        id,
+        Math.round((Date.now() - t0) / 1000),
+        (error && (error as any).message) || String(error)
+      )
+    }
+  })()
+  inflight.add(p)
+  p.finally(() => inflight.delete(p))
+}
+
+/**
+ * Lance l'écriture des fragments de prompt de la recette personnalisée depuis le DESIGN
+ * (RecipeDirector, vision). Même réserve : NE PAS attendre dans le controller.
+ */
+export function startRecipeDirector(
+  id: string,
+  artwork: string,
+  steps: RecipeDirectorStepInfo[]
+): void {
+  if (inflight.size >= MAX_INFLIGHT) {
+    finish(id, {
+      status: 'error',
+      error: 'Service de génération occupé. Réessaie dans quelques secondes.',
+    }).catch(() => {})
+    Logger.warn(
+      'recipe-director REFUSED job=%s (inflight=%s >= %s)',
+      id,
+      inflight.size,
+      MAX_INFLIGHT
+    )
+    return
+  }
+  const p = (async () => {
+    const t0 = Date.now()
+    try {
+      const prompts = await new RecipeDirector().write(artwork, steps)
+      if (!prompts) throw new Error("L'analyse du design n'a rien donné. Réessaie.")
+      await finish(id, { status: 'done', prompts })
+      Logger.info('recipe-director OK job=%s %ss', id, Math.round((Date.now() - t0) / 1000))
+    } catch (error) {
+      await finish(id, { status: 'error', error: mapResizeError(error) })
+      Logger.error(
+        'recipe-director FAIL job=%s %ss: %s',
         id,
         Math.round((Date.now() - t0) / 1000),
         (error && (error as any).message) || String(error)

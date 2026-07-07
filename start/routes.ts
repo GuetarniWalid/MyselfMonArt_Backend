@@ -181,6 +181,11 @@ Route.group(() => {
   Route.get('/generate-photo-examples/result', 'PhotoExamplesController.result').middleware([
     'auth',
   ])
+
+  // Analyse du design d'un poster personnalisé : écrit les fragments de prompt de la recette
+  // (relecture seule pour Walid). Async (job+polling), auth (appel Gemini payant).
+  Route.post('/analyze-design', 'RecipeDirectorController.generate').middleware(['auth'])
+  Route.get('/analyze-design/result', 'RecipeDirectorController.result').middleware(['auth'])
 }).prefix('/api')
 
 // Batch « posters en masse » (cf. BulkPostersController). Appelé par le moteur de rendu PC (workflow
