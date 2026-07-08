@@ -17,6 +17,10 @@ export default class CollectionToTranslateValidator {
       id: schema.string(),
       value: schema.string(),
     }),
+    cocon: schema.object.optional().members({
+      id: schema.string(),
+      value: schema.string(),
+    }),
     seo: schema.object.optional().members({
       title: schema.string.optional(),
       description: schema.string.optional(),

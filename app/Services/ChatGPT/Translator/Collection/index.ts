@@ -71,6 +71,23 @@ export default class CollectionTranslator {
     }
   }
 
+  /**
+   * The cocon_links metafield (custom.cocon_links) is a JSON array of `{ url, label }`
+   * cross-links. We translate the visible `label` field only (one field per link) and
+   * reassemble the JSON ourselves; the `url` is left untouched here and localized
+   * downstream by TranslateCollection. Returns the parsed items, or null when absent/invalid.
+   */
+  private getParsedCoconItems(): any[] | null {
+    const raw = this.payload.cocon?.value
+    if (!raw) return null
+    try {
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  }
+
   private getTranslationResponseFormat() {
     const schema: Record<string, any> = {}
 
@@ -91,6 +108,12 @@ export default class CollectionTranslator {
       faqItems.forEach((item, i) => {
         if (typeof item?.q === 'string' && item.q) schema[`faq_q_${i}`] = z.string()
         if (typeof item?.a === 'string' && item.a) schema[`faq_a_${i}`] = z.string()
+      })
+    }
+    const coconItems = this.getParsedCoconItems()
+    if (coconItems) {
+      coconItems.forEach((item, i) => {
+        if (typeof item?.label === 'string' && item.label) schema[`cocon_label_${i}`] = z.string()
       })
     }
     if (this.payload.handle) {
@@ -131,6 +154,12 @@ export default class CollectionTranslator {
         if (typeof item?.a === 'string' && item.a) payload[`faq_a_${i}`] = item.a
       })
     }
+    const coconItems = this.getParsedCoconItems()
+    if (coconItems) {
+      coconItems.forEach((item, i) => {
+        if (typeof item?.label === 'string' && item.label) payload[`cocon_label_${i}`] = item.label
+      })
+    }
     if (this.payload.handle) {
       payload.handle = this.payload.handle
     }
@@ -157,7 +186,8 @@ For the descriptionHtml field, preserve all HTML tags while translating its cont
 IMPORTANT — links: translate the visible anchor text, but keep every \`href\` attribute value EXACTLY as in the source. Do NOT translate, localize, or otherwise modify any URL inside an href. URL rewriting is handled separately downstream.
 The intro field is the editorial introduction text shown at the top of the collection page. Translate it fully and naturally into ${language}, preserving its tone and line breaks — never return the original text unchanged.
 The guide field is an editorial HTML guide shown on the collection page; preserve all HTML tags (and href values, per the rule above) while translating its content into ${language}.
-The faq_q_* fields are FAQ questions and faq_a_* fields are FAQ answers (answers may contain HTML — preserve tags and href values). Translate each one naturally and SEO-consciously into ${language}; never return the original text unchanged.`
+The faq_q_* fields are FAQ questions and faq_a_* fields are FAQ answers (answers may contain HTML — preserve tags and href values). Translate each one naturally and SEO-consciously into ${language}; never return the original text unchanged.
+The cocon_label_* fields are short navigation link labels for related collections (e.g. "Poster & Affiche Cuisine", "Tableau Salon (sur toile)"). Translate each one into ${language} as a concise, natural category label; keep any parenthetical qualifier such as "(sur toile)" translated too. Do not add words that are not in the source.`
   }
 
   public formatTranslationResponse({
@@ -194,6 +224,13 @@ The faq_q_* fields are FAQ questions and faq_a_* fields are FAQ answers (answers
       const rebuilt = this.rebuildFaq(payload.faq.value, response)
       if (rebuilt) {
         responseFormatted.faq = { id: payload.faq.id, value: rebuilt }
+      }
+    }
+    // Reassemble the cocon_links JSON with translated labels (urls untouched here).
+    if (payload.cocon) {
+      const rebuilt = this.rebuildCocon(payload.cocon.value, response)
+      if (rebuilt) {
+        responseFormatted.cocon = { id: payload.cocon.id, value: rebuilt }
       }
     }
     if (response.handle) {
@@ -251,6 +288,37 @@ The faq_q_* fields are FAQ questions and faq_a_* fields are FAQ answers (answers
       }
       if (typeof a === 'string' && a !== item.a) {
         next.a = a
+        changed = true
+      }
+      return next
+    })
+
+    return changed ? JSON.stringify(rebuilt) : null
+  }
+
+  /**
+   * Rebuilds the cocon_links JSON string from the source array + the model's per-item
+   * label translations (cocon_label_i), keeping each `url` untouched (localized later).
+   * Returns null if the source can't be parsed as an array, or nothing changed — so the
+   * untranslated French JSON is never re-registered as the translation.
+   */
+  private rebuildCocon(sourceValue: string, response: Record<string, any>): string | null {
+    let items: any[]
+    try {
+      const parsed = JSON.parse(sourceValue)
+      if (!Array.isArray(parsed)) return null
+      items = parsed
+    } catch {
+      return null
+    }
+
+    let changed = false
+    const rebuilt = items.map((item, i) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return item
+      const next = { ...item }
+      const label = response[`cocon_label_${i}`]
+      if (typeof label === 'string' && label !== item.label) {
+        next.label = label
         changed = true
       }
       return next

@@ -15,6 +15,10 @@ export interface CollectionWithOutdatedTranslations {
     id: string
     value: string
   } | null
+  coconMetafield: {
+    id: string
+    value: string
+  } | null
   altTextsMetaObject: {
     reference?: {
       id: string
@@ -50,6 +54,10 @@ export interface CollectionToTranslate {
     value: string
   }
   faq?: {
+    id: string
+    value: string
+  }
+  cocon?: {
     id: string
     value: string
   }

@@ -90,9 +90,13 @@ export default class PullDataModeler extends DefaultPullDataModeler {
     const staticSectionContent = await this.getStaticSectionsContent(id, locale)
 
     for (const content of staticSectionContent.translatableContent) {
+      // Pass `locale`: the translations array is already scoped to this locale, so matching
+      // against the default 'en' made every non-EN section setting look "missing" and get
+      // re-translated every night (2026-07-08 fix).
       const { isTranslationExists, translation } = this.isTranslationExists(
         content,
-        staticSectionContent.translations
+        staticSectionContent.translations,
+        locale
       )
       const isTranslationOutdated = this.isTranslationOutdated(isTranslationExists, translation)
       const isTranslationMedia = this.isTranslationMedia(content)
@@ -111,7 +115,99 @@ export default class PullDataModeler extends DefaultPullDataModeler {
       }
     }
 
+    // Section-setting text also lives in per-template JSON (OnlineStoreThemeJsonTemplate):
+    // the homepage `index` sections, collection/product/article template sections, etc.
+    // getStaticSectionsContent above only covers OnlineStoreThemeSettingsDataSections, so
+    // directly-authored template copy (e.g. the homepage "posters_home" block) would stay in
+    // the source language on the localized storefronts. Pull those too (2026-07-08).
+    const jsonTemplateContent = await this.getJsonTemplateOutdatedTranslations(locale)
+    translatableContent.push(...jsonTemplateContent)
+
     return translatableContent
+  }
+
+  /**
+   * Section-setting text stored in the theme's JSON templates (OnlineStoreThemeJsonTemplate) —
+   * one translatable resource per template (index, collection.*, product.*, article.*, page.*).
+   * Returns the non-media strings still missing/outdated for `locale`, each tagged with its
+   * OWN resource id so the push registers against the right template. Media (SVG icons,
+   * shopify:// file/link refs) is skipped, exactly like the settings-data path.
+   */
+  private async getJsonTemplateOutdatedTranslations(
+    locale: LanguageCode
+  ): Promise<StaticSectionToTranslate[]> {
+    const out: StaticSectionToTranslate[] = []
+    let cursor: string | null = null
+    let hasNextPage = true
+
+    while (hasNextPage) {
+      const { query, variables } = this.getJsonTemplatesQuery(locale, cursor)
+      const data = (await this.fetchGraphQL(query, variables)) as {
+        translatableResources: {
+          edges: {
+            cursor: string
+            node: {
+              resourceId: string
+              translatableContent: TranslatableContent[]
+              translations: Translation[]
+            }
+          }[]
+          pageInfo: { hasNextPage: boolean }
+        }
+      }
+
+      const edges = data.translatableResources.edges
+      for (const { node } of edges) {
+        for (const content of node.translatableContent) {
+          const { isTranslationExists, translation } = this.isTranslationExists(
+            content,
+            node.translations,
+            locale
+          )
+          const isTranslationOutdated = this.isTranslationOutdated(isTranslationExists, translation)
+          const isTranslationMedia = this.isTranslationMedia(content)
+          // Some template settings hold a lone URL/path (link pickers). ChatGPT must never
+          // "translate" those — leave them to the source (URL localization is a separate
+          // concern, not this text pipeline).
+          const isLink = PullDataModeler.isLinkValue(content.value)
+          const hasNonEmptySource = typeof content.value === 'string' && content.value.trim() !== ''
+
+          if (
+            (!isTranslationExists || isTranslationOutdated) &&
+            !isTranslationMedia &&
+            !isLink &&
+            hasNonEmptySource
+          ) {
+            out.push({ id: node.resourceId, key: content.key, value: content.value })
+          }
+        }
+      }
+
+      hasNextPage = data.translatableResources.pageInfo.hasNextPage
+      cursor = edges.length ? edges[edges.length - 1].cursor : null
+      if (!cursor) hasNextPage = false
+    }
+
+    return out
+  }
+
+  private getJsonTemplatesQuery(locale: LanguageCode, cursor: string | null) {
+    return {
+      query: `query GetJsonTemplates($cursor: String) {
+        translatableResources(first: 25, resourceType: ONLINE_STORE_THEME_JSON_TEMPLATE, after: $cursor) {
+          edges {
+            cursor
+            node {
+              resourceId
+              translatableContent { key value locale }
+              translations(locale: "${locale}") { key value locale outdated }
+            }
+          }
+          pageInfo { hasNextPage }
+        }
+      }`,
+      variables: { cursor },
+    }
   }
 
   private async getMainThemeId() {
@@ -196,6 +292,19 @@ export default class PullDataModeler extends DefaultPullDataModeler {
 
   private isTranslationMedia(content: TranslatableContent) {
     return PullDataModeler.isMediaValue(content.value)
+  }
+
+  /**
+   * A setting whose whole value is a single URL or path (a link-picker setting, e.g.
+   * `https://…/blogs/…` or `/collections/…`). It is not translatable copy — sending it
+   * through the translator would only risk mangling the link, so it is skipped. Requires
+   * the value to be a lone token (no spaces) so prose containing a URL is still translated.
+   */
+  public static isLinkValue(value: string): boolean {
+    if (typeof value !== 'string') return false
+    const v = value.trim()
+    if (!v || /\s/.test(v)) return false
+    return /^(https?:\/\/|mailto:|tel:|\/)/i.test(v)
   }
 
   /**

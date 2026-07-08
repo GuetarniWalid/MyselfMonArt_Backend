@@ -12,10 +12,22 @@ export default class PushDataModeler extends DefaultPushDataModeler {
     resourceTranslated: Partial<CollectionToTranslate>
     isoCode: LanguageCode
   }): Promise<TranslationsRegister[]> {
-    // intro/guide/faq are each their own translatable resource (the metafield itself),
+    // intro/guide/faq/cocon are each their own translatable resource (the metafield itself),
     // so strip them before delegating the standard fields to the base modeler.
-    const { intro: oldIntro, guide: oldGuide, faq: oldFaq, ...restOld } = resourceToTranslate
-    const { intro: newIntro, guide: newGuide, faq: newFaq, ...restNew } = resourceTranslated
+    const {
+      intro: oldIntro,
+      guide: oldGuide,
+      faq: oldFaq,
+      cocon: oldCocon,
+      ...restOld
+    } = resourceToTranslate
+    const {
+      intro: newIntro,
+      guide: newGuide,
+      faq: newFaq,
+      cocon: newCocon,
+      ...restNew
+    } = resourceTranslated
 
     const entries = await super.formatTranslationFieldsForGraphQLMutation({
       resourceToTranslate: restOld,
@@ -26,6 +38,7 @@ export default class PushDataModeler extends DefaultPushDataModeler {
     this.pushMetafieldValueEntry(oldIntro, newIntro, isoCode, entries)
     this.pushMetafieldValueEntry(oldGuide, newGuide, isoCode, entries)
     this.pushMetafieldValueEntry(oldFaq, newFaq, isoCode, entries)
+    this.pushMetafieldValueEntry(oldCocon, newCocon, isoCode, entries)
 
     return entries
   }

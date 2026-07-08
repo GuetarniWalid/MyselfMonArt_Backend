@@ -69,6 +69,14 @@ export default class TranslateCollection extends BaseTask {
           linkLocalizer
         )
       }
+      // cocon_links is a JSON array of { url, label }; the label is already translated,
+      // now point each url at the locale-equivalent page (locale prefix + translated handle).
+      if (collectionTranslated.cocon?.value) {
+        collectionTranslated.cocon.value = await this.localizeCoconLinks(
+          collectionTranslated.cocon.value,
+          linkLocalizer
+        )
+      }
 
       const responses = await shopify.translator('collection').updateTranslation({
         resourceToTranslate: collection,
@@ -109,6 +117,45 @@ export default class TranslateCollection extends BaseTask {
       return JSON.stringify(localized)
     } catch {
       return faqValue
+    }
+  }
+
+  /**
+   * Localizes the `url` of each cocon_links entry (JSON array of { url, label }) to the
+   * locale-equivalent path (locale prefix + translated handle), leaving the JSON structure
+   * and translated labels intact. Unresolvable links (external, already localized, unknown
+   * handle) keep their source url. Returns the input unchanged if it isn't a valid array.
+   */
+  private async localizeCoconLinks(coconValue: string, linkLocalizer: LinkLocalizer) {
+    try {
+      const items = JSON.parse(coconValue)
+      if (!Array.isArray(items)) return coconValue
+      const localized = [] as any[]
+      for (const item of items) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+          localized.push(item)
+          continue
+        }
+        const next = { ...item }
+        if (typeof item.url === 'string') {
+          next.url = await this.localizeUrlRelative(item.url, linkLocalizer)
+        }
+        localized.push(next)
+      }
+      return JSON.stringify(localized)
+    } catch {
+      return coconValue
+    }
+  }
+
+  /** localizeUrl returns an absolute storefront URL; cocon_links store relative paths, so strip the host. */
+  private async localizeUrlRelative(url: string, linkLocalizer: LinkLocalizer): Promise<string> {
+    try {
+      const absolute = await linkLocalizer.localizeUrl(url)
+      if (!absolute) return url
+      return absolute.replace('https://www.myselfmonart.com', '')
+    } catch {
+      return url
     }
   }
 }
