@@ -851,6 +851,46 @@
       "aliases": [],
       "flags": []
     },
+    "i18n:cocon-poster": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/TranslateCoconPoster",
+      "commandName": "i18n:cocon-poster",
+      "description": "Backfill translations for the cocon-poster theme JSON templates + cocon_links metafields.",
+      "args": [
+        {
+          "type": "string",
+          "propertyName": "action",
+          "name": "action",
+          "required": true,
+          "description": "dump | apply"
+        },
+        {
+          "type": "string",
+          "propertyName": "locale",
+          "name": "locale",
+          "required": false,
+          "description": "locale for apply: en|es|de|nl"
+        }
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "dry-run",
+          "propertyName": "dryRun",
+          "type": "boolean",
+          "description": "Preview registrations without writing to Shopify"
+        },
+        {
+          "name": "only",
+          "propertyName": "only",
+          "type": "string",
+          "description": "Restrict apply to one phase: theme | cocon"
+        }
+      ]
+    },
     "translate:manual": {
       "settings": {
         "loadApp": true,
