@@ -7,7 +7,11 @@ import {
   composePosterMedia,
   slugFromAlt,
 } from 'App/Services/ShopifyProductPublisher/composePosterMedia'
-import { posterCollectionFor } from 'App/Services/BulkPosters/collectionMap'
+import {
+  posterCollectionFor,
+  expectedPosterTitleFromToile,
+  normalizeCollectionTitle,
+} from 'App/Services/BulkPosters/collectionMap'
 import { CreateProduct } from 'Types/Product'
 
 /**
@@ -522,18 +526,48 @@ export default class BulkPostersController {
   }
 
   /**
-   * GET /api/bulk-posters/collection-map?collectionId=<gid ou id numérique de la collection TOILE>
-   * Résout la collection poster jumelle via POSTER_COLLECTION_MAP (strict : non mappé → null).
-   * Utilisé par le studio pour décider d'enchaîner (ou non — cas « thème sans collection poster »)
-   * sur l'étape poster après la publication d'une toile.
+   * GET /api/bulk-posters/collection-map?collectionId=<gid|id numérique>&collectionTitle=<titre>
+   * Résout la collection poster jumelle d'une collection TOILE :
+   *   1. table figée POSTER_COLLECTION_MAP (rapide, source de vérité du bulk) ;
+   *   2. REPLI par convention de nommage « Tableau(x) X » → « Poster & Affiche X » : si une
+   *      collection poster de ce titre existe en boutique, on la prend (évite d'éditer la table +
+   *      redéployer à chaque nouveau thème). Match tolérant (accents/casse), résultat UNIQUE exigé.
+   * Utilisé par le studio pour décider d'enchaîner (ou non) sur l'étape poster après une toile.
    */
   public async collectionMap({ request, response }: HttpContextContract) {
     const raw = request.input('collectionId')
+    const collectionTitle: string = request.input('collectionTitle') || ''
     if (!raw) {
       return response.status(422).json({ success: false, message: 'collectionId requis' })
     }
     const collectionId = /^\d+$/.test(String(raw)) ? `gid://shopify/Collection/${raw}` : String(raw)
-    return { success: true, data: { posterCollection: posterCollectionFor(collectionId) } }
+
+    // 1. Table figée.
+    const mapped = posterCollectionFor(collectionId)
+    if (mapped) {
+      return { success: true, data: { posterCollection: mapped } }
+    }
+
+    // 2. Repli par nom : « Tableau X » → collection poster « Poster & Affiche X » si elle existe.
+    const expected = expectedPosterTitleFromToile(collectionTitle)
+    if (expected) {
+      try {
+        const wanted = normalizeCollectionTitle(expected)
+        const shopify = new Shopify()
+        const all = (await shopify.collection.getAll()) as any[]
+        const matches = all.filter((c) => normalizeCollectionTitle(c.title) === wanted)
+        if (matches.length === 1) {
+          return {
+            success: true,
+            data: { posterCollection: { id: matches[0].id, title: matches[0].title } },
+          }
+        }
+      } catch (e: any) {
+        console.warn('[bulk-posters] collection-map fallback error:', e?.message)
+      }
+    }
+
+    return { success: true, data: { posterCollection: null } }
   }
 
   /** Nombre de variantes attendu = celui du produit-modèle poster pour ce ratio (mis en cache). */

@@ -171,6 +171,10 @@ export const POSTER_COLLECTION_MAP: Record<string, { id: string; title: string }
     id: 'gid://shopify/Collection/675280486747',
     title: 'Poster & Affiche Fruits et Légumes',
   }, // Tableau Fruits et Légumes
+  'gid://shopify/Collection/675652632923': {
+    id: 'gid://shopify/Collection/675666887003',
+    title: 'Poster & Affiche Entrée et Couloir',
+  }, // Tableau Entrée et Couloir (ajouté 08/07)
 }
 
 /** Collection poster correspondant à une collection toile, ou null si non mappée (→ la toile est sautée). */
@@ -179,4 +183,28 @@ export function posterCollectionFor(
 ): { id: string; title: string } | null {
   if (!toileCollectionId) return null
   return POSTER_COLLECTION_MAP[toileCollectionId] || null
+}
+
+/**
+ * Normalise un titre pour comparaison tolérante (accents, casse, espaces) :
+ * « Poster & Affiche Entrée et Couloir » ≈ « poster & affiche entree et couloir ».
+ */
+export function normalizeCollectionTitle(title: string): string {
+  return String(title || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // enlève les diacritiques
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * Titre de collection POSTER attendu pour une collection TOILE, par convention de nommage
+ * « Tableau(x) X » → « Poster & Affiche X » (repli quand la paire n'est pas dans la table figée).
+ * Retourne null si le titre ne suit pas la convention « Tableau… ».
+ */
+export function expectedPosterTitleFromToile(toileTitle: string): string | null {
+  const m = String(toileTitle || '').match(/^\s*tableaux?\s+(.+?)\s*$/i)
+  if (!m) return null
+  return `Poster & Affiche ${m[1].trim()}`
 }
