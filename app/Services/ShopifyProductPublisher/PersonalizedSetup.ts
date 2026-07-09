@@ -14,33 +14,37 @@ import { I18N_PATHS, getAtPath, isI18nMap } from 'App/Services/StudioConfig'
  *
  * Ce que ce service AJOUTE :
  *   1. La grille de variantes DÉDIÉE (le publish n'en crée aucune ; le webhook Modelcopier est
- *      neutralisé pour poster.isCustom=true → il faut la créer nous-mêmes) :
- *      Tailles [30x40 cm, 60x80 cm] × Cadres [Sans cadre, Cadre blanc, Cadre noir Mat,
- *      Cadre argent ancien, Cadre chêne clair, Cadre noyer] = 12 variantes, prix figés.
+ *      neutralisé pour poster.isCustom=true → il faut la créer nous-mêmes). Un poster personnalisé
+ *      EST un poster : même grille que les posters standard, mais PRESET RÉDUIT —
+ *      Format [30x40 cm, 60x80 cm] × Cadre [Sans cadre, Avec cadre] = 4 variantes, prix figés.
+ *      La COULEUR du cadre et le CONTOUR BLANC ne sont PAS des variantes : ce sont des line-item
+ *      properties (`Couleur du cadre` + `_cadre`, `Contour blanc` + `_passe_partout`) gérées par le
+ *      thème, qui lit painting_options.frames_poster pour afficher les couleurs de cadre.
  *   2. Upload de la référence de style (+ exemples photo bon/mauvais) dans Shopify Files ;
  *      injection des URLs CDN dans studioConfig.steps[photo].examples avant d'écrire le metafield.
- *   3. Les 9 metafields nouveaux (studio.config/recipe/references, poster.isCustom,
- *      painting_options.sizes/frames_canvas/fixations, google_product_category ×2).
+ *   3. Les metafields studio + painting_options (studio.config/recipe/references,
+ *      painting_options.sizes/frames_poster/fixations). poster.isCustom + catégorie : posés par le contrôleur.
  *
  * Structurellement « tout ou rien » : une erreur d'options/variantes/référence throw (le
  * contrôleur supprime alors le brouillon). Les metafields non critiques (catégories Google)
  * sont best-effort et remontés en warnings.
  */
 
-// Metaobjects d'options (vérifiés sur le produit famille live gid 10565374247259).
+// Metaobjects d'options (métaobjets « painting_option », mêmes que les posters standard).
+// painting_options.sizes = UNIQUEMENT 30x40 & 60x80 (pas de 75x100 ni 90x120 en personnalisé).
 const SIZES_GIDS = [
-  'gid://shopify/Metaobject/138179739995',
-  'gid://shopify/Metaobject/138451485019',
-  'gid://shopify/Metaobject/138451878235',
-  'gid://shopify/Metaobject/138452500827',
+  'gid://shopify/Metaobject/138179739995', // 30x40 cm
+  'gid://shopify/Metaobject/138451485019', // 60x80 cm
 ]
-const FRAMES_GIDS = [
-  'gid://shopify/Metaobject/139262263643', // « Sans cadre » PREMIER (set 100% framePoster)
-  'gid://shopify/Metaobject/138917380443',
-  'gid://shopify/Metaobject/138918297947',
-  'gid://shopify/Metaobject/138918527323',
-  'gid://shopify/Metaobject/138918855003',
-  'gid://shopify/Metaobject/138919182683',
+// painting_options.frames_poster = les 4 pastilles de couleur de cadre POSTER (mêmes métaobjets
+// qu'un poster standard). La couleur du cadre est une line-item property, PAS une variante : ces
+// pastilles servent uniquement à l'affichage du sélecteur de couleur côté thème. Aucune « Sans
+// cadre » ici (c'est une valeur de variante Cadre, pas une couleur).
+const FRAMES_POSTER_GIDS = [
+  'gid://shopify/Metaobject/138918297947', // Cadre noir Mat
+  'gid://shopify/Metaobject/138917380443', // Cadre blanc
+  'gid://shopify/Metaobject/138918855003', // Cadre chêne clair
+  'gid://shopify/Metaobject/138919182683', // Cadre noyer
 ]
 const FIXATIONS_GIDS = [
   'gid://shopify/Metaobject/138270671195',
@@ -53,20 +57,15 @@ const FIXATIONS_GIDS = [
 // Posée + poster.isCustom AVANT artwork.type par le CONTRÔLEUR (course P0) — pas ici.
 export const PERSONALIZED_POSTER_CATEGORY_GID = 'gid://shopify/TaxonomyCategory/hg-3-4-2-1'
 
-// Grille de variantes : NOMS d'options résolus par regex côté thème (taille/cadre) + libellés/prix
-// EXACTS du produit famille live. L'ordre size×frame reproduit celui de Shopify (option1 en boucle
-// externe) : la 1re combinaison (30x40 / Sans cadre) revient à la variante par défaut.
-const OPTION_SIZE_NAME = 'Tailles'
-const OPTION_FRAME_NAME = 'Cadres'
+// Grille de variantes = même preset que les posters standard, réduit : Format × Cadre {Sans cadre,
+// Avec cadre}. La couleur du cadre quitte l'axe variante (line-item property `Couleur du cadre`),
+// d'où 4 variantes seulement. L'ordre size×frame reproduit celui de Shopify (option1 en boucle
+// externe) : la 1re combinaison (30x40 / Sans cadre) revient à la variante par défaut. « Sans
+// cadre » en premier (imposé par le preset).
+const OPTION_SIZE_NAME = 'Format'
+const OPTION_FRAME_NAME = 'Cadre'
 const SIZE_VALUES = ['30x40 cm', '60x80 cm']
-const FRAME_VALUES = [
-  'Sans cadre',
-  'Cadre blanc',
-  'Cadre noir Mat',
-  'Cadre argent ancien',
-  'Cadre chêne clair',
-  'Cadre noyer',
-]
+const FRAME_VALUES = ['Sans cadre', 'Avec cadre']
 function priceFor(size: string, frame: string): string {
   if (size === '30x40 cm') return frame === 'Sans cadre' ? '24.90' : '47.90'
   return frame === 'Sans cadre' ? '44.90' : '94.90'
@@ -242,8 +241,8 @@ export default class PersonalizedSetup {
     )
     await setMf(
       'painting_options',
-      'frames_canvas',
-      JSON.stringify(FRAMES_GIDS),
+      'frames_poster',
+      JSON.stringify(FRAMES_POSTER_GIDS),
       'list.metaobject_reference',
       true
     )
@@ -334,9 +333,9 @@ export default class PersonalizedSetup {
   }
 
   /**
-   * Crée les 2 options + 12 variantes. Même patron que le Modelcopier (copyModelVariants) :
-   * createOptions (LEAVE_AS_IS) → la variante par défaut hérite des 1res valeurs → on lui pose son
-   * prix → bulk-create des 11 autres.
+   * Crée les 2 options + 4 variantes (Format × Cadre). Même patron que le Modelcopier
+   * (copyModelVariants) : createOptions (LEAVE_AS_IS) → la variante par défaut hérite des 1res
+   * valeurs → on lui pose son prix → bulk-create des 3 autres.
    */
   private async createVariantGrid(productId: string, shopify: Shopify): Promise<void> {
     await shopify.product.createOptions(productId, [
@@ -366,7 +365,7 @@ export default class PersonalizedSetup {
       throw new Error('Variante par défaut introuvable après création des options.')
 
     // La variante par défaut = 1re combinaison (30x40 / Sans cadre) → on lui pose son prix,
-    // puis on crée les 11 autres.
+    // puis on crée les 3 autres.
     const [firstVariant, ...rest] = variants
     await shopify.product.updateVariant(productId, defaultVariant.id, { price: firstVariant.price })
     try {
