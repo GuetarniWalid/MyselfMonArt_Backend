@@ -6,6 +6,16 @@ import DesignTextReader, {
 } from 'App/Services/ShopifyProductPublisher/DesignTextReader'
 import StudioTranslator from 'App/Services/ChatGPT/StudioTranslator'
 import { I18N_PATHS, getAtPath, isI18nMap } from 'App/Services/StudioConfig'
+import {
+  OPTION_SIZE_NAME,
+  OPTION_FRAME_NAME,
+  FRAME_VALUES,
+  POSTER_SIZE_VALUES,
+  POSTER_SIZES_GIDS,
+  FRAMES_POSTER_GIDS,
+  FIXATIONS_GIDS,
+  posterVariantSpecs,
+} from 'App/Services/ShopifyProductPublisher/posterPreset'
 
 /**
  * Finalise un produit « poster personnalisé » APRÈS le pipeline publish standard
@@ -15,8 +25,9 @@ import { I18N_PATHS, getAtPath, isI18nMap } from 'App/Services/StudioConfig'
  * Ce que ce service AJOUTE :
  *   1. La grille de variantes DÉDIÉE (le publish n'en crée aucune ; le webhook Modelcopier est
  *      neutralisé pour poster.isCustom=true → il faut la créer nous-mêmes). Un poster personnalisé
- *      EST un poster : même grille que les posters standard, mais PRESET RÉDUIT —
- *      Format [30x40 cm, 60x80 cm] × Cadre [Sans cadre, Avec cadre] = 4 variantes, prix figés.
+ *      EST un poster : MÊME grille que les posters standard, AUCUNE différence de tailles —
+ *      Format [30x40, 60x80, 75x100, 90x120] × Cadre [Sans cadre, Avec cadre] = 7 variantes
+ *      (90x120 sans version cadrée), prix = grille poster. Définie dans posterPreset.ts.
  *      La COULEUR du cadre et le CONTOUR BLANC ne sont PAS des variantes : ce sont des line-item
  *      properties (`Couleur du cadre` + `_cadre`, `Contour blanc` + `_passe_partout`) gérées par le
  *      thème, qui lit painting_options.frames_poster pour afficher les couleurs de cadre.
@@ -30,46 +41,15 @@ import { I18N_PATHS, getAtPath, isI18nMap } from 'App/Services/StudioConfig'
  * sont best-effort et remontés en warnings.
  */
 
-// Metaobjects d'options (métaobjets « painting_option », mêmes que les posters standard).
-// painting_options.sizes = UNIQUEMENT 30x40 & 60x80 (pas de 75x100 ni 90x120 en personnalisé).
-const SIZES_GIDS = [
-  'gid://shopify/Metaobject/138179739995', // 30x40 cm
-  'gid://shopify/Metaobject/138451485019', // 60x80 cm
-]
-// painting_options.frames_poster = les 4 pastilles de couleur de cadre POSTER (mêmes métaobjets
-// qu'un poster standard). La couleur du cadre est une line-item property, PAS une variante : ces
-// pastilles servent uniquement à l'affichage du sélecteur de couleur côté thème. Aucune « Sans
-// cadre » ici (c'est une valeur de variante Cadre, pas une couleur).
-const FRAMES_POSTER_GIDS = [
-  'gid://shopify/Metaobject/138918297947', // Cadre noir Mat
-  'gid://shopify/Metaobject/138917380443', // Cadre blanc
-  'gid://shopify/Metaobject/138918855003', // Cadre chêne clair
-  'gid://shopify/Metaobject/138919182683', // Cadre noyer
-]
-const FIXATIONS_GIDS = [
-  'gid://shopify/Metaobject/138270671195',
-  'gid://shopify/Metaobject/138271359323',
-]
+// Preset (tailles, cadres, prix) + GIDs painting_options : SOURCE UNIQUE dans posterPreset.ts,
+// partagée avec la commande shopify:conform_perso_poster — un poster perso EST un poster.
+
 // Catégorie taxonomique "Home & Garden > … > Posters, Prints, & Visual Artwork > Posters".
 // La définition du metafield poster.isCustom est CONTRAINTE à cette catégorie précise : le parent
 // hg-3-4-2 copié du modèle poster est REFUSÉ par metafieldsSet (« Owner subtype does not match »).
 // Cf. commands/ShopifyFinishCustomProduct.ts (finalisation manuelle historique, même contrainte).
 // Posée + poster.isCustom AVANT artwork.type par le CONTRÔLEUR (course P0) — pas ici.
 export const PERSONALIZED_POSTER_CATEGORY_GID = 'gid://shopify/TaxonomyCategory/hg-3-4-2-1'
-
-// Grille de variantes = même preset que les posters standard, réduit : Format × Cadre {Sans cadre,
-// Avec cadre}. La couleur du cadre quitte l'axe variante (line-item property `Couleur du cadre`),
-// d'où 4 variantes seulement. L'ordre size×frame reproduit celui de Shopify (option1 en boucle
-// externe) : la 1re combinaison (30x40 / Sans cadre) revient à la variante par défaut. « Sans
-// cadre » en premier (imposé par le preset).
-const OPTION_SIZE_NAME = 'Format'
-const OPTION_FRAME_NAME = 'Cadre'
-const SIZE_VALUES = ['30x40 cm', '60x80 cm']
-const FRAME_VALUES = ['Sans cadre', 'Avec cadre']
-function priceFor(size: string, frame: string): string {
-  if (size === '30x40 cm') return frame === 'Sans cadre' ? '24.90' : '47.90'
-  return frame === 'Sans cadre' ? '44.90' : '94.90'
-}
 
 // Fragments de prompt STRUCTURELS : identiques pour tous les produits (aucune UI, aucun LLM) —
 // imposés ici à la publication. Le reste (base/perPerson/replaceTitle/add/removeExtra) est écrit
@@ -235,7 +215,7 @@ export default class PersonalizedSetup {
     await setMf(
       'painting_options',
       'sizes',
-      JSON.stringify(SIZES_GIDS),
+      JSON.stringify(POSTER_SIZES_GIDS),
       'list.metaobject_reference',
       true
     )
@@ -333,31 +313,17 @@ export default class PersonalizedSetup {
   }
 
   /**
-   * Crée les 2 options + 4 variantes (Format × Cadre). Même patron que le Modelcopier
-   * (copyModelVariants) : createOptions (LEAVE_AS_IS) → la variante par défaut hérite des 1res
-   * valeurs → on lui pose son prix → bulk-create des 3 autres.
+   * Crée les 2 options + 7 variantes (Format × Cadre, grille poster complète — cf. posterPreset).
+   * Même patron que le Modelcopier (copyModelVariants) : createOptions (LEAVE_AS_IS) → la variante
+   * par défaut hérite des 1res valeurs → on lui pose son prix → bulk-create des autres.
    */
   private async createVariantGrid(productId: string, shopify: Shopify): Promise<void> {
     await shopify.product.createOptions(productId, [
-      { name: OPTION_SIZE_NAME, values: SIZE_VALUES },
+      { name: OPTION_SIZE_NAME, values: POSTER_SIZE_VALUES },
       { name: OPTION_FRAME_NAME, values: FRAME_VALUES },
     ])
 
-    const variants: Array<{
-      price: string
-      optionValues: { name: string; optionName: string }[]
-    }> = []
-    for (const size of SIZE_VALUES) {
-      for (const frame of FRAME_VALUES) {
-        variants.push({
-          price: priceFor(size, frame),
-          optionValues: [
-            { name: size, optionName: OPTION_SIZE_NAME },
-            { name: frame, optionName: OPTION_FRAME_NAME },
-          ],
-        })
-      }
-    }
+    const variants = posterVariantSpecs()
 
     const product = await shopify.product.getProductById(productId)
     const defaultVariant = product.variants?.nodes?.[0]
@@ -365,7 +331,7 @@ export default class PersonalizedSetup {
       throw new Error('Variante par défaut introuvable après création des options.')
 
     // La variante par défaut = 1re combinaison (30x40 / Sans cadre) → on lui pose son prix,
-    // puis on crée les 3 autres.
+    // puis on crée les autres.
     const [firstVariant, ...rest] = variants
     await shopify.product.updateVariant(productId, defaultVariant.id, { price: firstVariant.price })
     try {

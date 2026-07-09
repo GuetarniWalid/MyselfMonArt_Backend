@@ -96,7 +96,7 @@
       },
       "commandPath": "./commands/ConformPersoPoster",
       "commandName": "shopify:conform_perso_poster",
-      "description": "Conforme un poster perso existant au preset réduit (Format×Cadre = 4 variantes + frames_poster)",
+      "description": "Conforme un poster perso existant à la grille poster (Format×Cadre, 7 variantes + frames_poster)",
       "args": [
         {
           "type": "spread",
