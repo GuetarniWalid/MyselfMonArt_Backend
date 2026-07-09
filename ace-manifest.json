@@ -89,6 +89,33 @@
       "aliases": [],
       "flags": []
     },
+    "shopify:conform_perso_poster": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/ConformPersoPoster",
+      "commandName": "shopify:conform_perso_poster",
+      "description": "Conforme un poster perso existant au preset réduit (Format×Cadre = 4 variantes + frames_poster)",
+      "args": [
+        {
+          "type": "spread",
+          "propertyName": "productIds",
+          "name": "productIds",
+          "required": true,
+          "description": "Poster perso product IDs (numeric ou gid://)"
+        }
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "dry-run",
+          "propertyName": "dryRun",
+          "type": "boolean",
+          "description": "Affiche le plan sans rien muter"
+        }
+      ]
+    },
     "custom_art:register_orders_paid_webhook": {
       "settings": {
         "loadApp": true,
