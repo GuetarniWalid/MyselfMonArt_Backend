@@ -483,6 +483,336 @@ function registerTools(server, shopifyClient) {
     }
   )
   server.tool(
+    'setProduct',
+    'DESTRUCTIVE — declaratively set a product\'s target options + variants in ONE call via productSet. Shopify RECONCILES the product to match exactly what you pass: it creates/updates the listed options & variants and PERMANENTLY DELETES any variant NOT listed and any option value no longer referenced (deleted variant GIDs are lost for good). This is the tool to restructure a poster from "frame colour = variant" to "Sans cadre / Avec cadre" in a single call. To KEEP a variant, list it (same optionValues). Option names/values are matched EXACTLY (case-sensitive). Inventory defaults are print-on-demand (not tracked, policy CONTINUE). Idempotent: re-running with the same target is a no-op. Read back with getProduct to obtain the new option/value IDs.',
+    {
+      productId: z
+        .string()
+        .describe('The product ID to restructure (e.g., gid://shopify/Product/123)'),
+      productOptions: z
+        .array(
+          z.object({
+            name: z.string().describe('Option name, exact case (e.g. "Cadres")'),
+            position: z
+              .number()
+              .int()
+              .min(1)
+              .optional()
+              .describe('1-based display position (optional)'),
+            values: z
+              .array(z.string())
+              .min(1)
+              .describe(
+                'The COMPLETE list of values for this option, exact case (e.g. ["Sans cadre", "Avec cadre"]). Any current value not listed is removed.'
+              ),
+          })
+        )
+        .min(1)
+        .max(3)
+        .optional()
+        .describe(
+          'The COMPLETE desired set of options (1 to 3, Shopify limit). Omit to leave options untouched.'
+        ),
+      variants: z
+        .array(
+          z.object({
+            price: z.string().describe('Variant price as a string, e.g. "39.90"'),
+            compareAtPrice: z
+              .string()
+              .optional()
+              .describe('Optional compare-at (barred) price, e.g. "62.90"'),
+            optionValues: z
+              .array(
+                z.object({
+                  optionName: z.string().describe('Option name, exact case (e.g. "Cadres")'),
+                  name: z.string().describe('Option value, exact case (e.g. "Sans cadre")'),
+                })
+              )
+              .min(1)
+              .describe('One entry per product option'),
+            inventoryPolicy: z
+              .enum(['DENY', 'CONTINUE'])
+              .optional()
+              .default('CONTINUE')
+              .describe('CONTINUE (default) keeps selling when out of stock'),
+          })
+        )
+        .min(1)
+        .max(100)
+        .optional()
+        .describe(
+          'The COMPLETE desired set of variants (1 to 100). ANY existing variant not listed here is PERMANENTLY DELETED. Omit to leave variants untouched.'
+        ),
+      synchronous: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'true (default) waits for reconciliation and returns the final product state; false returns a background productSetOperation.'
+        ),
+    },
+    async (args) => {
+      try {
+        // Best-effort snapshot of the variant count BEFORE, for a readable before/after summary.
+        let variantsBefore = null
+        try {
+          const beforeRes = await shopifyClient.getProductVariantsCount(args.productId)
+          variantsBefore = beforeRes.data.product?.variantsCount?.count ?? null
+        } catch {
+          variantsBefore = null
+        }
+        const result = await shopifyClient.setProduct(
+          args.productId,
+          args.productOptions,
+          args.variants,
+          args.synchronous
+        )
+        const payload = result.data.productSet
+        if (payload.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error setting product: ${JSON.stringify(payload.userErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        const product = payload.product
+        // Exact count (variants(first:100).nodes is capped at 100, so don't use its length here)
+        const variantsAfter =
+          product?.variantsCount?.count ?? product?.variants?.nodes?.length ?? null
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  summary: {
+                    variantsBefore,
+                    variantsAfter,
+                    optionsCount: product?.options?.length ?? null,
+                  },
+                  productSetOperation: payload.productSetOperation,
+                  product,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error setting product: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'deleteProductVariants',
+    'DESTRUCTIVE — permanently delete specific variants from a product via productVariantsBulkDelete. The variant GIDs are lost for good. Surgical alternative to setProduct when you only need to remove a known list of variants (e.g. the "Cadre <couleur>" variants). Get the GIDs from getProduct -> variants.',
+    {
+      productId: z.string().describe('The product ID (e.g., gid://shopify/Product/123)'),
+      variantIds: z
+        .array(z.string())
+        .min(1)
+        .max(100)
+        .describe(
+          '1 to 100 variant GIDs to delete PERMANENTLY (e.g., gid://shopify/ProductVariant/123)'
+        ),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.deleteProductVariants(args.productId, args.variantIds)
+        const payload = result.data.productVariantsBulkDelete
+        if (payload.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error deleting product variants: ${JSON.stringify(payload.userErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(payload.product, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error deleting product variants: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'updateProductOption',
+    'Rename an option and/or add, rename or DELETE its values via productOptionUpdate. With variantStrategy MANAGE (default), DELETING a value ALSO permanently deletes the variants that use it — the exact lever to strip frame-colour values from a "Cadres" option. Get optionId and value IDs from getProduct -> options[].id / options[].optionValues[].id. Use LEAVE_AS_IS to change labels without touching variants.',
+    {
+      productId: z.string().describe('The product ID (e.g., gid://shopify/Product/123)'),
+      optionId: z
+        .string()
+        .describe(
+          'The option GID to update (gid://shopify/ProductOption/...), from getProduct -> options[].id'
+        ),
+      name: z
+        .string()
+        .optional()
+        .describe('New option name (optional). Omit to keep the current name.'),
+      optionValuesToAdd: z
+        .array(z.object({ name: z.string().describe('New value name, exact case') }))
+        .optional()
+        .describe('Values to add to the option'),
+      optionValuesToUpdate: z
+        .array(
+          z.object({
+            id: z.string().describe('Existing option value GID'),
+            name: z.string().describe('New name for that value'),
+          })
+        )
+        .optional()
+        .describe('Values to rename (by GID)'),
+      optionValuesToDelete: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Option value GIDs to delete. With variantStrategy MANAGE this ALSO deletes the associated variants.'
+        ),
+      variantStrategy: z
+        .enum(['MANAGE', 'LEAVE_AS_IS'])
+        .optional()
+        .default('MANAGE')
+        .describe(
+          'MANAGE (default): reconcile variants (deleting a value deletes its variants). LEAVE_AS_IS: only touch the option metadata.'
+        ),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.updateProductOption(args.productId, {
+          optionId: args.optionId,
+          name: args.name,
+          optionValuesToAdd: args.optionValuesToAdd,
+          optionValuesToUpdate: args.optionValuesToUpdate,
+          optionValuesToDelete: args.optionValuesToDelete,
+          variantStrategy: args.variantStrategy,
+        })
+        const payload = result.data.productOptionUpdate
+        if (payload.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error updating product option: ${JSON.stringify(payload.userErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(payload.product, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error updating product option: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'deleteProductOptions',
+    'DESTRUCTIVE — delete one or more entire options from a product via productOptionsDelete (cleanup / edge case). Strategy DEFAULT only deletes an option that does not conflict with existing variants; POSITION collapses the resulting duplicate variants, keeping only unique combinations of the remaining option values. Get the option GIDs from getProduct -> options[].id.',
+    {
+      productId: z.string().describe('The product ID (e.g., gid://shopify/Product/123)'),
+      optionIds: z
+        .array(z.string())
+        .min(1)
+        .describe(
+          'Option GIDs to delete (gid://shopify/ProductOption/...), from getProduct -> options[].id'
+        ),
+      strategy: z
+        .enum(['DEFAULT', 'POSITION'])
+        .optional()
+        .default('DEFAULT')
+        .describe(
+          'DEFAULT: only delete options with no variant conflict. POSITION: collapse duplicate variants, keeping unique remaining combinations.'
+        ),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.deleteProductOptions(
+          args.productId,
+          args.optionIds,
+          args.strategy
+        )
+        const payload = result.data.productOptionsDelete
+        if (payload.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error deleting product options: ${JSON.stringify(payload.userErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                { deletedOptionsIds: payload.deletedOptionsIds, product: payload.product },
+                null,
+                2
+              ),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error deleting product options: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
     'createProductMedia',
     'Attach media (images) to a product GALLERY via productCreateMedia. Each item needs an originalSource: a publicly accessible URL (e.g. a Shopify CDN file URL from uploadFile/createFile) or the resourceUrl returned by createStagedUpload. The ORDER of the media array = the order the images are appended to the gallery. Media is processed ASYNCHRONOUSLY: the returned status is usually UPLOADED or PROCESSING and image.url may still be null — re-read with getProduct once READY. Set alt text for SEO/accessibility.',
     {

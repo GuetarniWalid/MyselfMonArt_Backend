@@ -390,6 +390,15 @@ export class ShopifyClient {
               }
             }
           }
+          options {
+            id
+            name
+            position
+            optionValues {
+              id
+              name
+            }
+          }
           variants(first: 100) {
             edges {
               node {
@@ -399,6 +408,13 @@ export class ShopifyClient {
                 sku
                 barcode
                 inventoryQuantity
+                selectedOptions {
+                  name
+                  value
+                  optionValue {
+                    id
+                  }
+                }
                 inventoryItem {
                   measurement {
                     weight {
@@ -565,6 +581,210 @@ export class ShopifyClient {
       })),
     }
     return this.graphql(mutation, variables)
+  }
+  // Lightweight variant count (used to build a readable before/after summary for setProduct)
+  async getProductVariantsCount(productId) {
+    const query = `
+      query getProductVariantsCount($id: ID!) {
+        product(id: $id) {
+          variantsCount {
+            count
+          }
+        }
+      }
+    `
+    return this.graphql(query, { id: productId })
+  }
+  // DESTRUCTIVE: declarative target state. Shopify reconciles (creates/updates/DELETES)
+  // options + variants to match exactly what is passed. Any variant not listed is deleted.
+  async setProduct(productId, productOptions, variants, synchronous = true) {
+    const mutation = `
+      mutation setProduct($input: ProductSetInput!, $synchronous: Boolean) {
+        productSet(input: $input, synchronous: $synchronous) {
+          product {
+            id
+            title
+            handle
+            variantsCount {
+              count
+            }
+            options {
+              id
+              name
+              position
+              optionValues {
+                id
+                name
+              }
+            }
+            variants(first: 100) {
+              nodes {
+                id
+                title
+                price
+                compareAtPrice
+                selectedOptions {
+                  name
+                  value
+                }
+              }
+            }
+          }
+          productSetOperation {
+            id
+            status
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `
+    const input = { id: productId }
+    if (productOptions !== undefined) {
+      input.productOptions = productOptions.map((option) => ({
+        name: option.name,
+        ...(option.position !== undefined && { position: option.position }),
+        // Accept plain strings (like createProductOptions) or { name } objects
+        values: option.values.map((v) => (typeof v === 'string' ? { name: v } : { name: v.name })),
+      }))
+    }
+    if (variants !== undefined) {
+      input.variants = variants.map((variant) => ({
+        optionValues: variant.optionValues.map((ov) => ({
+          optionName: ov.optionName,
+          name: ov.name,
+        })),
+        ...(variant.price !== undefined && { price: variant.price }),
+        ...(variant.compareAtPrice !== undefined && { compareAtPrice: variant.compareAtPrice }),
+        // Print-on-demand friendly defaults: no stock tracking, keep selling
+        inventoryPolicy: variant.inventoryPolicy || 'CONTINUE',
+        inventoryItem: { tracked: variant.tracked ?? false },
+      }))
+    }
+    return this.graphql(mutation, { input, synchronous })
+  }
+  // DESTRUCTIVE: permanently delete specific variants (GIDs) from a product.
+  async deleteProductVariants(productId, variantIds) {
+    const mutation = `
+      mutation deleteProductVariants($productId: ID!, $variantsIds: [ID!]!) {
+        productVariantsBulkDelete(productId: $productId, variantsIds: $variantsIds) {
+          product {
+            id
+            title
+            variantsCount {
+              count
+            }
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `
+    return this.graphql(mutation, { productId, variantsIds: variantIds })
+  }
+  // Rename/add/DELETE values of an existing option. With variantStrategy MANAGE,
+  // deleting a value also deletes the variants that use it.
+  async updateProductOption(productId, params) {
+    const mutation = `
+      mutation updateProductOption(
+        $productId: ID!
+        $option: OptionUpdateInput!
+        $optionValuesToAdd: [OptionValueCreateInput!]
+        $optionValuesToUpdate: [OptionValueUpdateInput!]
+        $optionValuesToDelete: [ID!]
+        $variantStrategy: ProductOptionUpdateVariantStrategy
+      ) {
+        productOptionUpdate(
+          productId: $productId
+          option: $option
+          optionValuesToAdd: $optionValuesToAdd
+          optionValuesToUpdate: $optionValuesToUpdate
+          optionValuesToDelete: $optionValuesToDelete
+          variantStrategy: $variantStrategy
+        ) {
+          product {
+            id
+            title
+            options {
+              id
+              name
+              position
+              optionValues {
+                id
+                name
+              }
+            }
+            variants(first: 100) {
+              nodes {
+                id
+                title
+                price
+                selectedOptions {
+                  name
+                  value
+                }
+              }
+            }
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `
+    const option = { id: params.optionId }
+    if (params.name !== undefined) option.name = params.name
+    const variables = {
+      productId,
+      option,
+      ...(params.optionValuesToAdd !== undefined && {
+        optionValuesToAdd: params.optionValuesToAdd.map((v) => ({ name: v.name })),
+      }),
+      ...(params.optionValuesToUpdate !== undefined && {
+        optionValuesToUpdate: params.optionValuesToUpdate.map((v) => ({ id: v.id, name: v.name })),
+      }),
+      ...(params.optionValuesToDelete !== undefined && {
+        optionValuesToDelete: params.optionValuesToDelete,
+      }),
+      variantStrategy: params.variantStrategy || 'MANAGE',
+    }
+    return this.graphql(mutation, variables)
+  }
+  // DESTRUCTIVE: delete one or more entire options from a product (cleanup / edge case).
+  async deleteProductOptions(productId, optionIds, strategy = 'DEFAULT') {
+    const mutation = `
+      mutation deleteProductOptions($productId: ID!, $options: [ID!]!, $strategy: ProductOptionDeleteStrategy) {
+        productOptionsDelete(productId: $productId, options: $options, strategy: $strategy) {
+          deletedOptionsIds
+          product {
+            id
+            title
+            options {
+              id
+              name
+              position
+              optionValues {
+                id
+                name
+              }
+            }
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `
+    return this.graphql(mutation, { productId, options: optionIds, strategy })
   }
   async createProductMedia(productId, media) {
     const mutation = `
