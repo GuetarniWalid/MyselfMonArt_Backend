@@ -2492,6 +2492,101 @@ export class ShopifyClient {
     `
     return this.graphql(query, { first: params.limit || 10 })
   }
+  // Per-market pricing operations (Markets -> Catalogs -> Price Lists).
+  // A market's catalog carries a PriceList whose `parent.adjustment` shifts every
+  // variant price by a % relative to the base (France) price WITHOUT touching the
+  // base variant price. This is how we raise Canada/US prices independently.
+  // NOTE: on this store Canada + USA SHARE one MarketCatalog ("USA") and one USD
+  // PriceList, so adjusting either market adjusts both — they are coupled by design.
+  async getMarketPricing(params) {
+    const query = `
+      query getMarketPricing($first: Int!) {
+        markets(first: $first) {
+          nodes {
+            id
+            name
+            handle
+            status
+            currencySettings {
+              baseCurrency {
+                currencyCode
+              }
+            }
+            catalogs(first: 5) {
+              nodes {
+                id
+                title
+                status
+                priceList {
+                  id
+                  currency
+                  parent {
+                    adjustment {
+                      type
+                      value
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `
+    return this.graphql(query, { first: params.limit || 50 })
+  }
+  // Update an existing price list's parent adjustment in place (idempotent, no duplicate).
+  async priceListUpdateAdjustment(priceListId, type, value) {
+    const mutation = `
+      mutation priceListUpdateAdjustment($id: ID!, $input: PriceListUpdateInput!) {
+        priceListUpdate(id: $id, input: $input) {
+          priceList {
+            id
+            currency
+            parent {
+              adjustment {
+                type
+                value
+              }
+            }
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `
+    const input = { parent: { adjustment: { type, value } } }
+    return this.graphql(mutation, { id: priceListId, input })
+  }
+  // Create a new price list attached to a market catalog with a parent adjustment.
+  async priceListCreateAdjustment(name, currency, catalogId, type, value) {
+    const mutation = `
+      mutation priceListCreateAdjustment($input: PriceListCreateInput!) {
+        priceListCreate(input: $input) {
+          priceList {
+            id
+            currency
+            parent {
+              adjustment {
+                type
+                value
+              }
+            }
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `
+    const input = { name, currency, catalogId, parent: { adjustment: { type, value } } }
+    return this.graphql(mutation, { input })
+  }
   // Price rules operations (migrated from deprecated priceRules to discountNodes)
   async getPriceRules(params) {
     // Using discountNodes instead of deprecated priceRules query

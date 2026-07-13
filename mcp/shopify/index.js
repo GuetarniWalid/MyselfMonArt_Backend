@@ -45,6 +45,28 @@ function shapeCollection(collection) {
   return shaped
 }
 
+// Flatten a market (from getMarketPricing) to a per-market pricing summary keyed on
+// its FIRST catalog. `currency` is the market's base currency; `priceListCurrency`
+// is the currency the price list is denominated in (can differ, e.g. Canada base
+// CAD but its shared price list is USD). `adjustment` is the parent % shift vs the
+// base (France) price, or null when no price list is attached yet.
+function shapeMarketPricing(market) {
+  const catalog = market?.catalogs?.nodes?.[0] || null
+  const priceList = catalog?.priceList || null
+  return {
+    marketId: market.id,
+    name: market.name,
+    handle: market.handle,
+    status: market.status,
+    currency: market.currencySettings?.baseCurrency?.currencyCode || null,
+    catalogId: catalog?.id || null,
+    catalogTitle: catalog?.title || null,
+    priceListId: priceList?.id || null,
+    priceListCurrency: priceList?.currency || null,
+    adjustment: priceList?.parent?.adjustment || null,
+  }
+}
+
 // Register all tools
 function registerTools(server, shopifyClient) {
   // Product Tools
@@ -3264,6 +3286,150 @@ function registerTools(server, shopifyClient) {
             {
               type: 'text',
               text: `Error fetching markets: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  // Per-market pricing (Markets -> Catalogs -> Price Lists)
+  server.tool(
+    'getMarketPricing',
+    "READ per-market pricing. Lists every market with its FIRST catalog's price list and parent adjustment (the % applied to every variant relative to the base/France price, WITHOUT changing the base variant price). Use this to see how much Canada/US/etc. are marked up, and to grab the marketId/priceListId before calling setMarketPriceAdjustment. Returns per market: { marketId, name, handle, status, currency (market base), catalogId, catalogTitle, priceListId|null, priceListCurrency, adjustment|null }. NOTE: on this store Canada and USA share ONE catalog + ONE price list, so they always carry the same adjustment.",
+    {
+      limit: z.number().optional().default(50).describe('Max markets to return (default 50)'),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.getMarketPricing(args)
+        const markets = (result.data.markets.nodes || []).map(shapeMarketPricing)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(markets, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error fetching market pricing: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'setMarketPriceAdjustment',
+    "WRITE a per-market price adjustment as a signed percentage of the base (France) price — raises/lowers every variant price for that market WITHOUT touching the base variant price (do NOT use updateProductVariantPrices for this, that changes the GLOBAL price). percent +18 => +18% (PERCENTAGE_INCREASE, value 18); -10 => -10% (PERCENTAGE_DECREASE, value 10). Resolves the market's FIRST catalog: if it already has a price list it is UPDATED in place (idempotent, no duplicate); otherwise a new price list is CREATED and attached to that catalog, denominated in the market's base currency. WARNING: markets that share a catalog move together — on this store setting Canada also sets USA (shared catalog + price list). Always surfaces userErrors.",
+    {
+      marketId: z
+        .string()
+        .describe(
+          'The market GID to adjust (e.g., gid://shopify/Market/106045604187). Get it from getMarketPricing.'
+        ),
+      percent: z
+        .number()
+        .describe(
+          'Signed percent vs base price. +18 = +18% increase, -10 = -10% decrease. 0 = same as base.'
+        ),
+    },
+    async (args) => {
+      try {
+        // 1) Resolve the market's first catalog -> priceListId, currency.
+        const pricingResult = await shopifyClient.getMarketPricing({ limit: 100 })
+        const market = (pricingResult.data.markets.nodes || []).find((m) => m.id === args.marketId)
+        if (!market) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error: market ${args.marketId} not found. Call getMarketPricing to list valid market IDs.`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        const summary = shapeMarketPricing(market)
+        if (!summary.catalogId) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error: market "${summary.name}" (${args.marketId}) has no catalog to attach a price list to. Create a market catalog first.`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        // 2) Map signed percent -> adjustment type + absolute value.
+        const type = args.percent >= 0 ? 'PERCENTAGE_INCREASE' : 'PERCENTAGE_DECREASE'
+        const value = Math.abs(args.percent)
+        // 3/4) Update existing price list in place, or create + attach a new one.
+        let mutationResult
+        let operation
+        if (summary.priceListId) {
+          operation = 'priceListUpdate'
+          mutationResult = await shopifyClient.priceListUpdateAdjustment(
+            summary.priceListId,
+            type,
+            value
+          )
+        } else {
+          operation = 'priceListCreate'
+          const name = `${summary.name} ${args.percent >= 0 ? '+' : ''}${args.percent}%`
+          mutationResult = await shopifyClient.priceListCreateAdjustment(
+            name,
+            summary.currency,
+            summary.catalogId,
+            type,
+            value
+          )
+        }
+        // 5) Always surface userErrors.
+        const payload = mutationResult.data[operation]
+        if (payload.userErrors && payload.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error setting market price adjustment (${operation}): ${JSON.stringify(payload.userErrors)}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  operation,
+                  marketId: summary.marketId,
+                  marketName: summary.name,
+                  catalogId: summary.catalogId,
+                  catalogTitle: summary.catalogTitle,
+                  priceList: payload.priceList,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error setting market price adjustment: ${error.message}`,
             },
           ],
           isError: true,
