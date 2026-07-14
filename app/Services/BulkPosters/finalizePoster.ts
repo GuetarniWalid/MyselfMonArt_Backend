@@ -39,6 +39,7 @@ export async function expectedVariantCount(shopify: Shopify, ratio: string): Pro
 }
 
 export type FinalizeOutcome =
+  | { outcome: 'forbidden' }
   | { outcome: 'missing' }
   | { outcome: 'pending'; variantsCount: number; expected: number }
   | { outcome: 'published'; variantsCount: number; expected: number; link: string }
@@ -47,6 +48,7 @@ export type FinalizeOutcome =
  * Publie le brouillon SI (et seulement si) il est complet, puis pose les 2 liens toile↔poster
  * et nettoie le marqueur `poster_draft`.
  *
+ *   - `forbidden`: le couple (toile, poster) n'est pas un couple à nous → on ne touche à RIEN.
  *   - `missing`  : le brouillon n'existe plus (supprimé à la main) → on nettoie le marqueur pour
  *                  que la toile redevienne une candidate normale.
  *   - `pending`  : variantes incomplètes (ou modèle illisible) → on ne publie PAS, le brouillon
@@ -59,10 +61,32 @@ export async function finalizePosterDraft(
   productId: string,
   ratio: string
 ): Promise<FinalizeOutcome> {
+  // GARDE D'APPARIEMENT — même règle que `deleteDraft`, et pour la même raison : l'endpoint HTTP
+  // qui mène ici n'est PAS authentifié. Sans elle, n'importe qui pouvait passer le couple de son
+  // choix et nous faire publier sur TOUS les canaux un produit arbitraire (une toile a ≥ 7
+  // variantes, donc « complet ») puis écraser ses liens. On n'agit donc que sur un couple que la
+  // TOILE elle-même désigne — un marqueur que seul notre `createOne`/`finalize` écrit :
+  //   - `poster_draft` = ce productId : le cas normal (brouillon en attente de publication) ;
+  //   - `poster`       = ce productId : couple DÉJÀ terminé. Accepté pour garder `finalize`
+  //     idempotent (réponse perdue sur 524 → l'appelant rejoue) : tout ce qui suit est alors une
+  //     répétition sans effet (déjà ACTIVE, mêmes liens réécrits).
+  // La garde passe AVANT le test « brouillon disparu » : ce chemin-là supprime `link.poster_draft`,
+  // et un productId inexistant suffisait donc à orpheliner le vrai brouillon d'une toile tierce
+  // (→ doublon au run suivant).
+  const toile = (await shopify.product.getProductById(toileId)) as any
+  const linkRef = (key: string): string | null =>
+    (toile?.metafields?.edges || []).find(
+      (e: any) => e.node?.namespace === 'link' && e.node?.key === key
+    )?.node?.value ?? null
+  const isDraft = linkRef('poster_draft') === productId
+  const isDone = linkRef('poster') === productId
+  if (!isDraft && !isDone) return { outcome: 'forbidden' }
+
   const product = (await shopify.product.getProductById(productId)) as any
 
   if (!product) {
-    await shopify.metafield.delete(toileId, 'link', 'poster_draft')
+    // Nettoyage réservé au marqueur de CE couple (sur un couple déjà terminé il n'y a rien à nettoyer).
+    if (isDraft) await shopify.metafield.delete(toileId, 'link', 'poster_draft')
     return { outcome: 'missing' }
   }
 

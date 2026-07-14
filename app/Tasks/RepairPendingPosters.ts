@@ -151,6 +151,14 @@ export default class RepairPendingPosters extends BaseTask {
             console.warn(
               `⏳ ${p.posterId} still incomplete (${result.variantsCount}/${result.expected}) — will retry next run`
             )
+          } else if (result.outcome === 'forbidden') {
+            // Inatteignable par construction : le couple vient de `getPendingPosterDrafts` (= la
+            // lecture de link.poster_draft, exactement ce que la garde revérifie). Si ça arrive, le
+            // marqueur a bougé pendant le run (finalisé en parallèle) — on ne force rien, on trace.
+            console.warn(
+              `⏭️  ${p.posterId} "${p.toileTitle}": plus le brouillon de cette toile — skipped`
+            )
+            skipped++
           }
         } catch (error: any) {
           const msg = error instanceof Error ? error.message : String(error)

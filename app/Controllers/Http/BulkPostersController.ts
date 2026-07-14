@@ -453,6 +453,10 @@ export default class BulkPostersController {
    * ⚠️ Ne RECRÉE PAS les variantes manquantes : un brouillon resté à 1 variante (webhook
    * products/create raté) ne se terminera JAMAIS par un simple finalize. C'est le cron
    * `RepairPendingPosters` qui resynchronise d'abord, puis finalise.
+   *
+   * Endpoint NON authentifié (comme /delete-draft) : la GARDE D'APPARIEMENT vit dans
+   * `finalizePosterDraft` (outcome `forbidden` → 409). On ne publie donc que le poster que la toile
+   * désigne elle-même, jamais un produit arbitraire passé par un tiers.
    */
   public async finalize({ request, response }: HttpContextContract) {
     const toileId = request.input('toileId')
@@ -465,6 +469,13 @@ export default class BulkPostersController {
     const shopify = new Shopify()
     const result = await finalizePosterDraft(shopify, toileId, productId, ratio)
 
+    if (result.outcome === 'forbidden') {
+      return response.status(409).json({
+        success: false,
+        message:
+          "productId n'est pas le poster (brouillon ou publié) de cette toile — finalisation refusée",
+      })
+    }
     if (result.outcome === 'missing') return { success: true, missing: true }
     if (result.outcome === 'pending') {
       return {
