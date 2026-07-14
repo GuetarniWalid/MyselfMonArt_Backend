@@ -306,6 +306,8 @@ export interface ProductByTag {
 export interface ProductById {
   id: string
   title: string
+  /** ISO 8601. Source d'âge AUTORITATIVE (cf. RepairPendingPosters : garde anti-course webhook). */
+  createdAt: string
   description: string
   descriptionHtml: string
   seo?: {

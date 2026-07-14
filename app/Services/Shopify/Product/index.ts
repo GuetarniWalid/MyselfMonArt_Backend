@@ -343,6 +343,64 @@ export default class Product extends Authentication {
   }
 
   /**
+   * Lightweight scan for poster drafts still awaiting finalisation: toiles carrying
+   * `link.poster_draft` (a hidden draft exists) but not yet `link.poster` (not finished).
+   * Normally EMPTY — a draft only lives for ~2 min between creation and finalize. A lasting
+   * entry means the flow was interrupted (missed products/create webhook, closed tab, crash).
+   *
+   * Used by the RepairPendingPosters cron. Deliberately returns ONLY the ids: everything the
+   * cron decides on (age, variant count, orientation) is read from the authoritative
+   * `getProductById`, never from a metafield `reference` resolution.
+   */
+  public async getPendingPosterDrafts(): Promise<
+    Array<{ toileId: string; toileTitle: string; posterId: string }>
+  > {
+    const pending: Array<{ toileId: string; toileTitle: string; posterId: string }> = []
+    let cursor: string | null = null
+    let hasNextPage = true
+
+    while (hasNextPage) {
+      const query = `query PendingPosterDraftsScan($cursor: String) {
+        products(first: 250, after: $cursor) {
+          edges {
+            cursor
+            node {
+              id
+              title
+              artworkTypeMetafield: metafield(namespace: "artwork", key: "type") { value }
+              posterMetafield: metafield(namespace: "link", key: "poster") { value }
+              posterDraftMetafield: metafield(namespace: "link", key: "poster_draft") { value }
+            }
+          }
+          pageInfo { hasNextPage }
+        }
+      }`
+
+      const data = await this.fetchGraphQL(query, { cursor }, 100)
+      const edges = (data.products.edges ?? []) as Array<any>
+
+      for (const edge of edges) {
+        const node = edge.node
+        // Le marqueur vit sur la TOILE (le poster, lui, porte link.painting).
+        if (node.artworkTypeMetafield?.value !== 'painting') continue
+
+        const posterId = node.posterDraftMetafield?.value
+        if (!posterId) continue
+        // Déjà terminé (link.poster posé au finalize) : plus rien à faire.
+        if (node.posterMetafield?.value) continue
+
+        pending.push({ toileId: node.id, toileTitle: node.title, posterId })
+      }
+
+      hasNextPage = data.products.pageInfo.hasNextPage
+      cursor = hasNextPage && edges.length ? edges[edges.length - 1].cursor : null
+      if (hasNextPage) await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+
+    return pending
+  }
+
+  /**
    * Lightweight scan for artworks (paintings/posters) missing their AI-detected
    * colors (shopify.color-pattern) and/or themes (shopify.theme). Used to backfill
    * products published while Shopify's daily variant-creation limit was blocking the
@@ -649,6 +707,7 @@ export default class Product extends Authentication {
         product(id: $id) {
           id
           title
+          createdAt
           description
           descriptionHtml
           seo {

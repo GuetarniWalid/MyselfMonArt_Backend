@@ -764,6 +764,12 @@ export default abstract class ModelCopier {
     // backend redeploy anyway. The RepairIncompleteArtworks daily cron owns the
     // "retry later" responsibility — it re-runs the copy (differential, idempotent)
     // once the quota is available. Empty array => throw on the first limit hit.
+    //
+    // ⚠️ LOAD-BEARING for RepairPendingPosters (app/Tasks): that cron may only touch a poster
+    // draft once no products/create work can still be in flight for it, and it relies on this
+    // empty array to bound the webhook to minutes. Re-introducing long delays here would let a
+    // retry outlive its 30-min guard, so both would recreate options at once → corrupted product.
+    // Change this and you must revisit RepairPendingPosters.MIN_AGE_MS.
     const DAILY_LIMIT_RETRY_DELAYS: number[] = []
 
     let lastError: Error | null = null

@@ -1,5 +1,4 @@
 import type { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
-import Env from '@ioc:Adonis/Core/Env'
 import Shopify from 'App/Services/Shopify'
 import ShopifyProductPublisher from 'App/Services/ShopifyProductPublisher'
 import ClaudePublisher from 'App/Services/Claude/ProductPublisher'
@@ -12,6 +11,7 @@ import {
   expectedPosterTitleFromToile,
   normalizeCollectionTitle,
 } from 'App/Services/BulkPosters/collectionMap'
+import { expectedVariantCount, finalizePosterDraft } from 'App/Services/BulkPosters/finalizePoster'
 import { CreateProduct } from 'Types/Product'
 
 /**
@@ -33,9 +33,6 @@ import { CreateProduct } from 'Types/Product'
  */
 
 const MODEL_TAGS = ['portrait model', 'paysage model', 'square model']
-
-// Cache process-wide du nombre de variantes attendu par ratio (lu sur le produit-modèle poster).
-const expectedVariantsCache = new Map<string, number>()
 
 export default class BulkPostersController {
   /**
@@ -435,7 +432,7 @@ export default class BulkPostersController {
     const shopify = new Shopify()
     const product = (await shopify.product.getProductById(productId)) as any
     const variantsCount = product?.variants?.nodes?.length ?? 0
-    const expected = await this.expectedVariantCount(shopify, ratio)
+    const expected = await expectedVariantCount(shopify, ratio)
     return {
       success: true,
       data: {
@@ -452,6 +449,10 @@ export default class BulkPostersController {
    * Si le brouillon est complet (N variantes) → bascule ACTIVE + publie + pose les 2 liens + nettoie
    * le marqueur. Sinon → { pending:true }. TOUT OU RIEN : link.poster (mémoire de reprise) n'est
    * écrit QU'ICI, sur succès complet.
+   *
+   * ⚠️ Ne RECRÉE PAS les variantes manquantes : un brouillon resté à 1 variante (webhook
+   * products/create raté) ne se terminera JAMAIS par un simple finalize. C'est le cron
+   * `RepairPendingPosters` qui resynchronise d'abord, puis finalise.
    */
   public async finalize({ request, response }: HttpContextContract) {
     const toileId = request.input('toileId')
@@ -462,35 +463,24 @@ export default class BulkPostersController {
     }
 
     const shopify = new Shopify()
-    const product = (await shopify.product.getProductById(productId)) as any
+    const result = await finalizePosterDraft(shopify, toileId, productId, ratio)
 
-    // Brouillon disparu (supprimé à la main) : on nettoie le marqueur pour que la toile
-    // redevienne une candidate normale, et on signale au front de la retirer du pending.
-    if (!product) {
-      await shopify.metafield.delete(toileId, 'link', 'poster_draft')
-      return { success: true, missing: true }
+    if (result.outcome === 'missing') return { success: true, missing: true }
+    if (result.outcome === 'pending') {
+      return {
+        success: true,
+        pending: true,
+        variantsCount: result.variantsCount,
+        expected: result.expected,
+      }
     }
-
-    const variantsCount = product?.variants?.nodes?.length ?? 0
-    const expected = await this.expectedVariantCount(shopify, ratio)
-    if (!expected || variantsCount < expected) {
-      // Incomplet (souvent : cap quotidien). On NE publie pas, on NE pose pas link.poster :
-      // le brouillon reste caché (marqueur conservé) et sera repris au prochain lancement.
-      return { success: true, pending: true, variantsCount, expected }
+    return {
+      success: true,
+      published: true,
+      variantsCount: result.variantsCount,
+      expected: result.expected,
+      link: result.link,
     }
-
-    // Complet → publier puis lier. link.poster en dernier = signal « terminé ».
-    await shopify.product.update(productId, { status: 'ACTIVE' })
-    await shopify.publications.publishProductOnAll(productId)
-    await shopify.metafield.update(productId, 'link', 'painting', toileId, 'product_reference')
-    await shopify.metafield.update(toileId, 'link', 'poster', productId, 'product_reference')
-    // Nettoyage du marqueur « brouillon en cours » (best-effort).
-    await shopify.metafield.delete(toileId, 'link', 'poster_draft')
-
-    // link : « Voir le produit » côté studio (pipeline toile → poster jumeau). Admin plutôt que
-    // storefront : onlineStoreUrl peut mettre quelques secondes à exister après la publication.
-    const link = `${Env.get('SHOPIFY_SHOP_URL')}/admin/products/${String(productId).split('/').pop()}`
-    return { success: true, published: true, variantsCount, expected, link }
   }
 
   /**
@@ -568,20 +558,5 @@ export default class BulkPostersController {
     }
 
     return { success: true, data: { posterCollection: null } }
-  }
-
-  /** Nombre de variantes attendu = celui du produit-modèle poster pour ce ratio (mis en cache). */
-  private async expectedVariantCount(shopify: Shopify, ratio: string): Promise<number> {
-    const tag = ratio === 'landscape' ? 'paysage model' : 'portrait model'
-    const cached = expectedVariantsCache.get(tag)
-    if (cached !== undefined) return cached
-    try {
-      const model = (await shopify.product.getProductByTag(tag, 'poster')) as any
-      const count = model?.variants?.nodes?.length ?? 0
-      if (count > 0) expectedVariantsCache.set(tag, count)
-      return count
-    } catch {
-      return 0
-    }
   }
 }
