@@ -1027,6 +1027,18 @@ export default class CustomArtController {
     const mapped = await CustomArtVariantMapping.resolve(variantId)
     if (!mapped?.productId) return { kind: 'legacy' }
 
+    // KILL-SWITCH (rollback immédiat d'une bascule — cf. PLAN-UNIFICATION-STUDIO-FOOT.md §3) : évalué
+    // AVANT le chargement de la recette, il force le chemin legacy pour un produit listé dans
+    // STUDIO_GENERIC_DISABLE_PRODUCTS, sans dépendre du cache recette (5 min) ni du metafield Shopify.
+    // C'est la voie de retour arrière d'urgence d'un produit basculé.
+    if (RecipeService.isProductKillSwitched(mapped.productId)) {
+      Logger.warn(
+        'custom-art routage: kill-switch actif product=%s -> chemin legacy',
+        mapped.productId
+      )
+      return { kind: 'legacy' }
+    }
+
     let loaded: LoadedRecipe | null
     try {
       loaded = await RecipeService.forProduct(mapped.productId)

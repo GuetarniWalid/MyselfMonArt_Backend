@@ -130,6 +130,13 @@ export default Env.rules({
   // toujours créer des jobs, ils restent pending). Coupe instantanément toute dépense IA
   // via env + restart, sans déploiement. Posé après l'incident coûts du 13/06.
   CUSTOM_ART_WORKER_DISABLED: Env.schema.boolean.optional(),
+  // Kill-switch de ROLLBACK de la bascule studio générique (cf. PLAN-UNIFICATION-STUDIO-FOOT.md §3) :
+  // liste (séparée par des virgules) d'IDs produit — GID complet (gid://shopify/Product/123) OU id
+  // numérique (123) — FORCÉS sur le chemin legacy, quelle que soit leur recette. Voie de retour arrière
+  // immédiate d'une bascule, sans toucher au metafield Shopify ni attendre l'expiration du cache
+  // recette (5 min). Env + restart, honoré par app ET cron. Même philosophie que
+  // CUSTOM_ART_WORKER_DISABLED. Absente = aucun effet (dormant).
+  STUDIO_GENERIC_DISABLE_PRODUCTS: Env.schema.string.optional(),
   // --- Canal SAV e-mail (Gmail) — tout optionnel : la feature reste dormante tant que
   // EMAIL_CHANNEL_ENABLED n'est pas vrai (webhook 204, tâches no-op). ---
   // Interrupteur maître du canal e-mail. Faux/absent = aucune ingestion ni réponse.

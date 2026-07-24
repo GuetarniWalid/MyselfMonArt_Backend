@@ -1,4 +1,5 @@
 import Logger from '@ioc:Adonis/Core/Logger'
+import Env from '@ioc:Adonis/Core/Env'
 import Authentication from 'App/Services/Shopify/Authentication'
 import { isBlockedFirstName } from './blocklist'
 
@@ -128,6 +129,23 @@ export default class RecipeService extends Authentication {
    * existe mais est invalide (produit mal configuré -> 422 propre, jamais de fallback
    * foot silencieux). Cache 5 min, états absent/invalide compris.
    */
+  /**
+   * Kill-switch de ROLLBACK (contrat PLAN §3) : `STUDIO_GENERIC_DISABLE_PRODUCTS` = liste (virgules)
+   * d'IDs produit FORCÉS sur le chemin legacy, quelle que soit leur recette. Accepte le GID complet
+   * (`gid://shopify/Product/123`) OU l'id numérique (`123`). Lu à CHAQUE appel (jamais mis en cache) :
+   * un changement d'env + restart (app ET cron) fait effet sans attendre le TTL du cache recette ni
+   * toucher au metafield Shopify. Env absente = jamais actif. Même esprit que CUSTOM_ART_WORKER_DISABLED.
+   */
+  public static isProductKillSwitched(productId: string): boolean {
+    const raw = Env.get('STUDIO_GENERIC_DISABLE_PRODUCTS')
+    if (!raw) return false
+    const numeric = productId.split('/').pop() || productId
+    return String(raw)
+      .split(',')
+      .map((s) => s.trim())
+      .some((entry) => entry.length > 0 && (entry === productId || entry === numeric))
+  }
+
   public static async forProduct(productId: string): Promise<LoadedRecipe | null> {
     const hit = cache.get(productId)
     if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
