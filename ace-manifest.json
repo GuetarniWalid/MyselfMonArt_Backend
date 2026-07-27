@@ -758,6 +758,25 @@
       "aliases": [],
       "flags": []
     },
+    "studio:export-foot-recipe": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/StudioExportFootRecipe",
+      "commandName": "studio:export-foot-recipe",
+      "description": "Prépare la recette foot : options d’équipe + images à migrer (lecture seule)",
+      "args": [],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "all",
+          "propertyName": "all",
+          "type": "boolean",
+          "description": "Inclure aussi les équipes désactivées"
+        }
+      ]
+    },
     "test:metaobject_translations": {
       "settings": {
         "loadApp": true,
