@@ -53,8 +53,13 @@ function loadTsModule(absPath) {
       importHelpers: false,
     },
   }).outputText
-  const customRequire = (id) =>
-    Object.prototype.hasOwnProperty.call(STUBS, id) ? STUBS[id] : require(id)
+  // Les imports RELATIFS sont transpilés à la volée eux aussi (mêmes règles), pour charger les
+  // modules purs du domaine sans avoir à les stubber un par un.
+  const customRequire = (id) => {
+    if (Object.prototype.hasOwnProperty.call(STUBS, id)) return STUBS[id]
+    if (id.startsWith('.')) return loadTsModule(path.join(path.dirname(absPath), `${id}.ts`))
+    return require(id)
+  }
   const mod = { exports: {} }
   new Function('require', 'module', 'exports', js)(customRequire, mod, mod.exports)
   return mod.exports
@@ -136,6 +141,20 @@ const seeing = RecipeService.parseRecipe(
   JSON.stringify({ version: 1, judge: { seesReferences: true }, prompt: { base: 'x' } })
 )
 ok(seeing.judge.seesReferences === true, 'judge.seesReferences repris quand il est déclaré')
+
+// `judge.profile` : un produit peut EMPRUNTER un jugement déjà calibré, cité par son nom.
+ok(!('profile' in actual.judge), 'judge.profile absent si non déclaré')
+const borrowed = RecipeService.parseRecipe(
+  JSON.stringify({ version: 1, judge: { profile: 'foot.v1' }, prompt: { base: 'x' } })
+)
+ok(borrowed.judge.profile === 'foot.v1', 'profil de jugement connu accepté')
+// Un nom inconnu doit être REFUSÉ : un repli silencieux vers le jugement générique
+// n'appliquerait pas les règles demandées, sans que personne ne s'en aperçoive.
+rejects(
+  JSON.stringify({ version: 1, judge: { profile: 'foot.v99' }, prompt: { base: 'x' } }),
+  'profil de jugement inconnu refusé',
+  'inconnu'
+)
 
 // Un tableau vide doit être traité comme absent (sinon l'invariant ci-dessus tombe).
 const emptyFields = RecipeService.parseRecipe(

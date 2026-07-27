@@ -16,6 +16,11 @@ export interface JudgeInput {
   photoBuffer: Buffer
   kitRefBuffers: Buffer[]
   kitRefFiles?: string[]
+  /**
+   * Rôles DÉCLARÉS des références (mêmes index que kitRefBuffers), quand ils sont connus — cas
+   * d'un produit piloté par recette. Prioritaires sur la déduction par suffixe de nom de fichier.
+   */
+  kitRefRoles?: (string | null | undefined)[]
   playerName: string
   playerNumber: number
   fidelityNotes?: string | null
@@ -232,6 +237,8 @@ export default class JudgeRunner {
           photoPath,
           kitPaths,
           kitFiles: input.kitRefFiles || [],
+          // Protocole 3 : rôles déclarés, quand le produit les connaît (recette).
+          kitRoles: input.kitRefRoles || [],
           playerName: input.playerName,
           playerNumber: input.playerNumber,
           fidelityNotes: input.fidelityNotes ?? null,

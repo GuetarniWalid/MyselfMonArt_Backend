@@ -2,6 +2,9 @@ import Logger from '@ioc:Adonis/Core/Logger'
 import Env from '@ioc:Adonis/Core/Env'
 import Authentication from 'App/Services/Shopify/Authentication'
 import { isBlockedFirstName } from './blocklist'
+// Module PUR (son unique import est un `import type`, effacé à la compilation) : le citer ici
+// n'alourdit pas la chaîne de chargement de ce service.
+import { JUDGE_PROFILES } from './judgeEngine'
 
 /**
  * Recette de génération GÉNÉRIQUE d'un produit studio — metafield produit `studio.recipe`
@@ -219,6 +222,12 @@ export interface StudioRecipe {
      * yeux, un juge note la fidélité d'un design qu'il n'a jamais vu.
      */
     seesReferences?: boolean
+    /**
+     * Profil de jugement à emprunter, cité PAR NOM depuis le registre serveur (ex. `foot.v1`).
+     * ABSENT : jugement générique (une passe, textes + figures + qualité) — cas de la famille.
+     * Déclaré : le produit emprunte un jugement déjà calibré plutôt qu'un équivalent réécrit.
+     */
+    profile?: string
   }
 }
 
@@ -535,6 +544,14 @@ export default class RecipeService extends Authentication {
       ...(json.judge?.seesReferences === undefined
         ? {}
         : { seesReferences: Boolean(json.judge.seesReferences) }),
+      ...(json.judge?.profile === undefined ? {} : { profile: String(json.judge.profile).trim() }),
+    }
+    // Le profil est cité par NOM : un nom inconnu est une faute de configuration produit, pas un
+    // repli silencieux vers le jugement générique (qui n'appliquerait pas les règles demandées).
+    if (judge.profile !== undefined && !JUDGE_PROFILES[judge.profile]) {
+      reasons.push(
+        `judge.profile "${judge.profile}" inconnu (${Object.keys(JUDGE_PROFILES).join(', ') || 'aucun'})`
+      )
     }
 
     if (reasons.length > 0) throw new RecipeError(reasons)

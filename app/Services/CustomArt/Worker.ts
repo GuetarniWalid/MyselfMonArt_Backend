@@ -632,6 +632,7 @@ export default class CustomArtWorker {
               ? resolvedRefs.items.map((r, i) => ({ buffer: refBuffers[i], role: r.role }))
               : undefined,
             label: choice.label,
+            notes: choice.notes,
           })
         }
 
@@ -741,6 +742,54 @@ export default class CustomArtWorker {
    * Mêmes garanties que le foot : concurrence bornée, candidat sans aperçu écarté
    * (tout candidat conservé est réellement servable).
    */
+  /**
+   * Traduit les entrées d'un produit PILOTÉ PAR RECETTE vers la forme attendue par le jugement
+   * foot. Rien n'est réécrit : les valeurs ne viennent simplement plus des colonnes historiques
+   * du job, mais de la recette — les champs marqués `printOnArtwork` fournissent le texte peint
+   * sur l'œuvre, et l'option choisie fournit ses images et sa consigne de fidélité.
+   *
+   * Une configuration incomplète LÈVE : l'appelant écarte alors le candidat (dégradation déjà
+   * éprouvée). Juger un maillot sans l'avoir sous les yeux serait pire qu'un candidat en moins.
+   */
+  private static footJudgeInput(
+    recipe: LoadedRecipe['recipe'],
+    gi: CustomArtGenericInputs,
+    candidateBuffer: Buffer,
+    seen: {
+      photoBuffer?: Buffer
+      references?: { buffer: Buffer; role: string }[]
+      notes?: string | null
+    }
+  ) {
+    const painted = (slot: string): string | undefined => {
+      const spec = (recipe.fields || []).find((f) => f.printOnArtwork === slot)
+      return spec ? gi.fields?.[spec.name]?.value : undefined
+    }
+    const playerName = painted('back-name')
+    const playerNumber = painted('back-number')
+
+    if (!seen.photoBuffer) {
+      throw new Error(
+        'jugement foot demandé sans photo client — judge.seesReferences manquant dans la recette ?'
+      )
+    }
+    if (!playerName || playerNumber === undefined) {
+      throw new Error(
+        'jugement foot demandé sans champ marqué printOnArtwork back-name / back-number'
+      )
+    }
+
+    return {
+      candidateBuffer,
+      photoBuffer: seen.photoBuffer,
+      kitRefBuffers: (seen.references || []).map((r) => r.buffer),
+      kitRefRoles: (seen.references || []).map((r) => r.role),
+      playerName,
+      playerNumber: Number(playerNumber),
+      fidelityNotes: seen.notes ?? null,
+    }
+  }
+
   private static async judgeAndStoreGeneric(
     job: CustomArtJob,
     gi: CustomArtGenericInputs,
@@ -751,6 +800,8 @@ export default class CustomArtWorker {
       photoBuffer?: Buffer
       references?: { buffer: Buffer; role: 'style' | 'front' | 'back' | 'scene' }[]
       label?: string | null
+      /** Consigne de fidélité de l'option choisie (jugement emprunté au foot). */
+      notes?: string | null
     } = {}
   ): Promise<void> {
     const judge = new JudgeRunner()
@@ -772,20 +823,29 @@ export default class CustomArtWorker {
           preview = await PreviewService.makePreview(buffer)
         } else {
           try {
-            const outcome = await judge.judgeGeneric({
-              candidateBuffer: buffer,
-              tokens: gi.tokens,
-              title: gi.title,
-              n: gi.tokens.length,
-              referenceTexts: recipe.referenceTexts,
-              checks: recipe.judge,
-              photoBuffer: seen.photoBuffer,
-              references: seen.references,
-              label: seen.label ?? null,
-            })
+            // AIGUILLAGE : si la recette cite un profil de jugement, le produit EMPRUNTE ce
+            // jugement déjà calibré au lieu du jugement générique. On ne réécrit pas des règles
+            // réglées à l'œil sur de vrais rendus — on rebranche le module qui les porte.
+            const outcome = recipe.judge.profile
+              ? await judge.judge(CustomArtWorker.footJudgeInput(recipe, gi, buffer, seen))
+              : await judge.judgeGeneric({
+                  candidateBuffer: buffer,
+                  tokens: gi.tokens,
+                  title: gi.title,
+                  n: gi.tokens.length,
+                  referenceTexts: recipe.referenceTexts,
+                  checks: recipe.judge,
+                  photoBuffer: seen.photoBuffer,
+                  references: seen.references,
+                  label: seen.label ?? null,
+                })
             verdict = outcome.verdict
             preview = outcome.preview
-            job.addCost('judge', GENERIC_JUDGE_EST_COST_EUR, 'claude')
+            job.addCost(
+              'judge',
+              recipe.judge.profile ? JUDGE_EST_COST_EUR : GENERIC_JUDGE_EST_COST_EUR,
+              'claude'
+            )
           } catch (error) {
             Logger.error(
               'custom-art (generic) judge KO uuid=%s: %s',

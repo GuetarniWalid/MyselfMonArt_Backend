@@ -8,9 +8,9 @@
  * `protocol` et `kind` sont OBLIGATOIRES : tout ce que cet enfant ne reconnaît pas le fait sortir
  * en erreur, jamais retomber sur un chemin ou des réglages par défaut (cf. judgeProtocol.ts).
  *   argv[2] = chemin d'un JSON d'entrée —
- *     foot        : { protocol:2, kind:'foot', candidatePath, photoPath, kitPaths[], kitFiles[],
- *                     playerName, playerNumber, fidelityNotes, model }
- *     générique   : { protocol:2, kind:'generic', candidatePath, tokens[], title, n,
+ *     foot        : { protocol:3, kind:'foot', candidatePath, photoPath, kitPaths[], kitFiles[],
+ *                     kitRoles[], playerName, playerNumber, fidelityNotes, model }
+ *     générique   : { protocol:3, kind:'generic', candidatePath, tokens[], title, n,
  *                     referenceTexts{title,slots[]}, checks{text,figureCount}, model,
  *                     photoPath?, refPaths?[{path,role}], label? }
  *   argv[3] = chemin où écrire le JSON de résultat (JudgeResult)
@@ -115,6 +115,8 @@ async function main() {
     photoBuffer,
     kitRefBuffers,
     kitRefFiles: input.kitFiles || [],
+    // Protocole 3 : rôles déclarés (vides pour le chemin legacy, qui déduit par suffixe).
+    kitRefRoles: input.kitRoles || [],
     playerName: input.playerName,
     playerNumber: input.playerNumber,
     fidelityNotes: input.fidelityNotes ?? null,

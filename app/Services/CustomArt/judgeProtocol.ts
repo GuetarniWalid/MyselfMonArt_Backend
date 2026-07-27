@@ -31,8 +31,12 @@
  *      Le bump est INDISPENSABLE bien que ces champs soient facultatifs : un enfant resté en
  *      version 1 les ignorerait en silence et jugerait la fidélité d'une référence qu'on ne lui
  *      aurait jamais montrée — précisément le fail-open que ce discriminant existe pour couper.
+ *  3 — le chemin foot accepte `kitRoles[]` : rôles DÉCLARÉS des références (mêmes index que
+ *      `kitPaths`), prioritaires sur la déduction par suffixe de nom de fichier. Nécessaire pour
+ *      qu'un produit piloté par recette puisse emprunter le jugement foot sans dépendre d'une
+ *      convention de nommage de fichiers.
  */
-export const JUDGE_CHILD_PROTOCOL = 2
+export const JUDGE_CHILD_PROTOCOL = 3
 
 /** Chemins de jugement connus. Une valeur inconnue doit faire sortir l'enfant en erreur. */
 export const JUDGE_CHILD_KINDS = ['foot', 'generic'] as const
