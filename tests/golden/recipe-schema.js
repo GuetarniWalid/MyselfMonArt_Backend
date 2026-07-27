@@ -129,6 +129,14 @@ if (process.argv.includes('--update') || !fs.existsSync(SNAPSHOT)) {
 }
 ok(!('fields' in actual), 'aucune clé "fields" ajoutée à une recette qui n’en déclare pas')
 
+// `judge.seesReferences` : absent d'une recette qui ne le déclare pas — sinon l'objet persisté
+// d'un produit existant changerait, et le juge de la famille se mettrait à voir des images.
+ok(!('seesReferences' in actual.judge), 'judge.seesReferences absent si non déclaré')
+const seeing = RecipeService.parseRecipe(
+  JSON.stringify({ version: 1, judge: { seesReferences: true }, prompt: { base: 'x' } })
+)
+ok(seeing.judge.seesReferences === true, 'judge.seesReferences repris quand il est déclaré')
+
 // Un tableau vide doit être traité comme absent (sinon l'invariant ci-dessus tombe).
 const emptyFields = RecipeService.parseRecipe(
   JSON.stringify({ version: 1, inputs: { fields: [] }, prompt: { base: 'x' } })

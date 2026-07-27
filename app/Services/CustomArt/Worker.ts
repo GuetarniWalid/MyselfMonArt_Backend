@@ -624,7 +624,15 @@ export default class CustomArtWorker {
         await job.save()
 
         if (produced.length > 0) {
-          await CustomArtWorker.judgeAndStoreGeneric(job, gi, recipe, produced)
+          // Le juge ne reçoit photo et références que si la recette le DEMANDE : sans cela il ne
+          // voit que le candidat, exactement comme aujourd'hui (cas du produit famille).
+          await CustomArtWorker.judgeAndStoreGeneric(job, gi, recipe, produced, {
+            photoBuffer: recipe.judge.seesReferences ? photoBuffer : undefined,
+            references: recipe.judge.seesReferences
+              ? resolvedRefs.items.map((r, i) => ({ buffer: refBuffers[i], role: r.role }))
+              : undefined,
+            label: choice.label,
+          })
         }
 
         const candidates = job.candidates || []
@@ -737,7 +745,13 @@ export default class CustomArtWorker {
     job: CustomArtJob,
     gi: CustomArtGenericInputs,
     recipe: LoadedRecipe['recipe'],
-    produced: Array<{ result: GenerateResult; provider: CustomArtProvider }>
+    produced: Array<{ result: GenerateResult; provider: CustomArtProvider }>,
+    /** Ce que le juge doit VOIR en plus du candidat. Vide = comportement historique. */
+    seen: {
+      photoBuffer?: Buffer
+      references?: { buffer: Buffer; role: 'style' | 'front' | 'back' | 'scene' }[]
+      label?: string | null
+    } = {}
   ): Promise<void> {
     const judge = new JudgeRunner()
     const existing = job.candidates || []
@@ -765,6 +779,9 @@ export default class CustomArtWorker {
               n: gi.tokens.length,
               referenceTexts: recipe.referenceTexts,
               checks: recipe.judge,
+              photoBuffer: seen.photoBuffer,
+              references: seen.references,
+              label: seen.label ?? null,
             })
             verdict = outcome.verdict
             preview = outcome.preview

@@ -210,7 +210,16 @@ export interface StudioRecipe {
     /** Consignes communes à TOUTES les options, ajoutées sous la note de l'option choisie. */
     commonNotes?: string
   }
-  judge: { text: boolean; figureCount: boolean }
+  judge: {
+    text: boolean
+    figureCount: boolean
+    /**
+     * Le juge reçoit-il la photo du client et les images de référence ? ABSENT par défaut : il ne
+     * voit que le candidat, comme aujourd'hui. Indispensable au foot — sans les maillots sous les
+     * yeux, un juge note la fidélité d'un design qu'il n'a jamais vu.
+     */
+    seesReferences?: boolean
+  }
 }
 
 export interface LoadedRecipe {
@@ -518,10 +527,14 @@ export default class RecipeService extends Authentication {
       if (key !== 'base' && str.trim()) prompt[key] = str.trim()
     }
 
-    const judge = {
+    const judge: StudioRecipe['judge'] = {
       text: json.judge?.text === undefined ? Boolean(tokens) : Boolean(json.judge.text),
       figureCount:
         json.judge?.figureCount === undefined ? Boolean(tokens) : Boolean(json.judge.figureCount),
+      // Clé ajoutée UNIQUEMENT si déclarée : une recette existante produit le même objet qu'avant.
+      ...(json.judge?.seesReferences === undefined
+        ? {}
+        : { seesReferences: Boolean(json.judge.seesReferences) }),
     }
 
     if (reasons.length > 0) throw new RecipeError(reasons)
