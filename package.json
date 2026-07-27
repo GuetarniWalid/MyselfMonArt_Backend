@@ -8,7 +8,8 @@
     "build": "node ace build --production",
     "start": "node server.js && node ace scheduler:run",
     "test": "node ace test",
-    "test:golden": "node tests/golden/recipe-schema.js",
+    "test:golden": "node tests/golden/recipe-schema.js && node tests/golden/judge-oracle.js",
+    "test:judge": "node tests/golden/judge-oracle.js",
     "lint": "eslint . --ext=.ts",
     "format": "prettier --write .",
     "copy-env": "dotenv node copy-env.js",
@@ -118,7 +119,8 @@
       "prettier --write"
     ],
     "{app/Services/CustomArt/*.ts,app/Models/CustomArtJob.ts}": [
-      "node tests/golden/recipe-schema.js"
+      "node tests/golden/recipe-schema.js",
+      "node tests/golden/judge-oracle.js"
     ]
   }
 }

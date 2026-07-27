@@ -1,0 +1,736 @@
+{
+  "nominal": {
+    "scores": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "anatomy": 8,
+      "framingStyle": 8
+    },
+    "verdicts": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "textExact": true,
+      "textRead": "WALID 10",
+      "anatomy": 8,
+      "armsVisible": 2,
+      "handsVisible": 2,
+      "anatomyDefect": false,
+      "framingStyle": 8,
+      "suspicionSignals": [],
+      "anatomyInspection": {
+        "skin_zones": [
+          {
+            "position": "bras gauche",
+            "membre": "bras gauche",
+            "rattachement_epaule": "rattachee a une epaule par un haut de bras continu",
+            "terminaison": "main visible",
+            "rotation": "normale pour une vue de dos",
+            "longueur_avant_bras": "normale",
+            "anomalies": "aucune"
+          }
+        ],
+        "arms_visible": 2,
+        "hands_visible": 2,
+        "extra_limb": false,
+        "hands_malformed": false,
+        "anatomy_notes": "RAS."
+      },
+      "faceNotes": "Visage fidèle.",
+      "crestLegible": true,
+      "crestAccurate": true,
+      "sponsorLegible": true,
+      "sponsorTextRead": "SPONSOR",
+      "nameAboveNumber": true,
+      "crestOnBack": false,
+      "armsConnected": true,
+      "armsTrace": "Bras gauche continu, bras droit continu.",
+      "artifactsNotes": "RAS."
+    },
+    "pass": true,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "Bon rendu."
+  },
+  "visage_sous_seuil": {
+    "scores": {
+      "faceLikeness": 6,
+      "kitFidelity": 8,
+      "anatomy": 8,
+      "framingStyle": 8
+    },
+    "verdicts": {
+      "faceLikeness": 6,
+      "kitFidelity": 8,
+      "textExact": true,
+      "textRead": "WALID 10",
+      "anatomy": 8,
+      "armsVisible": 2,
+      "handsVisible": 2,
+      "anatomyDefect": false,
+      "framingStyle": 8,
+      "suspicionSignals": [],
+      "anatomyInspection": {
+        "skin_zones": [
+          {
+            "position": "bras gauche",
+            "membre": "bras gauche",
+            "rattachement_epaule": "rattachee a une epaule par un haut de bras continu",
+            "terminaison": "main visible",
+            "rotation": "normale pour une vue de dos",
+            "longueur_avant_bras": "normale",
+            "anomalies": "aucune"
+          }
+        ],
+        "arms_visible": 2,
+        "hands_visible": 2,
+        "extra_limb": false,
+        "hands_malformed": false,
+        "anatomy_notes": "RAS."
+      },
+      "faceNotes": "Visage fidèle.",
+      "crestLegible": true,
+      "crestAccurate": true,
+      "sponsorLegible": true,
+      "sponsorTextRead": "SPONSOR",
+      "nameAboveNumber": true,
+      "crestOnBack": false,
+      "armsConnected": true,
+      "armsTrace": "Bras gauche continu, bras droit continu.",
+      "artifactsNotes": "RAS."
+    },
+    "pass": false,
+    "score": 7.3,
+    "suspicion": 0,
+    "reason": "Bon rendu."
+  },
+  "maillot_sous_seuil": {
+    "scores": {
+      "faceLikeness": 8,
+      "kitFidelity": 6,
+      "anatomy": 8,
+      "framingStyle": 8
+    },
+    "verdicts": {
+      "faceLikeness": 8,
+      "kitFidelity": 6,
+      "textExact": true,
+      "textRead": "WALID 10",
+      "anatomy": 8,
+      "armsVisible": 2,
+      "handsVisible": 2,
+      "anatomyDefect": false,
+      "framingStyle": 8,
+      "suspicionSignals": [],
+      "anatomyInspection": {
+        "skin_zones": [
+          {
+            "position": "bras gauche",
+            "membre": "bras gauche",
+            "rattachement_epaule": "rattachee a une epaule par un haut de bras continu",
+            "terminaison": "main visible",
+            "rotation": "normale pour une vue de dos",
+            "longueur_avant_bras": "normale",
+            "anomalies": "aucune"
+          }
+        ],
+        "arms_visible": 2,
+        "hands_visible": 2,
+        "extra_limb": false,
+        "hands_malformed": false,
+        "anatomy_notes": "RAS."
+      },
+      "faceNotes": "Visage fidèle.",
+      "crestLegible": true,
+      "crestAccurate": true,
+      "sponsorLegible": true,
+      "sponsorTextRead": "SPONSOR",
+      "nameAboveNumber": true,
+      "crestOnBack": false,
+      "armsConnected": true,
+      "armsTrace": "Bras gauche continu, bras droit continu.",
+      "artifactsNotes": "RAS."
+    },
+    "pass": false,
+    "score": 7.4,
+    "suspicion": 0,
+    "reason": "Bon rendu."
+  },
+  "seuils_exactement_7": {
+    "scores": {
+      "faceLikeness": 7,
+      "kitFidelity": 7,
+      "anatomy": 8,
+      "framingStyle": 8
+    },
+    "verdicts": {
+      "faceLikeness": 7,
+      "kitFidelity": 7,
+      "textExact": true,
+      "textRead": "WALID 10",
+      "anatomy": 8,
+      "armsVisible": 2,
+      "handsVisible": 2,
+      "anatomyDefect": false,
+      "framingStyle": 8,
+      "suspicionSignals": [],
+      "anatomyInspection": {
+        "skin_zones": [
+          {
+            "position": "bras gauche",
+            "membre": "bras gauche",
+            "rattachement_epaule": "rattachee a une epaule par un haut de bras continu",
+            "terminaison": "main visible",
+            "rotation": "normale pour une vue de dos",
+            "longueur_avant_bras": "normale",
+            "anomalies": "aucune"
+          }
+        ],
+        "arms_visible": 2,
+        "hands_visible": 2,
+        "extra_limb": false,
+        "hands_malformed": false,
+        "anatomy_notes": "RAS."
+      },
+      "faceNotes": "Visage fidèle.",
+      "crestLegible": true,
+      "crestAccurate": true,
+      "sponsorLegible": true,
+      "sponsorTextRead": "SPONSOR",
+      "nameAboveNumber": true,
+      "crestOnBack": false,
+      "armsConnected": true,
+      "armsTrace": "Bras gauche continu, bras droit continu.",
+      "artifactsNotes": "RAS."
+    },
+    "pass": true,
+    "score": 7.35,
+    "suspicion": 0,
+    "reason": "Bon rendu."
+  },
+  "porte_bras": {
+    "scores": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "anatomy": 8,
+      "framingStyle": 8
+    },
+    "verdicts": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "textExact": true,
+      "textRead": "WALID 10",
+      "anatomy": 8,
+      "armsVisible": 3,
+      "handsVisible": 2,
+      "anatomyDefect": false,
+      "framingStyle": 8,
+      "suspicionSignals": [],
+      "anatomyInspection": {
+        "skin_zones": [
+          {
+            "position": "bras gauche",
+            "membre": "bras gauche",
+            "rattachement_epaule": "rattachee a une epaule par un haut de bras continu",
+            "terminaison": "main visible",
+            "rotation": "normale pour une vue de dos",
+            "longueur_avant_bras": "normale",
+            "anomalies": "aucune"
+          }
+        ],
+        "arms_visible": 2,
+        "hands_visible": 2,
+        "extra_limb": false,
+        "hands_malformed": false,
+        "anatomy_notes": "RAS."
+      },
+      "faceNotes": "Visage fidèle.",
+      "crestLegible": true,
+      "crestAccurate": true,
+      "sponsorLegible": true,
+      "sponsorTextRead": "SPONSOR",
+      "nameAboveNumber": true,
+      "crestOnBack": false,
+      "armsConnected": true,
+      "armsTrace": "Bras gauche continu, bras droit continu.",
+      "artifactsNotes": "RAS."
+    },
+    "pass": false,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "ÉCHEC GATE ANATOMIQUE (3 bras visibles (membre surnuméraire)) — Bon rendu."
+  },
+  "porte_mains": {
+    "scores": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "anatomy": 8,
+      "framingStyle": 8
+    },
+    "verdicts": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "textExact": true,
+      "textRead": "WALID 10",
+      "anatomy": 8,
+      "armsVisible": 2,
+      "handsVisible": 3,
+      "anatomyDefect": false,
+      "framingStyle": 8,
+      "suspicionSignals": [],
+      "anatomyInspection": {
+        "skin_zones": [
+          {
+            "position": "bras gauche",
+            "membre": "bras gauche",
+            "rattachement_epaule": "rattachee a une epaule par un haut de bras continu",
+            "terminaison": "main visible",
+            "rotation": "normale pour une vue de dos",
+            "longueur_avant_bras": "normale",
+            "anomalies": "aucune"
+          }
+        ],
+        "arms_visible": 2,
+        "hands_visible": 2,
+        "extra_limb": false,
+        "hands_malformed": false,
+        "anatomy_notes": "RAS."
+      },
+      "faceNotes": "Visage fidèle.",
+      "crestLegible": true,
+      "crestAccurate": true,
+      "sponsorLegible": true,
+      "sponsorTextRead": "SPONSOR",
+      "nameAboveNumber": true,
+      "crestOnBack": false,
+      "armsConnected": true,
+      "armsTrace": "Bras gauche continu, bras droit continu.",
+      "artifactsNotes": "RAS."
+    },
+    "pass": false,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "ÉCHEC GATE ANATOMIQUE (3 mains visibles (membre surnuméraire)) — Bon rendu."
+  },
+  "porte_defaut_anatomique": {
+    "scores": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "anatomy": 8,
+      "framingStyle": 8
+    },
+    "verdicts": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "textExact": true,
+      "textRead": "WALID 10",
+      "anatomy": 8,
+      "armsVisible": 2,
+      "handsVisible": 2,
+      "anatomyDefect": true,
+      "framingStyle": 8,
+      "suspicionSignals": [],
+      "anatomyInspection": {
+        "skin_zones": [
+          {
+            "position": "bras gauche",
+            "membre": "bras gauche",
+            "rattachement_epaule": "rattachee a une epaule par un haut de bras continu",
+            "terminaison": "main visible",
+            "rotation": "normale pour une vue de dos",
+            "longueur_avant_bras": "normale",
+            "anomalies": "aucune"
+          }
+        ],
+        "arms_visible": 2,
+        "hands_visible": 2,
+        "extra_limb": false,
+        "hands_malformed": false,
+        "anatomy_notes": "RAS."
+      },
+      "faceNotes": "Visage fidèle.",
+      "crestLegible": true,
+      "crestAccurate": true,
+      "sponsorLegible": true,
+      "sponsorTextRead": "SPONSOR",
+      "nameAboveNumber": true,
+      "crestOnBack": false,
+      "armsConnected": true,
+      "armsTrace": "Bras gauche continu, bras droit continu.",
+      "artifactsNotes": "RAS."
+    },
+    "pass": false,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "ÉCHEC GATE ANATOMIQUE (défaut anatomique grave signalé (membre surnuméraire / main difforme)) — Bon rendu."
+  },
+  "fusion_anatomie_voit_3_bras": {
+    "scores": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "anatomy": 8,
+      "framingStyle": 8
+    },
+    "verdicts": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "textExact": true,
+      "textRead": "WALID 10",
+      "anatomy": 8,
+      "armsVisible": 3,
+      "handsVisible": 2,
+      "anatomyDefect": false,
+      "framingStyle": 8,
+      "suspicionSignals": [],
+      "anatomyInspection": {
+        "skin_zones": [
+          {
+            "position": "bras gauche",
+            "membre": "bras gauche",
+            "rattachement_epaule": "rattachee a une epaule par un haut de bras continu",
+            "terminaison": "main visible",
+            "rotation": "normale pour une vue de dos",
+            "longueur_avant_bras": "normale",
+            "anomalies": "aucune"
+          }
+        ],
+        "arms_visible": 3,
+        "hands_visible": 2,
+        "extra_limb": false,
+        "hands_malformed": false,
+        "anatomy_notes": "RAS."
+      },
+      "faceNotes": "Visage fidèle.",
+      "crestLegible": true,
+      "crestAccurate": true,
+      "sponsorLegible": true,
+      "sponsorTextRead": "SPONSOR",
+      "nameAboveNumber": true,
+      "crestOnBack": false,
+      "armsConnected": true,
+      "armsTrace": "Bras gauche continu, bras droit continu.",
+      "artifactsNotes": "RAS."
+    },
+    "pass": false,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "ÉCHEC GATE ANATOMIQUE (3 bras visibles (membre surnuméraire)) — Bon rendu."
+  },
+  "fusion_rubrique_voit_3_bras": {
+    "scores": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "anatomy": 8,
+      "framingStyle": 8
+    },
+    "verdicts": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "textExact": true,
+      "textRead": "WALID 10",
+      "anatomy": 8,
+      "armsVisible": 3,
+      "handsVisible": 2,
+      "anatomyDefect": false,
+      "framingStyle": 8,
+      "suspicionSignals": [],
+      "anatomyInspection": {
+        "skin_zones": [
+          {
+            "position": "bras gauche",
+            "membre": "bras gauche",
+            "rattachement_epaule": "rattachee a une epaule par un haut de bras continu",
+            "terminaison": "main visible",
+            "rotation": "normale pour une vue de dos",
+            "longueur_avant_bras": "normale",
+            "anomalies": "aucune"
+          }
+        ],
+        "arms_visible": 1,
+        "hands_visible": 2,
+        "extra_limb": false,
+        "hands_malformed": false,
+        "anatomy_notes": "RAS."
+      },
+      "faceNotes": "Visage fidèle.",
+      "crestLegible": true,
+      "crestAccurate": true,
+      "sponsorLegible": true,
+      "sponsorTextRead": "SPONSOR",
+      "nameAboveNumber": true,
+      "crestOnBack": false,
+      "armsConnected": true,
+      "armsTrace": "Bras gauche continu, bras droit continu.",
+      "artifactsNotes": "RAS."
+    },
+    "pass": false,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "ÉCHEC GATE ANATOMIQUE (3 bras visibles (membre surnuméraire)) — Bon rendu."
+  },
+  "orthographe_fausse": {
+    "scores": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "anatomy": 8,
+      "framingStyle": 8
+    },
+    "verdicts": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "textExact": false,
+      "textRead": "WALID 10",
+      "anatomy": 8,
+      "armsVisible": 2,
+      "handsVisible": 2,
+      "anatomyDefect": false,
+      "framingStyle": 8,
+      "suspicionSignals": [],
+      "anatomyInspection": {
+        "skin_zones": [
+          {
+            "position": "bras gauche",
+            "membre": "bras gauche",
+            "rattachement_epaule": "rattachee a une epaule par un haut de bras continu",
+            "terminaison": "main visible",
+            "rotation": "normale pour une vue de dos",
+            "longueur_avant_bras": "normale",
+            "anomalies": "aucune"
+          }
+        ],
+        "arms_visible": 2,
+        "hands_visible": 2,
+        "extra_limb": false,
+        "hands_malformed": false,
+        "anatomy_notes": "RAS."
+      },
+      "faceNotes": "Visage fidèle.",
+      "crestLegible": true,
+      "crestAccurate": true,
+      "sponsorLegible": true,
+      "sponsorTextRead": "SPONSOR",
+      "nameAboveNumber": true,
+      "crestOnBack": false,
+      "armsConnected": true,
+      "armsTrace": "Bras gauche continu, bras droit continu.",
+      "artifactsNotes": "RAS."
+    },
+    "pass": true,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "Bon rendu."
+  },
+  "numero_faux": {
+    "scores": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "anatomy": 8,
+      "framingStyle": 8
+    },
+    "verdicts": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "textExact": false,
+      "textRead": "WALID 10",
+      "anatomy": 8,
+      "armsVisible": 2,
+      "handsVisible": 2,
+      "anatomyDefect": false,
+      "framingStyle": 8,
+      "suspicionSignals": [],
+      "anatomyInspection": {
+        "skin_zones": [
+          {
+            "position": "bras gauche",
+            "membre": "bras gauche",
+            "rattachement_epaule": "rattachee a une epaule par un haut de bras continu",
+            "terminaison": "main visible",
+            "rotation": "normale pour une vue de dos",
+            "longueur_avant_bras": "normale",
+            "anomalies": "aucune"
+          }
+        ],
+        "arms_visible": 2,
+        "hands_visible": 2,
+        "extra_limb": false,
+        "hands_malformed": false,
+        "anatomy_notes": "RAS."
+      },
+      "faceNotes": "Visage fidèle.",
+      "crestLegible": true,
+      "crestAccurate": true,
+      "sponsorLegible": true,
+      "sponsorTextRead": "SPONSOR",
+      "nameAboveNumber": true,
+      "crestOnBack": false,
+      "armsConnected": true,
+      "armsTrace": "Bras gauche continu, bras droit continu.",
+      "artifactsNotes": "RAS."
+    },
+    "pass": true,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "Bon rendu."
+  },
+  "membre_surnumeraire_passe2": {
+    "scores": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "anatomy": 8,
+      "framingStyle": 8
+    },
+    "verdicts": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "textExact": true,
+      "textRead": "WALID 10",
+      "anatomy": 8,
+      "armsVisible": 2,
+      "handsVisible": 2,
+      "anatomyDefect": false,
+      "framingStyle": 8,
+      "suspicionSignals": [
+        "membre surnuméraire ou segment flottant signalé en passe anatomie"
+      ],
+      "anatomyInspection": {
+        "skin_zones": [
+          {
+            "position": "bras gauche",
+            "membre": "bras gauche",
+            "rattachement_epaule": "rattachee a une epaule par un haut de bras continu",
+            "terminaison": "main visible",
+            "rotation": "normale pour une vue de dos",
+            "longueur_avant_bras": "normale",
+            "anomalies": "aucune"
+          }
+        ],
+        "arms_visible": 2,
+        "hands_visible": 2,
+        "extra_limb": true,
+        "hands_malformed": false,
+        "anatomy_notes": "RAS."
+      },
+      "faceNotes": "Visage fidèle.",
+      "crestLegible": true,
+      "crestAccurate": true,
+      "sponsorLegible": true,
+      "sponsorTextRead": "SPONSOR",
+      "nameAboveNumber": true,
+      "crestOnBack": false,
+      "armsConnected": true,
+      "armsTrace": "Bras gauche continu, bras droit continu.",
+      "artifactsNotes": "RAS."
+    },
+    "pass": true,
+    "score": 8,
+    "suspicion": 1,
+    "reason": "Bon rendu."
+  },
+  "mains_deformees_passe2": {
+    "scores": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "anatomy": 8,
+      "framingStyle": 8
+    },
+    "verdicts": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "textExact": true,
+      "textRead": "WALID 10",
+      "anatomy": 8,
+      "armsVisible": 2,
+      "handsVisible": 2,
+      "anatomyDefect": false,
+      "framingStyle": 8,
+      "suspicionSignals": [
+        "main difforme signalée en passe anatomie"
+      ],
+      "anatomyInspection": {
+        "skin_zones": [
+          {
+            "position": "bras gauche",
+            "membre": "bras gauche",
+            "rattachement_epaule": "rattachee a une epaule par un haut de bras continu",
+            "terminaison": "main visible",
+            "rotation": "normale pour une vue de dos",
+            "longueur_avant_bras": "normale",
+            "anomalies": "aucune"
+          }
+        ],
+        "arms_visible": 2,
+        "hands_visible": 2,
+        "extra_limb": false,
+        "hands_malformed": true,
+        "anatomy_notes": "RAS."
+      },
+      "faceNotes": "Visage fidèle.",
+      "crestLegible": true,
+      "crestAccurate": true,
+      "sponsorLegible": true,
+      "sponsorTextRead": "SPONSOR",
+      "nameAboveNumber": true,
+      "crestOnBack": false,
+      "armsConnected": true,
+      "armsTrace": "Bras gauche continu, bras droit continu.",
+      "artifactsNotes": "RAS."
+    },
+    "pass": true,
+    "score": 8,
+    "suspicion": 1,
+    "reason": "Bon rendu."
+  },
+  "bras_deconnecte": {
+    "scores": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "anatomy": 8,
+      "framingStyle": 8
+    },
+    "verdicts": {
+      "faceLikeness": 8,
+      "kitFidelity": 8,
+      "textExact": true,
+      "textRead": "WALID 10",
+      "anatomy": 8,
+      "armsVisible": 2,
+      "handsVisible": 2,
+      "anatomyDefect": false,
+      "framingStyle": 8,
+      "suspicionSignals": [
+        "bras décrit comme déconnecté par la rubrique"
+      ],
+      "anatomyInspection": {
+        "skin_zones": [
+          {
+            "position": "bras gauche",
+            "membre": "bras gauche",
+            "rattachement_epaule": "rattachee a une epaule par un haut de bras continu",
+            "terminaison": "main visible",
+            "rotation": "normale pour une vue de dos",
+            "longueur_avant_bras": "normale",
+            "anomalies": "aucune"
+          }
+        ],
+        "arms_visible": 2,
+        "hands_visible": 2,
+        "extra_limb": false,
+        "hands_malformed": false,
+        "anatomy_notes": "RAS."
+      },
+      "faceNotes": "Visage fidèle.",
+      "crestLegible": true,
+      "crestAccurate": true,
+      "sponsorLegible": true,
+      "sponsorTextRead": "SPONSOR",
+      "nameAboveNumber": true,
+      "crestOnBack": false,
+      "armsConnected": false,
+      "armsTrace": "Bras gauche continu, bras droit continu.",
+      "artifactsNotes": "RAS."
+    },
+    "pass": true,
+    "score": 8,
+    "suspicion": 1,
+    "reason": "Bon rendu."
+  }
+}
