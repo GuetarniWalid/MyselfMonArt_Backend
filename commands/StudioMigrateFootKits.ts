@@ -94,7 +94,7 @@ export default class StudioMigrateFootKits extends BaseCommand {
     this.logger.info('')
     this.logger.info('════ CHAMP DE CHOIX (noms RÉELS après téléversement) ════')
     console.log(
-      JSON.stringify({ name: 'teamId', type: 'choice', required: true, options }, null, 2)
+      JSON.stringify({ name: 'teamSlug', type: 'choice', required: true, options }, null, 2)
     )
 
     this.logger.info('')

@@ -801,7 +801,7 @@ if (footParsedDraft) {
         recipe: footParsedDraft,
         tokens: [],
         title: null,
-        fieldValues: { teamId: team.label, playerName, playerNumber: String(playerNumber) },
+        fieldValues: { teamSlug: team.label, playerName, playerNumber: String(playerNumber) },
         references: team.references.map((r) => r.role),
         label: team.label,
         notes: team.notes,

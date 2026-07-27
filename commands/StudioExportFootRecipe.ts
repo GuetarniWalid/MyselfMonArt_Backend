@@ -98,7 +98,7 @@ export default class StudioExportFootRecipe extends BaseCommand {
     console.log(
       JSON.stringify(
         {
-          name: 'teamId',
+          name: 'teamSlug',
           type: 'choice',
           required: true,
           options,
