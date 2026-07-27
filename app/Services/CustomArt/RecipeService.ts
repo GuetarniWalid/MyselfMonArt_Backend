@@ -30,7 +30,37 @@ const TOKENS_MAX_RANGE: [number, number] = [1, 8]
 const FRAGMENT_MAX_LEN = 2000
 const SLOTS_MAX = 12
 const SLOT_MAX_LEN = 40
+// Cap de `studio.references`. VOLONTAIREMENT MAINTENU À 8 pour l'instant.
+// Le modèle « tout-en-références » (PLAN §0.1) demandera ~31 images pour le foot (15 équipes x 1-2
+// maillots + la pose), donc un cap plus haut. Mais AUJOURD'HUI le worker envoie TOUTES les
+// références chargées au modèle, sans aucun tri : Worker.ts (referenceUrls.map(fetchBuffer) ->
+// kitRefBuffers) puis GeminiProvider (une inlineData par buffer). Relever le cap MAINTENANT ne
+// servirait à rien (aucun produit n'a plus d'1 référence) et armerait un piège : le jour où un
+// admin rangerait 15 maillots dans le metafield, le produit enverrait 16 images au modèle avec un
+// prompt qui n'en annonce qu'une.
+// => Le cap ne sera relevé qu'en P4, EN MÊME TEMPS que le branchement de la sélection par nom
+//    (RecipeField.options[].references) dans le worker. Un seul changement, jamais l'un sans l'autre.
 const REFERENCES_MAX = 8
+
+// -- Champs déclarés par la recette (extension ADDITIVE de la v1 — le numéro de version du contrat
+// ne bouge PAS, cf. PLAN §3 « discipline de version ») : le socle du choix discret (ex. l'équipe
+// foot) qui sélectionne un SOUS-ENSEMBLE d'images de référence + sa consigne de fidélité.
+// Absents d'une recette existante -> aucune de ces clés n'est produite, sortie inchangée. --
+const FIELDS_MAX = 12
+// Aligné sur REFERENCES_MAX : chaque option exige >= 1 image, donc plus d'options que d'images
+// disponibles serait un contrat intenable. À relever avec REFERENCES_MAX (P4), pas avant.
+const CHOICE_OPTIONS_MAX = 40
+const CHOICE_REFS_MAX = 4
+const REF_NAME_MAX_LEN = 120
+const NOTES_MAX_LEN = 600
+const TEXT_MAX_LENGTH_LIMIT = 200
+const NUMBER_ABS_LIMIT = 1000000
+// Rôle sémantique d'une image : annoncé au prompt (« IMAGE 2 = DOS du maillot ») et au juge.
+// Remplace la déduction par suffixe de fichier du chemin legacy foot (kits.ts).
+const REF_ROLES = new Set(['style', 'front', 'back', 'scene'])
+// Slot de placement quand la valeur est PEINTE sur l'œuvre (ex. 'back-name', 'back-number').
+const PRINT_SLOT_RE = /^[a-z][a-z0-9-]{0,30}$/
+const OPTION_KEY_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,40}$/
 
 // IDs *-preview morts depuis le 25/06/2026 (bench M1) : mappés vers l'ID stable, avec warn —
 // une recette copiée d'un vieux doc ne doit pas casser en silence.
@@ -56,6 +86,14 @@ const RESERVED_FIELDS = new Set([
   'productType',
   'format',
   'frame',
+  // Membres d'Object.prototype : ces noms finissent en clés de `values: Record<string, string>`
+  // (et de la map d'interpolation du titre). `__proto__` est déjà exclu par FIELD_NAME_RE (qui
+  // impose une initiale alphabétique), mais ceux-ci passent la regex. Défense en profondeur.
+  'constructor',
+  'prototype',
+  'toString',
+  'valueOf',
+  'hasOwnProperty',
 ])
 
 // -- Validation des valeurs client (§6) --
@@ -73,6 +111,54 @@ export class RecipeError extends Error {
   }
 }
 
+/** Rôle sémantique d'une image de référence, annoncé au prompt ET au juge. */
+export type RecipeRefRole = 'style' | 'front' | 'back' | 'scene'
+
+/**
+ * Une image de `studio.references` désignée PAR NOM — jamais par position (décision du 22/07,
+ * PLAN §0.1) : réordonner la liste dans l'admin Shopify ne doit RIEN casser.
+ */
+export interface RecipeRefPick {
+  /** nom de fichier (ou fragment distinctif) résolu dans studio.references */
+  name: string
+  role: RecipeRefRole
+}
+
+/**
+ * Une option d'un champ `choice` (ex. une équipe de foot) : les images qu'elle joint à la
+ * génération + sa consigne de fidélité. Remplace la table SQL `custom_art_teams` du chemin legacy
+ * — tout vit désormais dans les metafields de la fiche produit.
+ */
+export interface RecipeChoiceOption {
+  key: string
+  /** Libellé lisible, facultatif : l'UI a le sien (i18n) dans studio.config. Sert aux logs/mails. */
+  label: string | null
+  references: RecipeRefPick[]
+  /** Consigne de fidélité injectée au prompt et au juge. BACKEND-ONLY (secret métier). */
+  notes: string | null
+}
+
+/**
+ * Champ d'entrée déclaré par la recette, au-delà des `tokens`/`title` de la v1. Porte ce que le
+ * moteur générique ne savait pas exprimer : un CHOIX discret qui change les images jointes, et un
+ * NOMBRE borné peint sur l'œuvre.
+ */
+export interface RecipeField {
+  name: string
+  type: 'choice' | 'number' | 'text'
+  required: boolean
+  /** Slot de placement si la valeur est PEINTE sur l'œuvre (ex. 'back-name'), sinon null. */
+  printOnArtwork: string | null
+  /** number */
+  min: number | null
+  max: number | null
+  integer: boolean
+  /** text */
+  maxLength: number | null
+  /** choice — vide pour les autres types */
+  options: RecipeChoiceOption[]
+}
+
 export interface StudioRecipe {
   version: number
   engine: 'gemini'
@@ -85,6 +171,11 @@ export interface StudioRecipe {
   tokens: { from: string; split: boolean; max: number } | null
   /** Spéc du titre assemblé, null si non configuré */
   title: { template: string; required: boolean; fields: string[] } | null
+  /**
+   * Champs déclarés (v1.1, additif). ABSENTE d'une recette v1 : la clé n'est même pas produite,
+   * pour que la sortie d'une recette existante (famille LIVE) reste strictement identique.
+   */
+  fields?: RecipeField[]
   /** Ce qui est ÉCRIT dans l'image de référence (source des substitutions §5) */
   referenceTexts: { title: string | null; slots: string[] }
   /** Fragments de prompt : base obligatoire, le reste surcharge les défauts du worker */
@@ -310,6 +401,22 @@ export default class RecipeService extends Authentication {
       }
     }
 
+    // inputs.fields (v1.1) : choix discret -> images nommées + notes, nombre borné, texte peint.
+    // Absent d'une recette v1 -> null -> la clé `fields` n'est pas produite du tout (sortie inchangée).
+    const recipeFields = RecipeService.parseFields(json.inputs?.fields, reasons)
+    // Collision de noms : un champ déclaré ne doit pas doubler la source des tokens ni un
+    // placeholder du titre — la même clé de payload serait lue deux fois avec des règles différentes.
+    if (recipeFields) {
+      for (const f of recipeFields) {
+        if (tokens && f.name === tokens.from) {
+          reasons.push(`inputs.fields : "${f.name}" est déjà la source de inputs.tokens`)
+        }
+        if (title && title.fields.includes(f.name)) {
+          reasons.push(`inputs.fields : "${f.name}" est déjà un placeholder de inputs.title`)
+        }
+      }
+    }
+
     // reference.texts (source des substitutions)
     const rawRefTexts = json.reference?.texts || {}
     const refTitle =
@@ -375,10 +482,244 @@ export default class RecipeService extends Authentication {
       maxAttempts,
       tokens,
       title,
+      // Spread CONDITIONNEL : sans `inputs.fields`, la clé n'existe pas dans l'objet retourné —
+      // une recette v1 (famille LIVE) produit donc exactement le même objet qu'avant la v1.1.
+      ...(recipeFields ? { fields: recipeFields } : {}),
       referenceTexts: { title: refTitle, slots },
       prompt,
       judge,
     }
+  }
+
+  /**
+   * Parse `inputs.fields[]` (v1.1). `null` si la clé est absente -> la recette reste une v1 stricte.
+   * Toute anomalie est poussée dans `reasons` : une recette mal formée est REJETÉE à la validation
+   * (fail-fast, 422 propre), jamais appliquée à moitié en silence.
+   */
+  private static parseFields(raw: any, reasons: string[]): RecipeField[] | null {
+    if (raw === undefined || raw === null) return null
+    if (!Array.isArray(raw)) {
+      reasons.push('inputs.fields doit être un tableau')
+      return null
+    }
+    // Tableau VIDE = aucun champ déclaré : on renvoie null pour que la clé `fields` ne soit même pas
+    // produite. Sinon l'invariant « pas de champs = objet strictement identique » tomberait dans ce
+    // cas précis (`[]` est truthy, le spread conditionnel produirait `fields: []`).
+    if (raw.length === 0) return null
+    if (raw.length > FIELDS_MAX) {
+      reasons.push(`inputs.fields dépasse ${FIELDS_MAX} entrées`)
+      return null
+    }
+
+    const out: RecipeField[] = []
+    const seenNames = new Set<string>()
+
+    for (let i = 0; i < raw.length; i++) {
+      const item = raw[i]
+      const where = `inputs.fields[${i}]`
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        reasons.push(`${where} doit être un objet`)
+        continue
+      }
+
+      const name = String(item.name || '').trim()
+      if (!FIELD_NAME_RE.test(name)) {
+        reasons.push(`${where}.name "${name}" invalide`)
+        continue
+      }
+      if (RESERVED_FIELDS.has(name)) {
+        reasons.push(`${where}.name "${name}" est un champ réservé`)
+        continue
+      }
+      if (seenNames.has(name)) {
+        reasons.push(`${where}.name "${name}" est en double`)
+        continue
+      }
+      seenNames.add(name)
+
+      const type = String(item.type || '').trim()
+      if (type !== 'choice' && type !== 'number' && type !== 'text') {
+        reasons.push(`${where}.type "${type}" non supporté (choice, number, text)`)
+        continue
+      }
+
+      let printOnArtwork: string | null = null
+      if (item.printOnArtwork !== undefined && item.printOnArtwork !== null) {
+        const slot = String(item.printOnArtwork).trim()
+        if (!PRINT_SLOT_RE.test(slot)) {
+          reasons.push(`${where}.printOnArtwork "${slot}" invalide`)
+          continue
+        }
+        printOnArtwork = slot
+      }
+
+      const field: RecipeField = {
+        name,
+        type,
+        required: item.required === undefined ? true : Boolean(item.required),
+        printOnArtwork,
+        min: null,
+        max: null,
+        integer: true,
+        maxLength: null,
+        options: [],
+      }
+
+      if (type === 'number') {
+        // typeof STRICT plutôt que Number() : la coercion accepterait `null`, `""`, `[]` et `false`
+        // comme 0 — une borne silencieuse née d'une faute de frappe admin, soit exactement le risque
+        // n°1 que ce module doit couvrir. Un `min: null` doit être REFUSÉ, pas lu comme 0.
+        if (
+          typeof item.min !== 'number' ||
+          typeof item.max !== 'number' ||
+          !Number.isFinite(item.min) ||
+          !Number.isFinite(item.max)
+        ) {
+          reasons.push(`${where} : min et max sont obligatoires (nombres) pour un champ number`)
+          continue
+        }
+        const min: number = item.min
+        const max: number = item.max
+        if (Math.abs(min) > NUMBER_ABS_LIMIT || Math.abs(max) > NUMBER_ABS_LIMIT) {
+          reasons.push(`${where} : min/max hors bornes (±${NUMBER_ABS_LIMIT})`)
+          continue
+        }
+        if (min > max) {
+          reasons.push(`${where} : min (${min}) supérieur à max (${max})`)
+          continue
+        }
+        const integer = item.integer === undefined ? true : Boolean(item.integer)
+        // Cohérence bornes <-> integer : des bornes fractionnaires sur un champ entier peuvent
+        // définir un domaine VIDE (ex. 1.2 → 1.8 : aucun entier) — un champ requis que le client
+        // ne pourrait JAMAIS satisfaire, accepté sans le moindre signal.
+        if (integer && (!Number.isInteger(min) || !Number.isInteger(max))) {
+          reasons.push(`${where} : min/max doivent être entiers quand integer=true`)
+          continue
+        }
+        field.min = min
+        field.max = max
+        field.integer = integer
+      }
+
+      if (type === 'text') {
+        // Même exigence de type STRICT que pour number (cf. ci-dessus) : "50" n'est pas 50.
+        if (item.maxLength !== undefined && typeof item.maxLength !== 'number') {
+          reasons.push(`${where}.maxLength doit être un nombre`)
+          continue
+        }
+        const maxLength = item.maxLength === undefined ? TEXT_MAX_LENGTH_LIMIT : item.maxLength
+        if (!Number.isInteger(maxLength) || maxLength < 1 || maxLength > TEXT_MAX_LENGTH_LIMIT) {
+          reasons.push(`${where}.maxLength doit être un entier de 1 à ${TEXT_MAX_LENGTH_LIMIT}`)
+          continue
+        }
+        field.maxLength = maxLength
+      }
+
+      if (type === 'choice') {
+        const rawOptions = item.options
+        if (!Array.isArray(rawOptions) || rawOptions.length === 0) {
+          reasons.push(`${where}.options est obligatoire (au moins 1) pour un champ choice`)
+          continue
+        }
+        if (rawOptions.length > CHOICE_OPTIONS_MAX) {
+          reasons.push(`${where}.options dépasse ${CHOICE_OPTIONS_MAX} entrées`)
+          continue
+        }
+
+        const seenKeys = new Set<string>()
+        let optionsOk = true
+
+        for (let j = 0; j < rawOptions.length; j++) {
+          const opt = rawOptions[j]
+          const owhere = `${where}.options[${j}]`
+          if (!opt || typeof opt !== 'object' || Array.isArray(opt)) {
+            reasons.push(`${owhere} doit être un objet`)
+            optionsOk = false
+            continue
+          }
+
+          const key = String(opt.key || '').trim()
+          if (!OPTION_KEY_RE.test(key)) {
+            reasons.push(`${owhere}.key "${key}" invalide`)
+            optionsOk = false
+            continue
+          }
+          if (seenKeys.has(key)) {
+            reasons.push(`${owhere}.key "${key}" est en double`)
+            optionsOk = false
+            continue
+          }
+          seenKeys.add(key)
+
+          const rawRefs = opt.references
+          if (!Array.isArray(rawRefs) || rawRefs.length === 0) {
+            reasons.push(`${owhere}.references est obligatoire (au moins 1 image nommée)`)
+            optionsOk = false
+            continue
+          }
+          if (rawRefs.length > CHOICE_REFS_MAX) {
+            reasons.push(`${owhere}.references dépasse ${CHOICE_REFS_MAX} entrées`)
+            optionsOk = false
+            continue
+          }
+
+          const picks: RecipeRefPick[] = []
+          let refsOk = true
+          for (let k = 0; k < rawRefs.length; k++) {
+            const ref = rawRefs[k]
+            const rwhere = `${owhere}.references[${k}]`
+            if (!ref || typeof ref !== 'object' || Array.isArray(ref)) {
+              reasons.push(`${rwhere} doit être un objet { name, role }`)
+              refsOk = false
+              continue
+            }
+            const refName = String(ref.name || '').trim()
+            if (!refName || refName.length > REF_NAME_MAX_LEN) {
+              reasons.push(`${rwhere}.name manquant ou trop long (${REF_NAME_MAX_LEN} max)`)
+              refsOk = false
+              continue
+            }
+            const role = String(ref.role || '').trim()
+            if (!REF_ROLES.has(role)) {
+              reasons.push(
+                `${rwhere}.role "${role}" invalide (${Array.from(REF_ROLES).join(', ')})`
+              )
+              refsOk = false
+              continue
+            }
+            picks.push({ name: refName, role: role as RecipeRefRole })
+          }
+          if (!refsOk) {
+            optionsOk = false
+            continue
+          }
+
+          const label =
+            opt.label === undefined || opt.label === null
+              ? null
+              : String(opt.label).trim().slice(0, 80) || null
+
+          let notes: string | null = null
+          if (opt.notes !== undefined && opt.notes !== null) {
+            const n = String(opt.notes).trim()
+            if (n.length > NOTES_MAX_LEN) {
+              reasons.push(`${owhere}.notes dépasse ${NOTES_MAX_LEN} caractères`)
+              optionsOk = false
+              continue
+            }
+            notes = n || null
+          }
+
+          field.options.push({ key, label, references: picks, notes })
+        }
+
+        if (!optionsOk) continue
+      }
+
+      out.push(field)
+    }
+
+    return out
   }
 
   // --------------------------------------------------------------------------
