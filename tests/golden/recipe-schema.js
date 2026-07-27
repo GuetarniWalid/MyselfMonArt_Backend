@@ -758,5 +758,76 @@ ok(
 )
 
 // ============================================================================================
+// 9. PARITÉ DU PROMPT FOOT — la preuve qui autorise la migration
+// ============================================================================================
+// La recette foot doit produire, pour une même commande, EXACTEMENT le prompt que le chemin
+// legacy envoie aujourd'hui au modèle. C'est la moitié déterministe de la parité : si ces deux
+// textes sont identiques caractère pour caractère, la migration ne change pas ce qu'on demande
+// au générateur — seul l'aléa du modèle subsiste, et il existait déjà.
+const { buildMasterPrompt } = loadTsModule(path.join(ROOT, 'app/Services/CustomArt/prompt.ts'))
+const FOOT_DRAFT = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'fixtures/foot-recipe.draft.json'), 'utf8')
+)
+let footParsedDraft = null
+try {
+  footParsedDraft = RecipeService.parseRecipe(JSON.stringify(FOOT_DRAFT))
+  ok(true, 'recette foot : valide')
+} catch (e) {
+  ok(false, 'recette foot : valide', (e.reasons || [e.message]).join(' ; '))
+}
+
+if (footParsedDraft) {
+  const teams = FOOT_DRAFT.inputs.fields[0].options
+  ok(teams.length === 15, '15 équipes déclarées')
+  ok(
+    teams.every((t) => t.references.length === 2 && t.notes),
+    'chaque équipe a ses 2 maillots et sa consigne de fidélité'
+  )
+
+  // Cas-pièges inclus : le « I » sans point (piège turc du prompt), un prénom accentué,
+  // les bornes 1 et 99 du numéro.
+  const nameCases = [
+    ['Walid', 10],
+    ['Jean-Luc', 1],
+    ['Zoé', 99],
+    ['I', 7],
+  ]
+  let identical = 0
+  let diverged = 0
+  let firstDiff = ''
+  for (const team of teams) {
+    for (const [playerName, playerNumber] of nameCases) {
+      const generic = buildGenericPrompt({
+        recipe: footParsedDraft,
+        tokens: [],
+        title: null,
+        fieldValues: { teamId: team.label, playerName, playerNumber: String(playerNumber) },
+        references: team.references.map((r) => r.role),
+        label: team.label,
+        notes: team.notes,
+      })
+      const legacyPrompt = buildMasterPrompt({
+        teamName: team.label,
+        playerName,
+        playerNumber,
+        kitRefFiles: team.references.map((r) => `x-${r.role}.jpg`),
+        useSceneRef: false,
+        fidelityNotes: team.notes,
+      })
+      if (generic === legacyPrompt) identical++
+      else {
+        diverged++
+        if (!firstDiff) firstDiff = `${team.key} / ${playerName} ${playerNumber}`
+      }
+    }
+  }
+  ok(
+    diverged === 0,
+    `prompt foot identique au legacy sur ${identical} combinaisons (15 équipes × 4 saisies)`,
+    diverged === 0 ? '' : `première divergence : ${firstDiff}`
+  )
+}
+
+// ============================================================================================
 console.log(`\ngolden recipe-schema : ${pass} OK, ${fail} FAIL`)
 process.exit(fail === 0 ? 0 : 1)

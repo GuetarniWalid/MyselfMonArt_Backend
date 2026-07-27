@@ -31,6 +31,11 @@ const CANDIDATES_RANGE: [number, number] = [1, 4]
 const MAX_ATTEMPTS_RANGE: [number, number] = [1, 3]
 const TOKENS_MAX_RANGE: [number, number] = [1, 8]
 const FRAGMENT_MAX_LEN = 2000
+// `base` est le CORPS du prompt, pas un fragment : un prompt maître calibré (celui du foot fait
+// ~2 600 caractères, avec sa liste d'exigences et son bloc de fidélité) dépasse largement la borne
+// des fragments courts. Plafond propre, plus large, mais toujours borné — le garde-fou reste la
+// faute de frappe admin, pas la longueur légitime d'un prompt travaillé.
+const BASE_MAX_LEN = 6000
 const SLOTS_MAX = 12
 const SLOT_MAX_LEN = 40
 // Cap de `studio.references` — relevé de 8 à 40 MAINTENANT que la sélection par nom est branchée
@@ -563,8 +568,9 @@ export default class RecipeService extends Authentication {
       const value = rawPrompt[key]
       if (value === undefined || value === null) continue
       const str = String(value)
-      if (str.length > FRAGMENT_MAX_LEN) {
-        reasons.push(`prompt.${key} dépasse ${FRAGMENT_MAX_LEN} caractères`)
+      const maxLen = key === 'base' ? BASE_MAX_LEN : FRAGMENT_MAX_LEN
+      if (str.length > maxLen) {
+        reasons.push(`prompt.${key} dépasse ${maxLen} caractères`)
         continue
       }
       if (key !== 'base' && str.trim()) prompt[key] = str.trim()

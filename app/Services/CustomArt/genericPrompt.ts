@@ -136,17 +136,25 @@ export function buildGenericPrompt(input: GenericPromptInput): string {
   // Annonce des images : une phrase PAR IMAGE quand les rôles sont connus (parité foot),
   // sinon le bloc unique historique.
   const roles = input.references || []
-  if (roles.length > 0) {
-    roles.forEach((role, i) => {
-      lines.push(
-        interpolate(frag(ROLE_FRAGMENT[role]), {
-          ...vars,
-          index: String(FIRST_REF_IMAGE_INDEX + i),
-        })
-      )
-    })
-  } else {
-    lines.push(interpolate(frag('imageRoles'), vars))
+  const roleLines =
+    roles.length > 0
+      ? roles.map((role, i) =>
+          interpolate(frag(ROLE_FRAGMENT[role]), {
+            ...vars,
+            index: String(FIRST_REF_IMAGE_INDEX + i),
+          })
+        )
+      : []
+  // Exposées sous `{images}` : un prompt calibré peut les placer EXACTEMENT où il les attend
+  // (le prompt foot annonce d'abord la photo du client, PUIS les maillots, dans une même phrase).
+  // Sans rôles, `{images}` retombe sur le bloc unique historique : le repère résout toujours
+  // quelque chose de sensé, il ne reste jamais en clair dans un prompt envoyé au modèle.
+  vars.images = roleLines.length > 0 ? roleLines.join(' ') : interpolate(frag('imageRoles'), vars)
+
+  const basePlacesImages = /\{images\}/.test(recipe.prompt.base)
+  if (!basePlacesImages) {
+    if (roleLines.length > 0) lines.push(...roleLines)
+    else lines.push(interpolate(frag('imageRoles'), vars))
   }
   // Consignes non négociables : note de l'option choisie, puis consignes communes au produit.
   const noteLines = [input.notes, recipe.prompt.commonNotes].filter(

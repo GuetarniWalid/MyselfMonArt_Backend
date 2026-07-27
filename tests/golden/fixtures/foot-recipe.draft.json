@@ -1,0 +1,275 @@
+{
+  "version": 1,
+  "engine": "gemini",
+  "model": "gemini-3.1-flash-image",
+  "aspect": "3:4",
+  "candidates": 3,
+  "maxAttempts": 2,
+  "providers": {
+    "chain": [
+      "gemini:gemini-3.1-flash-image",
+      "gemini:gemini-3-pro-image",
+      "gemini:gemini-2.5-flash-image"
+    ]
+  },
+  "inputs": {
+    "fields": [
+      {
+        "name": "teamId",
+        "type": "choice",
+        "required": true,
+        "options": [
+          {
+            "key": "argentine",
+            "label": "Argentine",
+            "notes": "Rayures VERTICALES bleu ciel et blanches (albiceleste), blason AFA côté cœur surmonté de 3 étoiles dorées. Pièges : les rayures sont verticales et larges — pas de bleu uni ; le bleu ciel argentin est clair ; pas de sponsor poitrine (sélection nationale).",
+            "references": [
+              {
+                "name": "kit-argentine-back.jpg",
+                "role": "back"
+              },
+              {
+                "name": "kit-argentine-front.jpg",
+                "role": "front"
+              }
+            ]
+          },
+          {
+            "key": "as-monaco",
+            "label": "AS Monaco",
+            "notes": "Maillot iconique à DIAGONALE rouge et blanche : torse partagé en deux par une diagonale, rouge en haut et blanc en bas, blason ASM côté cœur. Pièges : respecter le sens et la netteté de la diagonale — pas de rayures ni de moitiés verticales ; reproduire le sponsor poitrine exactement tel que sur les références.",
+            "references": [
+              {
+                "name": "kit-as-monaco-back.jpg",
+                "role": "back"
+              },
+              {
+                "name": "kit-as-monaco-front.jpg",
+                "role": "front"
+              }
+            ]
+          },
+          {
+            "key": "bayern-munich",
+            "label": "Bayern Munich",
+            "notes": "Maillot ROUGE dominant, accents blancs, blason rond FC Bayern München (losanges bleus et blancs au centre) côté cœur, sponsor Telekom (« T ») sur la poitrine. Pièges : rester sur le rouge Bayern franc (pas de bordeaux) ; suivre exactement le motif et les accents des images de référence.",
+            "references": [
+              {
+                "name": "kit-bayern-munich-back.jpg",
+                "role": "back"
+              },
+              {
+                "name": "kit-bayern-munich-front.jpg",
+                "role": "front"
+              }
+            ]
+          },
+          {
+            "key": "bresil",
+            "label": "Brésil",
+            "notes": "Maillot JAUNE canari, col et bords de manches verts, blason CBF côté cœur. Pièges : le jaune reste vif (pas de moutarde ni d’or), le vert n’apparaît qu’en accents ; pas de sponsor poitrine (sélection nationale).",
+            "references": [
+              {
+                "name": "kit-bresil-back.jpg",
+                "role": "back"
+              },
+              {
+                "name": "kit-bresil-front.jpg",
+                "role": "front"
+              }
+            ]
+          },
+          {
+            "key": "equipe-de-france",
+            "label": "Équipe de France",
+            "notes": "Maillot bleu nuit uni, col blanc. Coq FFF doré côté cœur surmonté de 2 étoiles dorées (pas une de plus), logo équipementier doré, nom et numéro du dos en typographie dorée. Pièges : pas de bandes tricolores envahissantes, ne pas réinventer le coq, ne pas éclaircir le bleu nuit. Pas de sponsor poitrine (sélection nationale).",
+            "references": [
+              {
+                "name": "kit-equipe-de-france-back.jpg",
+                "role": "back"
+              },
+              {
+                "name": "kit-equipe-de-france-front.jpg",
+                "role": "front"
+              }
+            ]
+          },
+          {
+            "key": "fc-barcelone",
+            "label": "FC Barcelone",
+            "notes": "Rayures VERTICALES blaugrana (bleu roi et grenat), sponsor Spotify sur la poitrine, blason du FC Barcelone côté cœur. Pièges : les rayures sont verticales et régulières — jamais horizontales ni diagonales ; ne pas fusionner les deux couleurs en violet uni ; respecter le rendu exact des références.",
+            "references": [
+              {
+                "name": "kit-fc-barcelone-back.jpg",
+                "role": "back"
+              },
+              {
+                "name": "kit-fc-barcelone-front.jpg",
+                "role": "front"
+              }
+            ]
+          },
+          {
+            "key": "juventus",
+            "label": "Juventus",
+            "notes": "Rayures VERTICALES noires et blanches (bianconeri), blason « J » stylisé côté cœur. Pièges : les rayures sont verticales et nettes — jamais horizontales ; pas de gris : du noir et du blanc francs ; reproduire le sponsor poitrine exactement tel que sur les images de référence.",
+            "references": [
+              {
+                "name": "kit-juventus-back.jpg",
+                "role": "back"
+              },
+              {
+                "name": "kit-juventus-front.jpg",
+                "role": "front"
+              }
+            ]
+          },
+          {
+            "key": "liverpool",
+            "label": "Liverpool FC",
+            "notes": "Maillot entièrement ROUGE (cols et accents selon la saison — suivre les références), blason avec le liver bird côté cœur, sponsor Standard Chartered sur la poitrine. Pièges : un rouge profond uniforme, pas d’orange ni de bordeaux ; ne pas inventer de rayures ; reproduire le sponsor tel quel.",
+            "references": [
+              {
+                "name": "kit-liverpool-back.jpg",
+                "role": "back"
+              },
+              {
+                "name": "kit-liverpool-front.jpg",
+                "role": "front"
+              }
+            ]
+          },
+          {
+            "key": "losc",
+            "label": "LOSC Lille",
+            "notes": "Maillot ROUGE dominant, accents bleu marine, blason LOSC avec le dogue côté cœur. Pièges : ne pas virer au bordeaux ni au orange ; suivre exactement le placement des accents bleu marine des références ; sponsor poitrine reproduit tel quel.",
+            "references": [
+              {
+                "name": "kit-losc-back.jpg",
+                "role": "back"
+              },
+              {
+                "name": "kit-losc-front.jpg",
+                "role": "front"
+              }
+            ]
+          },
+          {
+            "key": "manchester-city",
+            "label": "Manchester City",
+            "notes": "Maillot BLEU CIEL caractéristique, accents blancs ou bleu marine, blason rond Manchester City (voilier et rose rouge) côté cœur, sponsor Etihad Airways sur la poitrine. Pièges : le bleu ciel City est clair et doux — ne pas le foncer vers le bleu roi ; reproduire le sponsor et le blason exactement comme sur les références.",
+            "references": [
+              {
+                "name": "kit-manchester-city-back.jpg",
+                "role": "back"
+              },
+              {
+                "name": "kit-manchester-city-front.jpg",
+                "role": "front"
+              }
+            ]
+          },
+          {
+            "key": "om",
+            "label": "Olympique de Marseille",
+            "notes": "Maillot BLANC, accents bleu ciel (col, bords de manches), sponsor CMA CGM sur la poitrine, blason OM bleu ciel côté cœur. Pièges : le maillot reste majoritairement blanc — le bleu ciel n'est qu'un accent, ne pas produire un maillot bleu ; sponsor orthographié exactement CMA CGM.",
+            "references": [
+              {
+                "name": "kit-om-back.jpg",
+                "role": "back"
+              },
+              {
+                "name": "kit-om-front.jpg",
+                "role": "front"
+              }
+            ]
+          },
+          {
+            "key": "ol",
+            "label": "Olympique Lyonnais",
+            "notes": "Maillot BLANC, accents rouge et bleu (les deux couleurs historiques du club, souvent en bandes), blason OL avec le lion côté cœur. Pièges : le fond reste blanc — rouge et bleu ne sont que des accents ; reproduire le sponsor poitrine exactement tel que sur les images de référence.",
+            "references": [
+              {
+                "name": "kit-ol-back.jpg",
+                "role": "back"
+              },
+              {
+                "name": "kit-ol-front.jpg",
+                "role": "front"
+              }
+            ]
+          },
+          {
+            "key": "psg",
+            "label": "Paris Saint-Germain",
+            "notes": "Fond bleu marine avec la BANDE VERTICALE CENTRALE rouge bordée de blanc (bande Hechter). Sponsor QATAR AIRWAYS sur la poitrine, blason PSG (tour Eiffel blanche dans un cercle bleu, berceau rouge) côté cœur. Pièges : la bande doit rester parfaitement centrale et continue du col à l'ourlet — jamais déportée, dédoublée ni réduite à une fine rayure ; ne pas inverser le bleu et le rouge.",
+            "references": [
+              {
+                "name": "kit-psg-back.jpg",
+                "role": "back"
+              },
+              {
+                "name": "kit-psg-front.jpg",
+                "role": "front"
+              }
+            ]
+          },
+          {
+            "key": "rc-lens",
+            "label": "RC Lens",
+            "notes": "Maillot « sang et or » : rouge sang et jaune or, les deux couleurs fortement présentes (souvent en larges pans ou rayures selon la saison — suivre les images de référence), blason RC Lens côté cœur. Pièges : ne pas remplacer le jaune or par du blanc ; suivre exactement la découpe rouge/or des références ; sponsor poitrine reproduit tel quel.",
+            "references": [
+              {
+                "name": "kit-rc-lens-back.jpg",
+                "role": "back"
+              },
+              {
+                "name": "kit-rc-lens-front.jpg",
+                "role": "front"
+              }
+            ]
+          },
+          {
+            "key": "real-madrid",
+            "label": "Real Madrid",
+            "notes": "Maillot BLANC, liseré et accents dorés, sponsor Emirates sur la poitrine, blason couronné du Real Madrid côté cœur. Pièges : le fond reste strictement blanc (ni gris ni crème), les accents dorés sont discrets ; reproduire le lettrage exact du sponsor des références.",
+            "references": [
+              {
+                "name": "kit-real-madrid-back.jpg",
+                "role": "back"
+              },
+              {
+                "name": "kit-real-madrid-front.jpg",
+                "role": "front"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "playerName",
+        "type": "text",
+        "required": true,
+        "maxLength": 12,
+        "printOnArtwork": "back-name"
+      },
+      {
+        "name": "playerNumber",
+        "type": "number",
+        "required": true,
+        "min": 1,
+        "max": 99,
+        "printOnArtwork": "back-number"
+      }
+    ]
+  },
+  "prompt": {
+    "base": "You are creating a premium personalized wall-art poster.\n\nIMAGE 1 is a photo of a person (the client). {images}\n\nTask: paint the person from IMAGE 1 as a professional football player of {teamId}, standing on the pitch of a packed floodlit stadium at night, seen from behind in three-quarter view, head turned back over the shoulder so the face is clearly visible while the back of the shirt stays fully readable.\n\nHard requirements:\n- FACE: a faithful, recognizable likeness of the person in IMAGE 1 — same facial features, skin tone, hairstyle, and glasses if any — adapted to the painterly style without caricature. Preserve the person's age (a child must stay a child).\n- KIT: reproduce the official home kit EXACTLY as shown in the kit reference images — same colors, same pattern and stripe placement, same collar, same crest, same sponsor lettering. Do NOT invent, simplify, recolor or move any kit element: the kit must be a faithful copy of the references, not an interpretation.\n- KIT FIDELITY NOTES (in French, non-negotiable — the design described below must be reproduced EXACTLY):\n  Notes {teamId} : {notes}\n  Règles communes à tous les maillots : dans le dos, le prénom est imprimé AU-DESSUS du numéro, dans la typographie officielle du club. Le blason est porté CÔTÉ CŒUR et n'est visible que de FACE — il n'apparaît JAMAIS dans le dos. Le sponsor s'affiche sur la poitrine, de FACE uniquement — jamais dans le dos.\n- BACK TEXT: print the name \"{playerName:upper}\" in capital letters above the number \"{playerNumber}\" on the back of the shirt, in the kit's official typography style. The spelling must be EXACTLY \"{playerName:upper}\" letter by letter, and the number exactly \"{playerNumber}\". Use plain Latin capital letters exactly as given: NEVER add a dot or accent that is not in \"{playerName:upper}\" — in particular the capital letter I is always dotless (\"I\", never the Turkish \"İ\"). No other text.\n- BACK OF SHIRT: only the name and the number. The club crest is worn on the chest (heart side) and the chest sponsor on the front: NEVER paint the crest or the sponsor on the back.\n- STYLE: epic painterly sports-poster style — bold expressive brushstrokes, dramatic rim light, stadium floodlights, glowing crowd, light haze.\n- Single person only, exactly two arms and two legs, anatomically correct, natural hands.\n\nOutput: one vertical 3:4 painting, high detail, no watermark, no text anywhere except the name and number on the shirt.",
+    "refFront": "IMAGE {index} is the official FRONT view of the {teamId} home kit — the exact reference for the chest design, crest and sponsor.",
+    "refBack": "IMAGE {index} is the official BACK view of the {teamId} home kit — the exact reference for the back design and the name/number lettering."
+  },
+  "judge": {
+    "profile": "foot.v1",
+    "seesReferences": true
+  }
+}
