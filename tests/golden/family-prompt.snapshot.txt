@@ -1,8 +1,8 @@
-IMAGE 1 is the CUSTOMER PHOTO. IMAGE 2 is the STYLE REFERENCE.
-Create a minimalist single continuous-line illustration on pure white background.
-The final illustration shows EXACTLY 4 person(s): Papa, Franco, Maman, Veronica.
-Replace « The Smith Family » with « La famille Martin » in the reference script font.
-Under person #1, replace « DADDY » with « Papa ».
-Under person #2, replace « FRANCO » with « Franco ».
-Under person #3, replace « MOMMY » with « Maman ».
-Under person #4, replace « VERONICA » with « Veronica ».
+Two images are attached. IMAGE 1 is the CUSTOMER PHOTO: it is the ONLY source for the people - how many they are, their left-to-right order, relative heights, apparent ages, hair and build. IMAGE 2 is the STYLE REFERENCE: copy its line style, composition, pose, framing, typography and layout EXACTLY, but never copy its people, its faces or its words.
+Create a minimalist single continuous-line illustration ('one-line art' style): one delicate, even, pure-black line on a pure-white background - no color, no grey, no shading, no hatching, no background, no shadow. Redraw the family from the UPLOADED PHOTO in the exact line quality, composition, framing and hand-lettering of the STYLE-REFERENCE image: the family seen FROM BEHIND, gently walking, softly connected - holding hands, a parent carrying the youngest when there is a very small child - elegant and tender. From the photo, faithfully derive for EACH person their left-to-right order, relative height and apparent age (adult / child / toddler / baby), hair length, hairstyle and parting, and overall build and clothing silhouette - but always rendered from behind, faces undetailed, in the reference's clean thin single-line style. Do NOT add wings, halos, hats, pets or any accessory not clearly present in the uploaded photo. The final artwork is one continuous elegant black line on pure white, with no text other than the captions requested below.
+The final illustration shows EXACTLY 4 person(s), in this left-to-right order: Papa, Franco, Maman, Veronica. Render no other person, and no text other than the ones requested below.
+Write the title in the reference's flowing script font, replacing « The Smith Family » with « La famille Martin » - exact spelling, same elegant hand-lettered style.
+Under person #1 (left to right), replace the reference caption « DADDY » with « Papa » - EXACT spelling and casing, in the reference's evenly spaced serif capitals, separated from the next name by the same small heart.
+Under person #2 (left to right), replace the reference caption « FRANCO » with « Franco » - EXACT spelling and casing, in the reference's evenly spaced serif capitals, separated from the next name by the same small heart.
+Under person #3 (left to right), replace the reference caption « MOMMY » with « Maman » - EXACT spelling and casing, in the reference's evenly spaced serif capitals, separated from the next name by the same small heart.
+Under person #4 (left to right), replace the reference caption « VERONICA » with « Veronica » - EXACT spelling and casing, in the reference's evenly spaced serif capitals, separated from the next name by the same small heart.

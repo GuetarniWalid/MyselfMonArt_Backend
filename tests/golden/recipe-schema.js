@@ -72,36 +72,18 @@ const { buildGenericPrompt } = loadTsModule(
 const PROMPT_SNAPSHOT = path.join(__dirname, 'family-prompt.snapshot.txt')
 
 /**
- * Recette de RÉFÉRENCE — même STRUCTURE que celle du produit famille en production (mêmes clés,
- * mêmes formes, mêmes types). Les fragments de prompt sont abrégés : le parseur ne juge que la
- * présence, le type et la longueur, jamais le contenu rédactionnel.
+ * Recette RÉELLE du produit famille en production (gid 10565374247259), exportée verbatim du
+ * metafield `studio.recipe` le 27/07/2026.
+ *
+ * C'est une fixture, PAS une copie écrite à la main : l'invariant « la famille ne change pas » doit
+ * être prouvé contre ce que la boutique sert vraiment. Une copie manuscrite peut dériver du
+ * metafield sans que personne ne s'en aperçoive — et l'invariant deviendrait alors une illusion.
+ * À ré-exporter si la recette de production est modifiée volontairement.
  */
-const FAMILY_RECIPE = JSON.stringify({
-  version: 1,
-  engine: 'gemini',
-  model: 'gemini-3-pro-image',
-  aspect: '3:4',
-  candidates: 3,
-  maxAttempts: 2,
-  inputs: {
-    tokens: { from: 'names', split: true, max: 6 },
-    title: { template: 'La famille {familyName}', required: true },
-  },
-  reference: {
-    texts: { title: 'The Smith Family', slots: ['DADDY', 'FRANCO', 'MOMMY', 'VERONICA'] },
-  },
-  prompt: {
-    base: 'Create a minimalist single continuous-line illustration on pure white background.',
-    imageRoles: 'IMAGE 1 is the CUSTOMER PHOTO. IMAGE 2 is the STYLE REFERENCE.',
-    countLine: 'The final illustration shows EXACTLY {n} person(s): {tokens}.',
-    replaceTitle: 'Replace « {from} » with « {to} » in the reference script font.',
-    perPerson: 'Under person #{index}, replace « {from} » with « {to} ».',
-    addExtra: 'Add one more person consistent with the photo, captioned « {to} ».',
-    removeExtra: 'Remove the person captioned « {from} » and that caption.',
-    footer: '',
-  },
-  judge: { text: true, figureCount: true },
-})
+const FAMILY_RECIPE = fs.readFileSync(
+  path.join(__dirname, 'fixtures/family-recipe.production.json'),
+  'utf8'
+)
 
 let pass = 0
 let fail = 0
@@ -377,7 +359,7 @@ ok(
 // Sans rôles fournis : le bloc `imageRoles` UNIQUE est conservé (ici la surcharge de la recette
 // famille, qui a le sien) et aucune phrase par rôle n'apparaît.
 ok(
-  familyPrompt.includes('IMAGE 1 is the CUSTOMER PHOTO. IMAGE 2 is the STYLE REFERENCE.'),
+  familyPrompt.includes('Two images are attached. IMAGE 1 is the CUSTOMER PHOTO:'),
   'sans rôles fournis, le bloc imageRoles de la recette est conservé tel quel'
 )
 ok(!/L'IMAGE 2 (est|montre)/.test(familyPrompt), 'aucune phrase par rôle sans rôles fournis')
