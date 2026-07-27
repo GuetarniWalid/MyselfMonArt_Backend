@@ -15,6 +15,7 @@ import CustomArtStorage from 'App/Services/CustomArt/Storage'
 import PrintFileService from 'App/Services/CustomArt/PrintFileService'
 import OrderMailer, { OrderMailItem } from 'App/Services/CustomArt/OrderMailer'
 import { chosenCandidate } from 'App/Services/CustomArt/chosenCandidate'
+import { describeJob } from 'App/Services/CustomArt/jobLabelling'
 
 interface UpdateFailure {
   productId: string
@@ -608,14 +609,17 @@ export default class WebhooksController {
       })
 
       // Contenu de l'email de confirmation client (aperçu de la version ACHETÉE + mockups).
-      // Jobs GÉNÉRIQUES (recette produit) : pas d'équipe ni de numéro — libellé du job.
+      // Nommage CENTRALISÉ (cf. jobLabelling) : le client lit la même chose que la création vienne
+      // du chemin historique ou d'une recette. Repli poli « votre équipe » conservé pour un job
+      // foot dont l'équipe aurait disparu de la base.
       const team = job.teamId !== null ? await CustomArtTeam.find(job.teamId) : null
+      const label = describeJob(job, team?.name ?? null)
       const chosen = chosenCandidate(job, order.candidateRank)
       createdJobUuids.push(job.uuid)
       createdItems.push({
-        playerName: job.playerName || job.displayLabel,
-        playerNumber: job.playerNumber,
-        teamName: job.teamId !== null ? team?.name || 'votre équipe' : null,
+        playerName: label.displayName,
+        playerNumber: label.number,
+        teamName: label.optionName ?? (job.teamId !== null ? 'votre équipe' : null),
         format: job.format,
         frame: job.frame,
         previewUrl: chosen?.previewPath ? CustomArtStorage.publicUrl(chosen.previewPath) : null,

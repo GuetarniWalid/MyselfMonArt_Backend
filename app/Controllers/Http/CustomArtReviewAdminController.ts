@@ -9,6 +9,7 @@ import MockupRenderer from 'App/Services/CustomArt/MockupRenderer'
 import PreviewService from 'App/Services/CustomArt/PreviewService'
 import CustomArtWorker from 'App/Services/CustomArt/Worker'
 import { resolveProviderChain, resolveForcedProvider } from 'App/Services/CustomArt/providers'
+import { describeJob } from 'App/Services/CustomArt/jobLabelling'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -42,38 +43,50 @@ export default class CustomArtReviewAdminController {
     return {
       success: true,
       data: {
-        jobs: jobs.map((job) => ({
-          uuid: job.uuid,
-          // Générique : libellé du job (titre/tokens) — l'UI garde une colonne unique
-          playerName: job.playerName || job.displayLabel,
-          playerNumber: job.playerNumber,
-          format: job.format,
-          frame: job.frame,
-          team:
-            job.teamId !== null
-              ? teamById.get(job.teamId)?.name || `équipe #${job.teamId}`
-              : job.productType || 'générique',
-          // Entrées sanitizées du chemin générique (tokens/titre) : SANS ça l'artiste ne
-          // peut pas réaliser à la main un job famille en manual_review. null côté foot.
-          // ⚠️ inputs client uniquement — jamais la recette (prompts).
-          inputs: job.inputs
-            ? { tokens: job.inputs.tokens, title: job.inputs.title, values: job.inputs.values }
-            : null,
-          reason: job.error || null,
-          round: job.round,
-          createdAt: job.createdAt?.toISO() || null,
-          // Photo source servie par la route admin dédiée (clé storage PRIVÉE)
-          photoUrl: `/admin/custom-art/review/${job.uuid}/photo`,
-          // Candidats déjà jugés (aperçus réduits publics) : aident à décider
-          candidates: (job.candidates || []).map((c) => ({
-            previewUrl: CustomArtStorage.publicUrl(c.previewPath),
-            provider: c.provider,
-            score: c.score,
-            pass: c.pass,
-            suspicion: c.suspicion ?? 0,
-            reason: c.verdicts?.reason || null,
-          })),
-        })),
+        jobs: jobs.map((job) => {
+          // Nommage CENTRALISÉ (cf. jobLabelling) : le chemin historique lit les colonnes, le
+          // chemin recette lit les entrées validées, et l'artiste voit la même chose des deux
+          // côtés. Les replis plus riches de cet écran (équipe supprimée en base, job sans
+          // option) restent ici : describeJob ne peut pas les connaître.
+          const label = describeJob(job, teamById.get(job.teamId as number)?.name ?? null)
+          if (label.incomplete) {
+            Logger.warn(
+              'custom-art revue: création SANS libellé exploitable uuid=%s (recette mal configurée ?)',
+              job.uuid
+            )
+          }
+          return {
+            uuid: job.uuid,
+            // Générique : libellé du job (titre/tokens) — l'UI garde une colonne unique
+            playerName: label.displayName,
+            playerNumber: label.number,
+            format: job.format,
+            frame: job.frame,
+            team:
+              label.optionName ??
+              (job.teamId !== null ? `équipe #${job.teamId}` : job.productType || 'générique'),
+            // Entrées sanitizées du chemin générique (tokens/titre) : SANS ça l'artiste ne
+            // peut pas réaliser à la main un job famille en manual_review. null côté foot.
+            // ⚠️ inputs client uniquement — jamais la recette (prompts).
+            inputs: job.inputs
+              ? { tokens: job.inputs.tokens, title: job.inputs.title, values: job.inputs.values }
+              : null,
+            reason: job.error || null,
+            round: job.round,
+            createdAt: job.createdAt?.toISO() || null,
+            // Photo source servie par la route admin dédiée (clé storage PRIVÉE)
+            photoUrl: `/admin/custom-art/review/${job.uuid}/photo`,
+            // Candidats déjà jugés (aperçus réduits publics) : aident à décider
+            candidates: (job.candidates || []).map((c) => ({
+              previewUrl: CustomArtStorage.publicUrl(c.previewPath),
+              provider: c.provider,
+              score: c.score,
+              pass: c.pass,
+              suspicion: c.suspicion ?? 0,
+              reason: c.verdicts?.reason || null,
+            })),
+          }
+        }),
         // Maillons relançables (« relancer avec X ») : la chaîne configurée
         providers: resolveProviderChain().map((p) => p.key),
       },

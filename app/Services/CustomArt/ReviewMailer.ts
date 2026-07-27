@@ -1,5 +1,6 @@
 import Env from '@ioc:Adonis/Core/Env'
 import Logger from '@ioc:Adonis/Core/Logger'
+import { describeJob, shortLabel } from './jobLabelling'
 import axios from 'axios'
 import type CustomArtJob from 'App/Models/CustomArtJob'
 
@@ -26,17 +27,25 @@ export default class ReviewMailer {
 
     const { job, teamName, reason } = input
     const queueUrl = `${Env.get('BACKEND_URL')}/custom-art-review`
-    // displayLabel : « WALID 10 » côté foot (sortie inchangée), titre/tokens côté générique
-    const who = job.displayLabel || '—'
-    const subject = teamName
-      ? `[Poster perso] Création à reprendre — ${who} (${teamName})`
+    // Nommage CENTRALISÉ (cf. jobLabelling) : « WALID 10 » côté foot (sortie inchangée),
+    // titre/tokens côté générique — sans répéter l'équipe, affichée sur sa propre ligne.
+    const label = describeJob(job)
+    const who = shortLabel(label) || '—'
+    // ⚠️ Le chemin piloté par recette n'a PAS de colonne `team_id` : ses six appelants
+    // (Worker.processGeneric) passent tous une équipe VIDE. L'option choisie ne vit que dans les
+    // entrées validées — sans ce repli, l'atelier reçoit un e-mail où le maillot à peindre
+    // n'apparaît nulle part. Sur un job historique, `optionName` est null ici (l'équipe est
+    // résolue par l'appelant, pas par cette fonction pure) : sortie inchangée au caractère près.
+    const team = teamName || label.optionName || ''
+    const subject = team
+      ? `[Poster perso] Création à reprendre — ${who} (${team})`
       : `[Poster perso] Création à reprendre — ${who}`
 
     const text = [
       'Un poster personnalisé attend une intervention humaine (promesse client : aperçu sous 24 h).',
       '',
       `Création : ${who}`,
-      ...(teamName ? [`Équipe : ${teamName}`] : []),
+      ...(team ? [`Équipe : ${team}`] : []),
       `Format / finition : ${job.format} / ${job.frame}`,
       `Raison : ${reason}`,
       `Job : ${job.uuid}`,
@@ -51,7 +60,7 @@ export default class ReviewMailer {
   <p style="margin:0 0 16px;color:#666">Promesse client : aperçu sous 24 h (écran « Faire réaliser par un artiste »).</p>
   <table style="border-collapse:collapse;margin-bottom:16px">
     <tr><td style="padding:2px 12px 2px 0;color:#666">Création</td><td><strong>${this.escapeHtml(who)}</strong></td></tr>
-    ${teamName ? `<tr><td style="padding:2px 12px 2px 0;color:#666">Équipe</td><td>${this.escapeHtml(teamName)}</td></tr>` : ''}
+    ${team ? `<tr><td style="padding:2px 12px 2px 0;color:#666">Équipe</td><td>${this.escapeHtml(team)}</td></tr>` : ''}
     <tr><td style="padding:2px 12px 2px 0;color:#666">Format / finition</td><td>${this.escapeHtml(job.format)} / ${this.escapeHtml(job.frame)}</td></tr>
     <tr><td style="padding:2px 12px 2px 0;color:#666">Raison</td><td>${this.escapeHtml(reason)}</td></tr>
     <tr><td style="padding:2px 12px 2px 0;color:#666">Job</td><td><code>${this.escapeHtml(job.uuid)}</code></td></tr>

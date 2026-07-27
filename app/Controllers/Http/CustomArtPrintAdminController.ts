@@ -11,6 +11,7 @@ import CustomArtStorage from 'App/Services/CustomArt/Storage'
 import OrderMailer from 'App/Services/CustomArt/OrderMailer'
 import PrintFileService, { PRINT_SPECS } from 'App/Services/CustomArt/PrintFileService'
 import { chosenCandidate } from 'App/Services/CustomArt/chosenCandidate'
+import { describeJob } from 'App/Services/CustomArt/jobLabelling'
 
 // Largeur max des aperçus servis par GET :id/file?w= (le fichier print fait ~5000 px,
 // la vignette de la file n'a pas besoin de plus)
@@ -73,23 +74,37 @@ export default class CustomArtPrintAdminController {
             previewUrl: chosen?.previewPath ? CustomArtStorage.publicUrl(chosen.previewPath) : null,
             shopifyAdminUrl: this.shopifyAdminOrderUrl(order.shopifyOrderId),
             printSpec: spec ? `${spec.width} × ${spec.height} px @${spec.dpi} dpi` : null,
-            job: job
-              ? {
-                  uuid: job.uuid,
-                  // Générique : libellé du job (titre/tokens) à la place du prénom foot
-                  playerName: job.playerName || job.displayLabel,
-                  playerNumber: job.playerNumber,
-                  format: job.format,
-                  frame: job.frame,
-                  team:
-                    job.teamId !== null
-                      ? teamById.get(job.teamId)?.name || `équipe #${job.teamId}`
-                      : job.productType || 'générique',
-                }
-              : null,
+            job: job ? this.describeForQueue(job, teamById) : null,
           }
         }),
       },
+    }
+  }
+
+  /**
+   * Identité de la création sur le bon de production. Nommage CENTRALISÉ (cf. jobLabelling) :
+   * chemin historique et chemin recette donnent la même chose à l'atelier. Les replis propres à
+   * cet écran (équipe supprimée en base, création sans option) restent ici — describeJob, qui est
+   * pure et ignore tout de cet écran, ne peut pas les connaître.
+   */
+  private describeForQueue(job: CustomArtJob, teamById: Map<number, CustomArtTeam>) {
+    const label = describeJob(job, teamById.get(job.teamId as number)?.name ?? null)
+    if (label.incomplete) {
+      Logger.warn(
+        'custom-art file print: création SANS libellé exploitable uuid=%s — commande PAYÉE',
+        job.uuid
+      )
+    }
+    return {
+      uuid: job.uuid,
+      // Générique : libellé du job (titre/tokens) à la place du prénom foot
+      playerName: label.displayName,
+      playerNumber: label.number,
+      format: job.format,
+      frame: job.frame,
+      team:
+        label.optionName ??
+        (job.teamId !== null ? `équipe #${job.teamId}` : job.productType || 'générique'),
     }
   }
 
@@ -190,17 +205,20 @@ export default class CustomArtPrintAdminController {
     if (order.customerEmail) {
       const job = await CustomArtJob.find(order.jobId)
       if (job) {
-        // Jobs génériques : pas d'équipe ni de numéro — libellé du job (cf. OrderMailItem)
+        // Nommage CENTRALISÉ (cf. jobLabelling) : le client lit la même chose que la création
+        // vienne du chemin historique ou d'une recette. `teamName` garde son repli poli
+        // « votre équipe » pour un job foot dont l'équipe aurait disparu de la base.
         const team = job.teamId !== null ? await CustomArtTeam.find(job.teamId) : null
+        const label = describeJob(job, team?.name ?? null)
         const chosen = chosenCandidate(job, order.candidateRank)
         void new OrderMailer()
           .sendInProduction({
             email: order.customerEmail,
             orderName: order.orderName,
             item: {
-              playerName: job.playerName || job.displayLabel,
-              playerNumber: job.playerNumber,
-              teamName: job.teamId !== null ? team?.name || 'votre équipe' : null,
+              playerName: label.displayName,
+              playerNumber: label.number,
+              teamName: label.optionName ?? (job.teamId !== null ? 'votre équipe' : null),
               format: job.format,
               frame: job.frame,
               previewUrl: chosen?.previewPath

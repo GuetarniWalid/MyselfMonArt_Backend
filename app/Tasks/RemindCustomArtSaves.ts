@@ -8,6 +8,7 @@ import CustomArtSession from 'App/Models/CustomArtSession'
 import CustomArtStorage from 'App/Services/CustomArt/Storage'
 import ReminderMailer from 'App/Services/CustomArt/ReminderMailer'
 import { affectedRows } from 'App/Services/CustomArt/db'
+import { describeJob } from 'App/Services/CustomArt/jobLabelling'
 
 // Fenêtre de relance (M10) : créations sauvegardées il y a 20 à 28 h. Le scan est
 // horaire et la fenêtre large de 8 h : chaque création éligible est forcément vue
@@ -53,6 +54,17 @@ export default class RemindCustomArtSaves extends BaseTask {
     return true
   }
 
+  /**
+   * La création correspond-elle à ce que raconte l'e-mail de relance ? La copy parle d'un maillot
+   * floqué d'un prénom ET d'un numéro : c'est donc exactement ce qu'on exige. Vrai pour un poster
+   * foot, historique comme piloté par recette ; faux pour une création famille (pas de numéro) ou
+   * horoscope.
+   */
+  private static matchesFootCopy(job: CustomArtJob): boolean {
+    const label = describeJob(job)
+    return !label.incomplete && label.displayName.trim().length > 0 && label.number !== null
+  }
+
   public async handle() {
     const windowStart = DateTime.now()
       .minus({ hours: REMINDER_MAX_AGE_H })
@@ -62,17 +74,22 @@ export default class RemindCustomArtSaves extends BaseTask {
       .toSQL({ includeOffset: false }) as string
 
     // 1) Créations candidates : prêtes, jamais relancées, dans la fenêtre 20-28 h.
-    // ⚠️ FOOT UNIQUEMENT (player_name non NULL) : la copy de l'email (« son maillot, son
-    // prénom et son numéro floqués », « légende ») est spécifique au poster foot — les
-    // jobs GÉNÉRIQUES (recette produit) sont exclus tant qu'une copy dédiée n'existe pas
-    // (décision de marque, P1+ côté thème).
-    const jobs = await CustomArtJob.query()
-      .where('status', 'ready')
-      .whereNotNull('player_name')
-      .whereNull('reminder_sent_at')
-      .where('created_at', '>=', windowStart)
-      .where('created_at', '<', windowEnd)
-      .orderBy('id', 'asc')
+    // ⚠️ POSTER FOOT UNIQUEMENT : la copy de l'e-mail (« son maillot, son prénom et son numéro
+    // floqués », « légende ») lui est spécifique — une création famille ou horoscope n'a rien à
+    // y faire tant qu'une copy dédiée n'existe pas (décision de marque, P1+ côté thème).
+    //
+    // LE CRITÈRE N'EST PAS LA COLONNE, C'EST LA FORME DE LA CRÉATION : un prénom ET un numéro,
+    // exactement ce que la copy raconte. Filtrer sur `player_name` marchait tant que le foot
+    // était seul à la remplir ; un poster foot piloté par recette laisse cette colonne VIDE et
+    // n'aurait plus jamais été relancé — sans la moindre erreur pour le signaler.
+    const jobs = (
+      await CustomArtJob.query()
+        .where('status', 'ready')
+        .whereNull('reminder_sent_at')
+        .where('created_at', '>=', windowStart)
+        .where('created_at', '<', windowEnd)
+        .orderBy('id', 'asc')
+    ).filter(RemindCustomArtSaves.matchesFootCopy)
     if (jobs.length === 0) return
 
     // 2) Sessions avec email uniquement (les anonymes n'ont rien laissé à relancer)
@@ -135,12 +152,15 @@ export default class RemindCustomArtSaves extends BaseTask {
       // récent en fenêtre. La création vedette n'a pas besoin d'être marquée : le cooldown
       // 24 h empêchera de toute façon un second envoi quand elle entrera en fenêtre.
       const featured =
-        (await CustomArtJob.query()
-          .where('session_id', sessionId)
-          .where('status', 'ready')
-          .whereNotNull('player_name') // copy foot : jamais illustré par un job générique
-          .orderBy('id', 'desc')
-          .first()) || sessionJobs[sessionJobs.length - 1]
+        (
+          await CustomArtJob.query()
+            .where('session_id', sessionId)
+            .where('status', 'ready')
+            .orderBy('id', 'desc')
+        )
+          // copy foot : jamais illustré par une création d'un autre produit (même critère
+          // que la sélection ci-dessus — le prénom et le numéro, pas la colonne).
+          .find(RemindCustomArtSaves.matchesFootCopy) || sessionJobs[sessionJobs.length - 1]
 
       const candidates = featured.candidates || []
       const chosen = featured.chosenIndex !== null ? candidates[featured.chosenIndex] : null
@@ -148,7 +168,7 @@ export default class RemindCustomArtSaves extends BaseTask {
         email: session.email!,
         jobUuid: featured.uuid,
         previewUrl: chosen ? CustomArtStorage.publicUrl(chosen.previewPath) : null,
-        playerName: featured.playerName || '',
+        playerName: describeJob(featured).displayName,
       })
 
       if (ok) {

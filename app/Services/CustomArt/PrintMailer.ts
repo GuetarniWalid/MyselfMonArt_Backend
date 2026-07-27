@@ -1,5 +1,6 @@
 import Env from '@ioc:Adonis/Core/Env'
 import Logger from '@ioc:Adonis/Core/Logger'
+import { describeJob, shortLabel } from './jobLabelling'
 import axios from 'axios'
 import type CustomArtJob from 'App/Models/CustomArtJob'
 import type CustomArtOrder from 'App/Models/CustomArtOrder'
@@ -62,8 +63,9 @@ export default class PrintMailer {
       intro,
       '',
       `Commande : ${order.orderName || order.shopifyOrderId}`,
-      // displayLabel : « WALID 10 » foot (inchangé), titre/tokens pour un job générique
-      job ? `Création : ${job.displayLabel}` : `Job : #${order.jobId}`,
+      // Nommage CENTRALISÉ (cf. jobLabelling) : « WALID 10 » foot (inchangé), titre/tokens pour
+      // un job générique — et, sur le chemin recette, SANS répéter l'équipe affichée juste dessous.
+      job ? `Création : ${shortLabel(describeJob(job))}` : `Job : #${order.jobId}`,
       `Équipe : ${teamName}`,
       job ? `Format / finition : ${job.format} / ${job.frame}` : '',
       reason ? `Erreur : ${reason}` : '',
@@ -73,7 +75,7 @@ export default class PrintMailer {
 
     const rows = [
       ['Commande', order.orderName || order.shopifyOrderId],
-      job ? ['Création', job.displayLabel] : null,
+      job ? ['Création', shortLabel(describeJob(job))] : null,
       ['Équipe', teamName],
       job ? ['Format / finition', `${job.format} / ${job.frame}`] : null,
       job ? ['Job', job.uuid] : null,

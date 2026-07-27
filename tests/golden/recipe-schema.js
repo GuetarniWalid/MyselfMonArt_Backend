@@ -736,6 +736,51 @@ ok(driven.displayName === 'WALID 10', 'job piloté par recette : libellé issu d
 ok(driven.optionName === 'Paris', 'l’option choisie est nommée par son libellé FIGÉ')
 ok(driven.number === 10, 'le numéro est repris des champs déclarés')
 
+// LE cas réel du poster foot piloté par recette, relevé en base sur une vraie création :
+// aucun titre, trois champs déclarés. `displayLabel` vaudrait ici « Paris Saint-Germain WALID 10 »
+// (les champs joints). Si describeJob le reprenait tel quel, l'e-mail CLIENT d'une commande PAYÉE
+// dirait « Paris Saint-Germain WALID 10 n°10 (Paris Saint-Germain) », puisque tous les
+// consommateurs recomposent eux-mêmes le numéro et l'équipe. Les trois morceaux sortent SÉPARÉS.
+const reel = describe({
+  uuid: '1a6fb5b2-fee5',
+  inputs: {
+    fields: {
+      teamSlug: { type: 'choice', value: 'psg', label: 'Paris Saint-Germain' },
+      playerName: { type: 'text', value: 'WALID', label: null },
+      playerNumber: { type: 'number', value: '10', label: null },
+    },
+  },
+})
+ok(reel.displayName === 'WALID', 'poster foot par recette : le nom sort NU (ni numéro ni équipe)')
+ok(reel.number === 10, 'poster foot par recette : le numéro sort à part')
+ok(
+  reel.optionName === 'Paris Saint-Germain',
+  'poster foot par recette : l’équipe sort à part, par son libellé'
+)
+ok(reel.incomplete === false, 'poster foot par recette : jamais signalé incomplet')
+// Et le rendu que les consommateurs composent est bien celui d'aujourd'hui, mot pour mot.
+ok(
+  `${reel.displayName} n°${reel.number} (${reel.optionName})` ===
+    'WALID n°10 (Paris Saint-Germain)',
+  'le libellé composé est identique à celui du chemin historique'
+)
+
+// Recette qui ne déclare QUE des champs non-textuels : le libellé brut du modèle joindrait
+// l'option et le nombre (« Paris 10 »), que l'appelant redirait ensuite. On refuse ce repli et on
+// SIGNALE, plutôt que de laisser partir un e-mail bégayant.
+const sansTexte = describe({
+  uuid: 'c0ffee00-1111',
+  inputs: {
+    fields: {
+      equipe: { type: 'choice', value: 'paris', label: 'Paris' },
+      numero: { type: 'number', value: '10', label: null },
+    },
+  },
+})
+ok(sansTexte.displayName.includes('c0ffee00'), 'aucun texte libre : jamais le repli qui redirait')
+ok(sansTexte.incomplete === true, 'aucun texte libre : l’anomalie est SIGNALÉE')
+ok(sansTexte.number === 10 && sansTexte.optionName === 'Paris', 'les deux autres morceaux tiennent')
+
 // Libellé figé : si l'option a été renommée depuis, la commande passée garde son libellé.
 ok(
   describe({

@@ -9,6 +9,7 @@ import CustomArtTeam from 'App/Models/CustomArtTeam'
 import CustomArtStorage from './Storage'
 import PrintMailer from './PrintMailer'
 import { chosenCandidate } from './chosenCandidate'
+import { describeJob } from './jobLabelling'
 
 /**
  * Gabarits print Picanova (plan §9) : dimensions EXACTES en pixels + densité.
@@ -284,9 +285,14 @@ export default class PrintFileService {
   }
 
   private static async teamName(job: CustomArtJob): Promise<string> {
-    // Job générique (recette produit) : pas d'équipe — libellé neutre pour les emails print
-    if (job.teamId === null) return job.productType || 'générique'
-    const team = await CustomArtTeam.find(job.teamId)
-    return team?.name || `équipe #${job.teamId}`
+    // Nommage CENTRALISÉ (cf. jobLabelling) : sur le chemin recette, l'option choisie (le maillot)
+    // vit dans les entrées validées, pas dans la colonne `team_id`. Sans ce passage, l'e-mail
+    // d'atelier d'une commande PAYÉE dirait « générique » à la place de l'équipe.
+    const legacy = job.teamId !== null ? (await CustomArtTeam.find(job.teamId))?.name ?? null : null
+    const option = describeJob(job, legacy).optionName
+    if (option) return option
+    // Replis propres aux e-mails print : équipe historique disparue de la base, ou création
+    // qui n'a tout simplement pas d'option à nommer.
+    return job.teamId !== null ? `équipe #${job.teamId}` : job.productType || 'générique'
   }
 }

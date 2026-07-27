@@ -19,6 +19,7 @@ import RecipeService, { LoadedRecipe, RecipeError } from 'App/Services/CustomArt
 import JobEstimate, { normalizeProductType } from 'App/Services/CustomArt/JobEstimate'
 import { affectedRows } from 'App/Services/CustomArt/db'
 import { chosenCandidate } from 'App/Services/CustomArt/chosenCandidate'
+import { describeJob } from 'App/Services/CustomArt/jobLabelling'
 import SaveMailer from 'App/Services/CustomArt/SaveMailer'
 import { clientIp } from 'App/Services/ClientIp'
 
@@ -468,6 +469,13 @@ export default class CustomArtController {
     // les cas via chosenCandidate -> jamais une version recalée par le juge (repli best
     // validé), même contrat que l'impression.
     const chosen = chosenCandidate(job, job.savedVersionRank)
+    // Nommage CENTRALISÉ (cf. jobLabelling). CES CLÉS DEVIENNENT LES PROPRIÉTÉS DE LA COMMANDE :
+    // le thème les recopie telles quelles dans les line item properties (« Prénom », « Numéro »,
+    // « Équipe »). Sans ce passage, une création pilotée par recette partirait en commande avec
+    // les trois champs VIDES. L'équipe n'est chargée que pour un job historique — une création
+    // par recette porte son option dans ses entrées, sans requête.
+    const legacyTeam = job.teamId !== null ? await CustomArtTeam.find(job.teamId) : null
+    const label = describeJob(job, legacyTeam?.name ?? null)
     return {
       success: true,
       data: {
@@ -480,9 +488,12 @@ export default class CustomArtController {
         remainingReveals: Math.max(0, this.revealableCount(job) - job.revealedCount),
         // Navigateur de versions (compteur « rank/total » du studio) — cf. candidateMeta()
         candidate: this.candidateMeta(job, chosen),
-        playerName: job.playerName,
-        playerNumber: job.playerNumber,
+        playerName: label.displayName,
+        playerNumber: label.number,
         teamId: job.teamId,
+        // Absent jusqu'ici de cette réponse (il ne l'était que de /jobs/last) : une reprise par
+        // lien e-mail perdait donc la propriété « Équipe » de la commande, chemin recette ou non.
+        teamName: label.optionName,
         format: job.format,
         frame: job.frame,
         mockups: (job.mockups || []).map((m) => ({ psd: m.psd, status: m.status, url: m.url })),
@@ -594,6 +605,9 @@ export default class CustomArtController {
 
     // teamName lisible pour l'affichage panier (relation belongsTo déjà sur le modèle).
     await job.load('team')
+    // Nommage CENTRALISÉ (cf. jobLabelling) : mêmes clés qu'à la reprise du studio, donc mêmes
+    // propriétés de commande, que la création vienne du chemin historique ou d'une recette.
+    const label = describeJob(job, job.team ? job.team.name : null)
 
     return {
       success: true,
@@ -613,10 +627,10 @@ export default class CustomArtController {
         // Clés foot conservées en legacy (le front actuel les lit à plat) ; `fields` généralise
         // la reprise aux produits recette (famille : { familyName, names } depuis `inputs`).
         fields,
-        playerName: job.playerName,
-        playerNumber: job.playerNumber,
+        playerName: label.displayName,
+        playerNumber: label.number,
         teamId: job.teamId,
-        teamName: job.team ? job.team.name : null,
+        teamName: label.optionName,
         format: job.format,
         frame: job.frame,
         // Propre à la session : pré-remplit le formulaire « Sauvegarder » (jamais affiché).
