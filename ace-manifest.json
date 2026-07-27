@@ -835,6 +835,52 @@
         }
       ]
     },
+    "studio:render-samples": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/StudioRenderSamples",
+      "commandName": "studio:render-samples",
+      "description": "Génère une planche de validation pour une recette studio (hors plafonds anti-abus)",
+      "args": [
+        {
+          "type": "string",
+          "propertyName": "productId",
+          "name": "productId",
+          "required": true,
+          "description": "GID du produit porteur de la recette"
+        },
+        {
+          "type": "string",
+          "propertyName": "variantId",
+          "name": "variantId",
+          "required": true,
+          "description": "Identifiant de la variante (format + finition)"
+        }
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "plan",
+          "propertyName": "plan",
+          "type": "string",
+          "description": "Fichier JSON décrivant les créations à lancer"
+        },
+        {
+          "name": "photos",
+          "propertyName": "photos",
+          "type": "string",
+          "description": "Dossier contenant les photos citées par le plan"
+        },
+        {
+          "name": "execute",
+          "propertyName": "execute",
+          "type": "boolean",
+          "description": "Lancer réellement les générations (coûte de l’argent)"
+        }
+      ]
+    },
     "test:metaobject_translations": {
       "settings": {
         "loadApp": true,
