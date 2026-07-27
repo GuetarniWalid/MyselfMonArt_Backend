@@ -386,5 +386,59 @@ ok(
 )
 
 // ============================================================================================
+// 5. VALIDATION DU PAYLOAD CLIENT — champs déclarés (choice / number / text)
+// ============================================================================================
+const validate = (recipe, payload) =>
+  RecipeService.validateGenericPayload(recipe, (name) =>
+    Object.prototype.hasOwnProperty.call(payload, name) ? payload[name] : undefined
+  )
+
+// Non-régression : une recette SANS champs déclarés ne persiste aucune clé `fields`.
+const famOut = validate(familyRecipe, { names: 'Papa, Maman', familyName: 'Martin' })
+ok(famOut.ok === true, 'payload famille accepté')
+ok(famOut.ok && !('fields' in famOut.inputs), 'aucune clé "fields" persistée sans champs déclarés')
+
+// Cas nominal foot : le libellé de l'option est FIGÉ sur la commande.
+const footOk = validate(footParsed, { teamId: 'paris', playerName: 'Walid', playerNumber: '10' })
+ok(footOk.ok === true, 'payload foot accepté', footOk.ok ? '' : footOk.message)
+if (footOk.ok) {
+  const f = footOk.inputs.fields
+  ok(f.teamId.value === 'paris' && f.teamId.label === 'Paris', 'choix résolu + libellé snapshoté')
+  ok(f.playerName.value === 'Walid' && f.playerName.type === 'text', 'texte validé')
+  ok(f.playerNumber.value === '10' && f.playerNumber.type === 'number', 'nombre validé')
+}
+
+const rejectsPayload = (payload, label, fragment) => {
+  const r = validate(footParsed, payload)
+  ok(
+    r.ok === false && (!fragment || flat(r.message).includes(flat(fragment))),
+    label,
+    r.ok ? 'payload ACCEPTÉ alors qu’il doit être rejeté' : `message : ${r.message}`
+  )
+}
+const base = { teamId: 'paris', playerName: 'Walid', playerNumber: '10' }
+rejectsPayload({ ...base, teamId: 'marseille' }, 'option inexistante refusée', 'invalide')
+rejectsPayload({ ...base, teamId: '' }, 'champ requis manquant refusé', 'requis')
+rejectsPayload({ ...base, playerNumber: '0' }, 'numéro sous la borne (0 < 1)', 'compris entre')
+rejectsPayload({ ...base, playerNumber: '100' }, 'numéro au-dessus de la borne', 'compris entre')
+rejectsPayload({ ...base, playerNumber: '10.5' }, 'numéro non entier refusé', 'entier')
+rejectsPayload({ ...base, playerNumber: '0x10' }, 'notation hexadécimale refusée', 'nombre')
+rejectsPayload({ ...base, playerNumber: '1e2' }, 'notation exponentielle refusée', 'nombre')
+rejectsPayload({ ...base, playerName: 'WalidWalidWalid' }, 'texte trop long refusé', '12')
+rejectsPayload({ ...base, playerName: 'Walid <b>' }, 'caractères interdits refusés', 'invalide')
+
+// Un champ FACULTATIF absent ne bloque pas et n'est simplement pas persisté.
+const optRecipe = RecipeService.parseRecipe(
+  JSON.stringify({
+    version: 1,
+    inputs: { fields: [{ name: 'surnom', type: 'text', required: false, maxLength: 20 }] },
+    prompt: { base: 'x' },
+  })
+)
+const optOut = validate(optRecipe, {})
+ok(optOut.ok === true, 'champ facultatif absent : payload accepté')
+ok(optOut.ok && !('surnom' in optOut.inputs.fields), 'champ facultatif absent : non persisté')
+
+// ============================================================================================
 console.log(`\ngolden recipe-schema : ${pass} OK, ${fail} FAIL`)
 process.exit(fail === 0 ? 0 : 1)

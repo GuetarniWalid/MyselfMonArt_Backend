@@ -209,11 +209,29 @@ export interface LoadedRecipe {
   referenceUrls: string[]
 }
 
+/** Valeur validée d'un champ déclaré (`inputs.fields` de la recette). */
+export interface SanitizedFieldValue {
+  type: 'choice' | 'number' | 'text'
+  /** Clé de l'option retenue (choice), nombre en chaîne (number) ou texte sanitizé (text). */
+  value: string
+  /**
+   * `choice` uniquement : libellé humain FIGÉ au moment de la commande. Snapshoté exprès —
+   * si l'option est renommée ou retirée plus tard, la commande passée doit continuer de dire
+   * ce que le client a réellement choisi.
+   */
+  label: string | null
+}
+
 /** Entrées client validées/sanitizées — persistées sur le job (colonne `inputs`). */
 export interface SanitizedGenericInputs {
   tokens: string[]
   values: Record<string, string>
   title: string | null
+  /**
+   * Champs déclarés validés. ABSENT (clé non produite) si la recette n'en déclare pas, pour que
+   * le contenu persisté d'un produit existant reste identique.
+   */
+  fields?: Record<string, SanitizedFieldValue>
 }
 
 type CacheEntry =
@@ -832,7 +850,79 @@ export default class RecipeService extends Authentication {
       }
     }
 
-    return { ok: true, inputs: { tokens, values, title } }
+    // 3) Champs DÉCLARÉS par la recette (choice / number / text).
+    // Validation SYNCHRONE : les options d'un choix vivent dans la recette elle-même (modèle
+    // « tout dans la fiche produit »), aucune lecture externe n'est donc nécessaire.
+    let fields: Record<string, SanitizedFieldValue> | undefined
+    if (recipe.fields && recipe.fields.length > 0) {
+      fields = {}
+      for (const spec of recipe.fields) {
+        const raw = getField(spec.name)
+        if (raw === undefined || raw === null || !String(raw).trim()) {
+          if (spec.required) {
+            return { ok: false, message: `Le champ « ${spec.name} » est requis.` }
+          }
+          continue
+        }
+
+        if (spec.type === 'choice') {
+          const key = String(raw).trim()
+          const option = spec.options.find((o) => o.key === key)
+          // On n'écho JAMAIS la valeur client dans le message (bruit + surface d'injection).
+          if (!option) {
+            return { ok: false, message: `Le choix « ${spec.name} » est invalide.` }
+          }
+          fields[spec.name] = { type: 'choice', value: option.key, label: option.label }
+          continue
+        }
+
+        if (spec.type === 'number') {
+          const text = String(raw).trim()
+          // Forme STRICTE : `Number()` accepterait "0x10" (=16), "1e3" (=1000) ou des espaces —
+          // or cette valeur peut finir PEINTE sur l'œuvre. Elle doit se lire telle qu'écrite.
+          if (!/^-?\d+(\.\d+)?$/.test(text)) {
+            return { ok: false, message: `Le champ « ${spec.name} » doit être un nombre.` }
+          }
+          const value = Number(text)
+          if (spec.integer && !Number.isInteger(value)) {
+            return { ok: false, message: `Le champ « ${spec.name} » doit être un nombre entier.` }
+          }
+          if ((spec.min !== null && value < spec.min) || (spec.max !== null && value > spec.max)) {
+            return {
+              ok: false,
+              message: `Le champ « ${spec.name} » doit être compris entre ${spec.min} et ${spec.max}.`,
+            }
+          }
+          fields[spec.name] = { type: 'number', value: String(value), label: null }
+          continue
+        }
+
+        // text
+        const value = RecipeService.sanitizeValue(String(raw))
+        const maxLength = spec.maxLength === null ? TOKEN_MAX_LEN : spec.maxLength
+        if (value.length < 1 || value.length > maxLength) {
+          return {
+            ok: false,
+            message: `Le champ « ${spec.name} » est invalide (${maxLength} caractères max).`,
+          }
+        }
+        if (!TOKEN_CHARSET_RE.test(value)) {
+          return {
+            ok: false,
+            message: `Le champ « ${spec.name} » est invalide (lettres, chiffres, espaces et tirets).`,
+          }
+        }
+        // Même blocklist que les tokens et le titre : ces textes finissent visibles sur l'œuvre.
+        if (isBlockedFirstName(value)) {
+          return { ok: false, message: 'Un des textes demandés ne peut pas être imprimé.' }
+        }
+        fields[spec.name] = { type: 'text', value, label: null }
+      }
+    }
+
+    // Spread CONDITIONNEL : sans champs déclarés, la clé n'existe pas — ce qui est persisté sur
+    // le job d'un produit existant reste donc strictement identique.
+    return { ok: true, inputs: { tokens, values, title, ...(fields ? { fields } : {}) } }
   }
 
   /** Nettoyage d'une valeur client : strip guillemets/backticks, trim, espaces internes repliés. */
