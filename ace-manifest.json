@@ -777,6 +777,25 @@
         }
       ]
     },
+    "studio:migrate-foot-kits": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/StudioMigrateFootKits",
+      "commandName": "studio:migrate-foot-kits",
+      "description": "Téléverse les maillots foot dans Shopify Files (simulation par défaut)",
+      "args": [],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "execute",
+          "propertyName": "execute",
+          "type": "boolean",
+          "description": "Téléverser réellement (sinon simulation)"
+        }
+      ]
+    },
     "test:metaobject_translations": {
       "settings": {
         "loadApp": true,
