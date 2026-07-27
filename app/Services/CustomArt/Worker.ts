@@ -16,8 +16,13 @@ import { GENERIC_JUDGE_EST_COST_EUR } from './GenericJudgeService'
 import JudgeRunner from './JudgeRunner'
 import ReviewMailer from './ReviewMailer'
 import { buildMasterPrompt } from './prompt'
-import RecipeService, { LoadedRecipe } from './RecipeService'
+import RecipeService, { LoadedRecipe, StudioRecipe } from './RecipeService'
 import { buildGenericPrompt } from './genericPrompt'
+import {
+  resolveGenericReferences,
+  ReferenceResolutionError,
+  ResolvedReferences,
+} from './referenceResolver'
 import {
   resolveProviderChain,
   resolveForcedProvider,
@@ -460,6 +465,34 @@ export default class CustomArtWorker {
    * modération total bascule directement en repli artiste. Le maillon imposé de la file
    * admin (« relancer avec X ») et le mode factice (M10) restent honorés.
    */
+  /**
+   * Extrait des entrées persistées ce que le prompt peut interpoler : valeurs des champs déclarés,
+   * libellé de l'option choisie, et sa consigne de fidélité.
+   *
+   * La consigne est RELUE dans la recette (jamais persistée sur le job) : c'est un secret métier,
+   * il ne doit pas se retrouver dans une colonne consultable ni dans une réponse d'API.
+   */
+  private static describeGenericChoice(
+    recipe: StudioRecipe,
+    gi: CustomArtGenericInputs
+  ): { fieldValues: Record<string, string>; label: string | null; notes: string | null } {
+    const fieldValues: Record<string, string> = {}
+    const noteLines: string[] = []
+    let label: string | null = null
+
+    for (const [name, value] of Object.entries(gi.fields || {})) {
+      // Un choix s'interpole par son libellé humain (« Paris »), pas par sa clé technique.
+      fieldValues[name] = value.type === 'choice' ? value.label || value.value : value.value
+      if (value.type !== 'choice') continue
+      if (!label) label = value.label
+      const spec = recipe.fields?.find((f) => f.name === name && f.type === 'choice')
+      const option = spec?.options.find((o) => o.key === value.value)
+      if (option?.notes) noteLines.push(option.notes)
+    }
+
+    return { fieldValues, label, notes: noteLines.length > 0 ? noteLines.join('\n') : null }
+  }
+
   private static async processGeneric(job: CustomArtJob): Promise<void> {
     const t0 = Date.now()
     const gi = job.inputs as CustomArtGenericInputs
@@ -510,13 +543,48 @@ export default class CustomArtWorker {
         throw new Error('Aucun provider de génération configuré (clé API absente).')
       }
 
-      // Références de style (studio.references, CDN Shopify) — ordre admin préservé
-      // (contrat §5 : photo client d'abord, puis les réfs). Rien en mode factice.
+      // Références : si la recette déclare une sélection (« ce choix -> ces images »), seules les
+      // images désignées sont jointes, chacune avec son rôle. Sinon TOUTES les images dans l'ordre
+      // admin, sans rôle — comportement historique, préservé à l'identique.
+      let resolvedRefs: ResolvedReferences
+      try {
+        resolvedRefs = resolveGenericReferences({
+          recipe,
+          fields: gi.fields,
+          available: referenceUrls,
+        })
+      } catch (error) {
+        // Faute de CONFIGURATION produit (image désignée introuvable ou ambiguë) : impossible de
+        // générer fidèlement. Même dégradation propre que « recette absente » — repli artiste,
+        // le client n'est pas abandonné sur une erreur technique.
+        await CustomArtWorker.toManualReview(
+          job,
+          '',
+          `Références studio irrésolues pour ${gi.productId} : ${
+            error instanceof ReferenceResolutionError ? error.reasons.join(' ; ') : String(error)
+          }`,
+          t0
+        )
+        return
+      }
+
+      // Contrat §5 : photo client d'abord, puis les réfs dans cet ordre. Rien en mode factice.
       const refBuffers = fake
         ? []
-        : await Promise.all(referenceUrls.map((url) => CustomArtWorker.fetchBuffer(url)))
+        : await Promise.all(resolvedRefs.items.map((r) => CustomArtWorker.fetchBuffer(r.url)))
 
-      const prompt = buildGenericPrompt({ recipe, tokens: gi.tokens, title: gi.title })
+      // Ce que le prompt peut interpoler/annoncer. Tout est OPTIONNEL : une recette sans champs
+      // ni sélection ne transmet rien de plus et produit exactement le même prompt qu'avant.
+      const choice = CustomArtWorker.describeGenericChoice(recipe, gi)
+      const prompt = buildGenericPrompt({
+        recipe,
+        tokens: gi.tokens,
+        title: gi.title,
+        ...(Object.keys(choice.fieldValues).length > 0 ? { fieldValues: choice.fieldValues } : {}),
+        ...(resolvedRefs.explicit ? { references: resolvedRefs.items.map((r) => r.role) } : {}),
+        ...(choice.label ? { label: choice.label } : {}),
+        ...(choice.notes ? { notes: choice.notes } : {}),
+      })
 
       while (true) {
         job.status = 'generating'

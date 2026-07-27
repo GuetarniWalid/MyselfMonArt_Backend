@@ -479,6 +479,13 @@ const histo = resolveGenericReferences({
 })
 ok(histo.explicit === false, 'sans sélection déclarée : mode historique')
 ok(histo.items.length === 2, 'mode historique : toutes les images sont jointes')
+// Le worker consomme cette liste pour télécharger les images : l'ORDRE doit être exactement
+// celui de l'admin, sinon le contrat « image 1 = photo client, puis les réfs » se décale.
+ok(
+  JSON.stringify(histo.items.map((i) => i.url)) ===
+    JSON.stringify([urls.parisFront, urls.parisBack]),
+  'mode historique : ordre de l’admin strictement préservé'
+)
 
 // Mode EXPLICITE : recette foot avec images partagées (la pose, commune à toutes les équipes).
 const footShared = RecipeService.parseRecipe(
