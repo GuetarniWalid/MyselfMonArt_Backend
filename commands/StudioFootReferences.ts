@@ -25,27 +25,40 @@ export default class StudioFootReferences extends BaseCommand {
     // Les maillots migrés portent tous « -home-front » ou « -home-back » dans leur nom.
     const found: { name: string; id: string }[] = []
     let cursor: string | null = null
+    let scanned = 0
+    let withUrl = 0
 
     for (let page = 0; page < 20; page++) {
       const res: any = await api.gql(
         `query files($cursor: String) {
-          files(first: 250, after: $cursor, query: "media_type:IMAGE") {
+          files(first: 250, after: $cursor, sortKey: CREATED_AT, reverse: true) {
             pageInfo { hasNextPage endCursor }
-            nodes { ... on MediaImage { id image { url } } }
+            nodes {
+              __typename
+              ... on MediaImage { id image { url } }
+            }
           }
         }`,
         { cursor }
       )
       const conn = res?.files
-      if (!conn) break
+      if (!conn) {
+        this.logger.error(`Réponse inattendue de l'API : ${JSON.stringify(res).slice(0, 300)}`)
+        break
+      }
       for (const node of conn.nodes || []) {
+        scanned++
         const url: string = node?.image?.url || ''
+        if (!url) continue
+        withUrl++
         const name = (url.split('/').pop() || '').split('?')[0]
-        if (/-home-(front|back)\./.test(name)) found.push({ name, id: node.id })
+        if (/-home-(front|back)\./i.test(name)) found.push({ name, id: node.id })
       }
       if (!conn.pageInfo?.hasNextPage) break
       cursor = conn.pageInfo.endCursor
     }
+
+    this.logger.info(`Diagnostic : ${scanned} fichier(s) parcouru(s), ${withUrl} avec une URL.`)
 
     found.sort((a, b) => a.name.localeCompare(b.name))
 
