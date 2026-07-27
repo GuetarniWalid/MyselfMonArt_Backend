@@ -1142,6 +1142,9 @@ export default class CustomArtController {
           // Clé de payload d'origine des tokens (ex 'names') : la reprise `/jobs/last`
           // réhydrate le champ de saisie sans relire la recette (cf. lastJobFields).
           tokensFrom: recipe.tokens?.from ?? null,
+          // Champs déclarés validés (choix + libellé figé, nombre, texte). Spread CONDITIONNEL :
+          // pour une recette qui n'en déclare pas, l'objet persisté reste identique à avant.
+          ...(validated.inputs.fields ? { fields: validated.inputs.fields } : {}),
         },
       })
 

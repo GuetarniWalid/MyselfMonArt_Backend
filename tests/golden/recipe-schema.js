@@ -33,6 +33,15 @@ const STUBS = {
   '@ioc:Adonis/Core/Env': { __esModule: true, default: { get: () => undefined } },
   'App/Services/Shopify/Authentication': { __esModule: true, default: class Authentication {} },
   './blocklist': { __esModule: true, isBlockedFirstName: () => false },
+  // Modèle Lucid : les décorateurs sont des no-op, on ne teste que la logique du getter.
+  '@ioc:Adonis/Lucid/Orm': {
+    __esModule: true,
+    BaseModel: class BaseModel {},
+    column: Object.assign(() => () => {}, { dateTime: () => () => {} }),
+    belongsTo: () => () => {},
+  },
+  'App/Models/CustomArtSession': { __esModule: true, default: class CustomArtSession {} },
+  'App/Models/CustomArtTeam': { __esModule: true, default: class CustomArtTeam {} },
 }
 
 function loadTsModule(absPath) {
@@ -546,6 +555,43 @@ throwsResolve(
   'nom de fichier ambigu -> échec net',
   'ambigu'
 )
+
+// ============================================================================================
+// 7. LIBELLÉ DE LA CRÉATION — il alimente les e-mails atelier, la revue et le fichier d'impression
+// ============================================================================================
+const CustomArtJob = loadTsModule(path.join(ROOT, 'app/Models/CustomArtJob.ts')).default
+const labelOf = (patch) => {
+  const job = new CustomArtJob()
+  Object.assign(job, patch)
+  return job.displayLabel
+}
+
+ok(
+  labelOf({ playerName: 'WALID', playerNumber: 10 }) === 'WALID 10',
+  'foot legacy : libellé inchangé'
+)
+ok(
+  labelOf({ inputs: { title: 'La famille Martin', tokens: [] } }) === 'La famille Martin',
+  'générique avec titre : le titre'
+)
+ok(
+  labelOf({ inputs: { tokens: ['Papa', 'Maman'] } }) === 'Papa, Maman',
+  'générique sans titre : les textes joints'
+)
+// Le repli qui évite un e-mail atelier SANS AUCUNE identification (le « piège 8 » de la revue).
+ok(
+  labelOf({
+    inputs: {
+      fields: {
+        teamId: { type: 'choice', value: 'paris', label: 'Paris' },
+        playerName: { type: 'text', value: 'Walid', label: null },
+        playerNumber: { type: 'number', value: '10', label: null },
+      },
+    },
+  }) === 'Paris Walid 10',
+  'recette sans titre : repli sur les champs déclarés (libellé du choix en clair)'
+)
+ok(labelOf({ inputs: { tokens: [] } }) === '', 'aucune donnée : libellé vide (inchangé)')
 
 // ============================================================================================
 console.log(`\ngolden recipe-schema : ${pass} OK, ${fail} FAIL`)

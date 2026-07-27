@@ -2,6 +2,8 @@ import { DateTime } from 'luxon'
 import { BaseModel, column, belongsTo, BelongsTo } from '@ioc:Adonis/Lucid/Orm'
 import CustomArtSession from 'App/Models/CustomArtSession'
 import CustomArtTeam from 'App/Models/CustomArtTeam'
+// `import type` : effacé à la compilation, donc aucune dépendance runtime (ni cycle) vers le service.
+import type { SanitizedFieldValue } from 'App/Services/CustomArt/RecipeService'
 
 export type CustomArtJobStatus =
   | 'pending'
@@ -72,6 +74,15 @@ export interface CustomArtGenericInputs {
    * recette ne consomme pas de tokens (ou job créé avant l'ajout du champ).
    */
   tokensFrom?: string | null
+  /**
+   * Champs DÉCLARÉS par la recette (`inputs.fields`), validés : choix discret (clé de l'option +
+   * libellé FIGÉ au moment de la commande), nombre borné, texte. ABSENT quand la recette n'en
+   * déclare pas — ce qui est persisté reste alors strictement identique à avant.
+   *
+   * ⚠️ Ne pas confondre avec le `fields` renvoyé par `GET /jobs/last`, qui est la carte de
+   * réhydratation du FORMULAIRE côté front.
+   */
+  fields?: Record<string, SanitizedFieldValue>
 }
 
 /**
@@ -239,6 +250,15 @@ export default class CustomArtJob extends BaseModel {
     }
     if (this.inputs?.title) return this.inputs.title
     if (this.inputs?.tokens?.length) return this.inputs.tokens.join(', ')
+    // Repli sur les champs déclarés (choix -> son libellé figé, sinon la valeur), dans l'ordre de
+    // la recette. Évite un libellé VIDE — donc un e-mail atelier ou une ligne de revue sans aucune
+    // identification — quand la recette ne déclare pas de titre. Sans champs déclarés : inchangé.
+    if (this.inputs?.fields) {
+      const parts = Object.values(this.inputs.fields)
+        .map((f) => (f.type === 'choice' ? f.label || f.value : f.value))
+        .filter((v) => typeof v === 'string' && v.trim().length > 0)
+      if (parts.length > 0) return parts.join(' ')
+    }
     return ''
   }
 
