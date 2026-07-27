@@ -265,6 +265,59 @@ async function main() {
     )
   }
 
+  // ==========================================================================================
+  // 4. PARITÉ FOOT — ce juge sait désormais recevoir la photo et les références par rôle
+  // ==========================================================================================
+  // Sans elles, il notait la fidélité d'un maillot qu'il n'avait jamais vu. Tout est OPT-IN :
+  // les cas ci-dessus (produit famille) prouvent que sans photo ni références, rien ne bouge.
+  const ref = (r, g, b) =>
+    sharp({ create: { width: 300, height: 300, channels: 3, background: { r, g, b } } })
+      .jpeg()
+      .toBuffer()
+
+  const withRefs = await run(null, {
+    photoBuffer: await ref(10, 10, 10),
+    references: [
+      { buffer: await ref(20, 20, 200), role: 'front' },
+      { buffer: await ref(30, 200, 30), role: 'back' },
+      { buffer: await ref(200, 30, 30), role: 'scene' },
+    ],
+    label: 'Paris',
+  })
+  const richCall = withRefs.calls[0]
+  const richContent = richCall.messages[0].content
+  const richImages = richContent.filter((c) => c.type === 'image')
+  const richText = richContent[0].text
+
+  ok(richImages.length === 5, 'photo + 3 références + candidat = 5 images')
+  ok(
+    richContent[richContent.length - 1].type === 'image',
+    'le candidat reste la DERNIÈRE image (contrat partagé avec le foot)'
+  )
+  ok(/Tu reçois 5 images/.test(richText), 'le prompt annonce le NOMBRE d’images')
+  ok(/image 1 : la PHOTO DU CLIENT/.test(richText), 'image 1 annoncée = photo du client')
+  ok(/image 2 : la vue de FACE de Paris/.test(richText), 'image 2 annoncée FACE, avec le libellé')
+  ok(/image 3 : la vue de DOS de Paris/.test(richText), 'image 3 annoncée DOS')
+  ok(/image 4 : une référence de SCÈNE/.test(richText), 'image 4 annoncée SCÈNE et POSE')
+  ok(/image 5 : le CANDIDAT à évaluer/.test(richText), 'image 5 annoncée = le candidat')
+
+  // LE garde-fou : le nombre annoncé doit égaler le nombre réellement envoyé. Si l'assemblage et
+  // le prompt divergeaient, le juge noterait des images qu'on ne lui a pas montrées.
+  const announced = (richText.match(/^ {2}- image \d+ :/gm) || []).length
+  ok(
+    announced === richImages.length,
+    'autant d’images annoncées que d’images envoyées',
+    `annoncées=${announced} envoyées=${richImages.length}`
+  )
+
+  // Sans photo ni références : la phrase historique est conservée AU MOT PRÈS.
+  ok(
+    nominal.calls[0].messages[0].content[0].text.includes(
+      'Tu reçois UNE image : le CANDIDAT à évaluer.'
+    ),
+    'sans extras : la formulation historique est intacte'
+  )
+
   console.log(`\ngolden generic-judge : ${pass} OK, ${fail} FAIL`)
   process.exit(fail === 0 ? 0 : 1)
 }

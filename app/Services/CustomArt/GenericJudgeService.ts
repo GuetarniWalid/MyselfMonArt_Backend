@@ -136,6 +136,19 @@ export interface GenericJudgeInput {
   referenceTexts: { title: string | null; slots: string[] }
   /** Contrôles actifs (recette §4 judge) */
   checks: { text: boolean; figureCount: boolean }
+  /**
+   * Photo du client — jointe UNIQUEMENT si le produit le demande. Absente : ce juge ne voit que
+   * le candidat, exactement comme avant (le produit famille est dans ce cas).
+   */
+  photoBuffer?: Buffer
+  /**
+   * Images de référence à montrer au juge, DANS L'ORDRE D'ENVOI, chacune avec son rôle. C'est ce
+   * qui manquait au chemin générique pour atteindre la parité foot : sans elles, le juge note la
+   * fidélité d'un maillot qu'il n'a jamais vu.
+   */
+  references?: { buffer: Buffer; role: 'style' | 'front' | 'back' | 'scene' }[]
+  /** Libellé de l'option choisie (ex. « Paris »), pour nommer les références dans le prompt. */
+  label?: string | null
   /** Modèle Claude — résolu par l'appelant (Env override ou DEFAULT_JUDGE_MODEL) */
   model: string
 }
@@ -145,10 +158,11 @@ export default class GenericJudgeService {
   constructor(private anthropic: Anthropic) {}
 
   public async judge(input: GenericJudgeInput): Promise<JudgeResult> {
-    const content: any[] = [
-      { type: 'text', text: this.prompt(input) },
-      await this.imageBlock(input.candidateBuffer),
-    ]
+    // Le manifeste ordonne les images (candidat en DERNIER) ; le prompt les annonce une par une.
+    const content: any[] = [{ type: 'text', text: this.prompt(input) }]
+    for (const item of this.imageManifest(input)) {
+      content.push(await this.imageBlock(item.buffer))
+    }
 
     const reading = await this.structuredCall(input.model, content)
 
@@ -261,6 +275,40 @@ export default class GenericJudgeService {
   // Prompt (le modèle DÉCRIT, en français — le verdict est calculé par programme)
   // --------------------------------------------------------------------------
 
+  /**
+   * Manifeste des images jointes, DANS L'ORDRE D'ENVOI (le candidat toujours en DERNIER, comme
+   * sur le chemin foot). Source unique de vérité, partagée par l'assemblage du message ET par le
+   * prompt : si les deux divergeaient, le juge noterait des images qu'on ne lui a pas montrées.
+   *
+   * Sans photo ni références, le manifeste vaut [candidat] — l'assemblage et le prompt sont alors
+   * exactement ceux d'avant.
+   */
+  private imageManifest(input: GenericJudgeInput): { buffer: Buffer; label: string }[] {
+    const of = input.label ? ` de ${input.label}` : ''
+    const items: { buffer: Buffer; label: string }[] = []
+
+    if (input.photoBuffer) {
+      items.push({
+        buffer: input.photoBuffer,
+        label: 'la PHOTO DU CLIENT (seule source pour les personnes)',
+      })
+    }
+    for (const ref of input.references || []) {
+      const label =
+        ref.role === 'front'
+          ? `la vue de FACE${of} — référence exacte du design de face`
+          : ref.role === 'back'
+            ? `la vue de DOS${of} — référence exacte du design du dos et de son lettrage`
+            : ref.role === 'scene'
+              ? 'une référence de SCÈNE et de POSE'
+              : `une RÉFÉRENCE DE STYLE${of}`
+      items.push({ buffer: ref.buffer, label })
+    }
+    items.push({ buffer: input.candidateBuffer, label: 'le CANDIDAT à évaluer' })
+
+    return items
+  }
+
   private prompt(input: GenericJudgeInput): string {
     const tokenLines = input.tokens.map((t, i) => `  ${i + 1}. « ${t} »`).join('\n')
     const referencePool = [
@@ -275,9 +323,18 @@ export default class GenericJudgeService {
       ? `\nTITRE attendu (unique, généralement en plus grand) : « ${input.title} ».`
       : `\nAucun titre n'est attendu : title_found=false, title_read_as vide, title_exact=false.`
 
+    // Annonce des images : une ligne par image quand il y en a plusieurs (parité foot), la phrase
+    // historique — au mot près — quand le candidat est seul.
+    const manifest = this.imageManifest(input)
+    const imagesBlock =
+      manifest.length === 1
+        ? 'Tu reçois UNE image : le CANDIDAT à évaluer.'
+        : `Tu reçois ${manifest.length} images, dans cet ordre :\n` +
+          manifest.map((m, i) => `  - image ${i + 1} : ${m.label}`).join('\n')
+
     return `Tu es le contrôleur qualité d'une œuvre personnalisée générée par IA (illustration imprimée, produit premium). Ton rôle est UNIQUEMENT de DÉCRIRE ce que tu VOIS — le verdict est calculé par programme à partir de tes descriptions. ATTENTION : le générateur fait des fautes d'orthographe subtiles (lettre doublée, accent absent ou ajouté, point sur un I majuscule « İ », casse différente) — lis chaque texte LETTRE PAR LETTRE.
 
-Tu reçois UNE image : le CANDIDAT à évaluer.
+${imagesBlock}
 
 La composition attendue compte EXACTEMENT ${input.n} personne(s), chacune accompagnée de son texte, dans cet ordre de GAUCHE à DROITE :
 ${tokenLines || '  (aucun texte par personne attendu)'}
