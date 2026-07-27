@@ -8,6 +8,7 @@
     "build": "node ace build --production",
     "start": "node server.js && node ace scheduler:run",
     "test": "node ace test",
+    "test:golden": "node tests/golden/recipe-schema.js",
     "lint": "eslint . --ext=.ts",
     "format": "prettier --write .",
     "copy-env": "dotenv node copy-env.js",
@@ -115,6 +116,9 @@
     "*.{js,ts}": [
       "node ace type-check",
       "prettier --write"
+    ],
+    "app/Services/CustomArt/RecipeService.ts": [
+      "node tests/golden/recipe-schema.js"
     ]
   }
 }

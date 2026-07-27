@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "engine": "gemini",
+  "model": "gemini-3-pro-image",
+  "aspect": "3:4",
+  "candidates": 3,
+  "maxAttempts": 2,
+  "tokens": {
+    "from": "names",
+    "split": true,
+    "max": 6
+  },
+  "title": {
+    "template": "La famille {familyName}",
+    "required": true,
+    "fields": [
+      "familyName"
+    ]
+  },
+  "referenceTexts": {
+    "title": "The Smith Family",
+    "slots": [
+      "DADDY",
+      "FRANCO",
+      "MOMMY",
+      "VERONICA"
+    ]
+  },
+  "prompt": {
+    "base": "Create a minimalist single continuous-line illustration on pure white background.",
+    "imageRoles": "IMAGE 1 is the CUSTOMER PHOTO. IMAGE 2 is the STYLE REFERENCE.",
+    "countLine": "The final illustration shows EXACTLY {n} person(s): {tokens}.",
+    "perPerson": "Under person #{index}, replace « {from} » with « {to} ».",
+    "addExtra": "Add one more person consistent with the photo, captioned « {to} ».",
+    "removeExtra": "Remove the person captioned « {from} » and that caption.",
+    "replaceTitle": "Replace « {from} » with « {to} » in the reference script font."
+  },
+  "judge": {
+    "text": true,
+    "figureCount": true
+  }
+}
