@@ -440,5 +440,113 @@ ok(optOut.ok === true, 'champ facultatif absent : payload accepté')
 ok(optOut.ok && !('surnom' in optOut.inputs.fields), 'champ facultatif absent : non persisté')
 
 // ============================================================================================
+// 6. SÉLECTION DES IMAGES — « ce choix → ces images », par NOM (jamais par position)
+// ============================================================================================
+const { resolveGenericReferences, referenceFileName } = loadTsModule(
+  path.join(ROOT, 'app/Services/CustomArt/referenceResolver.ts')
+)
+
+const CDN = 'https://cdn.shopify.com/s/files/1/0623/2388/4287/files/'
+const urls = {
+  parisFront: `${CDN}paris-front.jpg?v=1783584613`,
+  parisBack: `${CDN}paris-back.jpg?v=1783584614`,
+  franceBack: `${CDN}france-back.jpg?v=1783584615`,
+  pose: `${CDN}scene-pose.jpg?v=1783584616`,
+}
+
+ok(
+  referenceFileName(urls.parisBack) === 'paris-back.jpg',
+  'nom de fichier extrait sans query string'
+)
+ok(
+  referenceFileName(`${CDN}Paris-Back.JPG`) === 'paris-back.jpg',
+  'correspondance insensible à la casse'
+)
+
+// Mode HISTORIQUE : aucune sélection déclarée -> tout est joint, rôles inconnus.
+const histo = resolveGenericReferences({
+  recipe: familyRecipe,
+  available: [urls.parisFront, urls.parisBack],
+})
+ok(histo.explicit === false, 'sans sélection déclarée : mode historique')
+ok(histo.items.length === 2, 'mode historique : toutes les images sont jointes')
+
+// Mode EXPLICITE : recette foot avec images partagées (la pose, commune à toutes les équipes).
+const footShared = RecipeService.parseRecipe(
+  JSON.stringify({
+    version: 1,
+    references: [{ name: 'scene-pose.jpg', role: 'scene' }],
+    inputs: {
+      fields: [
+        {
+          name: 'teamId',
+          type: 'choice',
+          options: [
+            {
+              key: 'paris',
+              label: 'Paris',
+              references: [
+                { name: 'paris-front.jpg', role: 'front' },
+                { name: 'paris-back.jpg', role: 'back' },
+              ],
+            },
+            { key: 'france', references: [{ name: 'france-back.jpg', role: 'back' }] },
+          ],
+        },
+      ],
+    },
+    prompt: { base: 'x' },
+  })
+)
+const all = [urls.franceBack, urls.pose, urls.parisFront, urls.parisBack]
+const pick = (key, available) =>
+  resolveGenericReferences({
+    recipe: footShared,
+    fields: { teamId: { type: 'choice', value: key, label: null } },
+    available,
+  })
+
+const paris = pick('paris', all)
+ok(paris.explicit === true, 'sélection déclarée : mode explicite')
+ok(paris.items.length === 3, 'Paris : 2 maillots + la pose partagée')
+ok(
+  paris.items[0].url === urls.parisFront && paris.items[0].role === 'front',
+  'image 1 = maillot FACE de Paris'
+)
+ok(paris.items[1].role === 'back', 'image 2 = maillot DOS')
+ok(paris.items[2].role === 'scene', 'les images partagées viennent EN DERNIER (contrat foot)')
+ok(!paris.items.some((i) => i.url === urls.franceBack), 'le maillot d’une autre équipe est exclu')
+
+const france = pick('france', all)
+ok(
+  france.items.length === 2 && france.items[0].url === urls.franceBack,
+  'France : son seul maillot'
+)
+
+// LA propriété qui compte : réordonner les images dans l'admin ne change RIEN.
+const shuffled = [urls.pose, urls.parisBack, urls.franceBack, urls.parisFront]
+ok(
+  JSON.stringify(pick('paris', shuffled)) === JSON.stringify(paris),
+  'réordonner studio.references ne change pas le résultat'
+)
+
+// Fautes de configuration produit : échec NET, jamais une génération privée de son maillot.
+const throwsResolve = (available, label, fragment) => {
+  try {
+    pick('paris', available)
+    ok(false, label, 'résolution ACCEPTÉE alors qu’elle doit échouer')
+  } catch (e) {
+    const why = (e && e.reasons ? e.reasons.join(' ; ') : e.message) || ''
+    ok(!fragment || flat(why).includes(flat(fragment)), label, `motif : ${why}`)
+  }
+}
+throwsResolve([urls.parisFront, urls.pose], 'image désignée absente -> échec net', 'introuvable')
+throwsResolve(
+  [urls.parisFront, urls.parisBack, urls.pose, `${CDN}paris-back.jpg?v=999`],
+  'nom de fichier ambigu -> échec net',
+  'ambigu'
+)
+
+// ============================================================================================
 console.log(`\ngolden recipe-schema : ${pass} OK, ${fail} FAIL`)
 process.exit(fail === 0 ? 0 : 1)

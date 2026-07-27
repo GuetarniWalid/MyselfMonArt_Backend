@@ -176,6 +176,16 @@ export interface StudioRecipe {
    * pour que la sortie d'une recette existante (famille LIVE) reste strictement identique.
    */
   fields?: RecipeField[]
+  /**
+   * Images PARTAGÉES : jointes à CHAQUE génération quel que soit le choix du client (ex. la
+   * référence de pose du foot, commune à toutes les équipes). Les images propres à une option
+   * vivent, elles, dans `fields[].options[].references`.
+   *
+   * ABSENTE => comportement historique conservé : toutes les images de `studio.references` sont
+   * jointes, dans l'ordre de l'admin. Déclarer ce bloc fait passer le produit en sélection
+   * explicite (partagées + celles de l'option choisie), et rien d'autre n'est envoyé.
+   */
+  references?: RecipeRefPick[]
   /** Ce qui est ÉCRIT dans l'image de référence (source des substitutions §5) */
   referenceTexts: { title: string | null; slots: string[] }
   /** Fragments de prompt : base obligatoire, le reste surcharge les défauts du worker */
@@ -446,6 +456,13 @@ export default class RecipeService extends Authentication {
       }
     }
 
+    // references (partagées) : jointes à chaque génération quel que soit le choix du client.
+    // Absentes -> null -> la clé n'est pas produite et le worker garde son comportement historique.
+    const sharedRefs =
+      json.references === undefined || json.references === null
+        ? null
+        : RecipeService.parseRefPicks(json.references, 'references', reasons, REFERENCES_MAX)
+
     // reference.texts (source des substitutions)
     const rawRefTexts = json.reference?.texts || {}
     const refTitle =
@@ -521,6 +538,7 @@ export default class RecipeService extends Authentication {
       // Spread CONDITIONNEL : sans `inputs.fields`, la clé n'existe pas dans l'objet retourné —
       // une recette v1 (famille LIVE) produit donc exactement le même objet qu'avant la v1.1.
       ...(recipeFields ? { fields: recipeFields } : {}),
+      ...(sharedRefs ? { references: sharedRefs } : {}),
       referenceTexts: { title: refTitle, slots },
       prompt,
       judge,
@@ -687,45 +705,13 @@ export default class RecipeService extends Authentication {
           }
           seenKeys.add(key)
 
-          const rawRefs = opt.references
-          if (!Array.isArray(rawRefs) || rawRefs.length === 0) {
-            reasons.push(`${owhere}.references est obligatoire (au moins 1 image nommée)`)
-            optionsOk = false
-            continue
-          }
-          if (rawRefs.length > CHOICE_REFS_MAX) {
-            reasons.push(`${owhere}.references dépasse ${CHOICE_REFS_MAX} entrées`)
-            optionsOk = false
-            continue
-          }
-
-          const picks: RecipeRefPick[] = []
-          let refsOk = true
-          for (let k = 0; k < rawRefs.length; k++) {
-            const ref = rawRefs[k]
-            const rwhere = `${owhere}.references[${k}]`
-            if (!ref || typeof ref !== 'object' || Array.isArray(ref)) {
-              reasons.push(`${rwhere} doit être un objet { name, role }`)
-              refsOk = false
-              continue
-            }
-            const refName = String(ref.name || '').trim()
-            if (!refName || refName.length > REF_NAME_MAX_LEN) {
-              reasons.push(`${rwhere}.name manquant ou trop long (${REF_NAME_MAX_LEN} max)`)
-              refsOk = false
-              continue
-            }
-            const role = String(ref.role || '').trim()
-            if (!REF_ROLES.has(role)) {
-              reasons.push(
-                `${rwhere}.role "${role}" invalide (${Array.from(REF_ROLES).join(', ')})`
-              )
-              refsOk = false
-              continue
-            }
-            picks.push({ name: refName, role: role as RecipeRefRole })
-          }
-          if (!refsOk) {
+          const picks = RecipeService.parseRefPicks(
+            opt.references,
+            `${owhere}.references`,
+            reasons,
+            CHOICE_REFS_MAX
+          )
+          if (!picks) {
             optionsOk = false
             continue
           }
@@ -756,6 +742,65 @@ export default class RecipeService extends Authentication {
     }
 
     return out
+  }
+
+  /**
+   * Parse une liste d'images désignées PAR NOM + rôle. Partagé par les références d'une option de
+   * `choice` et par les références PARTAGÉES du produit. `null` = liste invalide (les raisons ont
+   * été poussées) ; l'appelant doit alors abandonner l'entrée en cours.
+   */
+  private static parseRefPicks(
+    raw: any,
+    where: string,
+    reasons: string[],
+    max: number
+  ): RecipeRefPick[] | null {
+    if (!Array.isArray(raw) || raw.length === 0) {
+      reasons.push(`${where} est obligatoire (au moins 1 image nommée)`)
+      return null
+    }
+    if (raw.length > max) {
+      reasons.push(`${where} dépasse ${max} entrées`)
+      return null
+    }
+
+    const picks: RecipeRefPick[] = []
+    let allOk = true
+    const seen = new Set<string>()
+
+    for (let k = 0; k < raw.length; k++) {
+      const ref = raw[k]
+      const rwhere = `${where}[${k}]`
+      if (!ref || typeof ref !== 'object' || Array.isArray(ref)) {
+        reasons.push(`${rwhere} doit être un objet { name, role }`)
+        allOk = false
+        continue
+      }
+      const refName = String(ref.name || '').trim()
+      if (!refName || refName.length > REF_NAME_MAX_LEN) {
+        reasons.push(`${rwhere}.name manquant ou trop long (${REF_NAME_MAX_LEN} max)`)
+        allOk = false
+        continue
+      }
+      const role = String(ref.role || '').trim()
+      if (!REF_ROLES.has(role)) {
+        reasons.push(`${rwhere}.role "${role}" invalide (${Array.from(REF_ROLES).join(', ')})`)
+        allOk = false
+        continue
+      }
+      // Doublon strict : la même image jointe deux fois gonflerait l'envoi au modèle pour rien
+      // et décalerait la numérotation annoncée dans le prompt.
+      const dedup = `${refName.toLowerCase()}|${role}`
+      if (seen.has(dedup)) {
+        reasons.push(`${rwhere} : image "${refName}" (${role}) en double`)
+        allOk = false
+        continue
+      }
+      seen.add(dedup)
+      picks.push({ name: refName, role: role as RecipeRefRole })
+    }
+
+    return allOk ? picks : null
   }
 
   // --------------------------------------------------------------------------
