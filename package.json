@@ -117,7 +117,7 @@
       "node ace type-check",
       "prettier --write"
     ],
-    "app/Services/CustomArt/RecipeService.ts": [
+    "{app/Services/CustomArt/*.ts,app/Models/CustomArtJob.ts}": [
       "node tests/golden/recipe-schema.js"
     ]
   }

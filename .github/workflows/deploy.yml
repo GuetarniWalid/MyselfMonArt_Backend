@@ -19,6 +19,13 @@ jobs:
       - name: Install app dependencies
         run: npm install
 
+      # Filet de non-régression du studio, AVANT toute image poussée en production.
+      # Ne demande aucune infrastructure (ni base, ni .env) : le TypeScript est transpilé en
+      # mémoire et les imports Adonis sont stubbés. Un échec ici doit bloquer le déploiement —
+      # sans cette étape, les instantanés figés ne protégeaient rien une fois le commit poussé.
+      - name: Studio golden tests
+        run: npm run test:golden
+
       - name: Build app
         run: npm run build
 
