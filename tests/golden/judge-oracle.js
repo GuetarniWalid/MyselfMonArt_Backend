@@ -230,6 +230,26 @@ async function main() {
   ok(imagesOf(oneRef.calls[0]).length === 3, 'avec 1 seule référence : 3 images en passe 1')
   ok(/1 image/.test(oneRef.calls[0].messages[0].content[0].text), 'le compte annoncé suit')
 
+  // RÔLES EXPLICITES (chemin piloté par recette) : prioritaires sur la convention de nommage.
+  // Ici les noms de fichiers diraient l'INVERSE des rôles déclarés — c'est la déclaration qui doit
+  // gagner, sans quoi un simple renommage de fichier changerait ce que le juge croit regarder.
+  const explicitRoles = await run(null, null, {
+    kitRefFiles: ['a-back.jpg', 'b-front.jpg'],
+    kitRefRoles: ['front', 'back'],
+  })
+  const rolesText = explicitRoles.calls[0].messages[0].content[0].text
+  ok(
+    /image 2 : vue de FACE/.test(rolesText) && /image 3 : vue de DOS/.test(rolesText),
+    'le rôle DÉCLARÉ prime sur le suffixe du nom de fichier'
+  )
+  // Sans rôle déclaré, la déduction historique par suffixe reste en place (chemin foot actuel).
+  const bySuffix = await run(null, null, { kitRefFiles: ['a-back.jpg', 'b-front.jpg'] })
+  const suffixText = bySuffix.calls[0].messages[0].content[0].text
+  ok(
+    /image 2 : vue de DOS/.test(suffixText) && /image 3 : vue de FACE/.test(suffixText),
+    'sans rôle déclaré : déduction par suffixe inchangée'
+  )
+
   // ==========================================================================================
   // 2. DÉCISION — portes dures, seuils, fusion des deux passes
   // ==========================================================================================

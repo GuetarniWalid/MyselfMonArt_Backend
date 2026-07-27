@@ -286,6 +286,13 @@ export default class JudgeService {
     kitRefBuffers: Buffer[]
     /** Noms/URLs des réfs maillot (mêmes index que kitRefBuffers) : annonce FACE/DOS */
     kitRefFiles?: string[]
+    /**
+     * Rôles EXPLICITES des réfs (mêmes index), quand ils sont connus — cas du chemin piloté par
+     * recette, où l'admin les déclare. Prioritaires sur la déduction par suffixe de fichier, qui
+     * reste le repli du chemin historique. Une convention de nommage est plus fragile qu'une
+     * déclaration : un fichier renommé perdrait son sens.
+     */
+    kitRefRoles?: (string | null | undefined)[]
     playerName: string
     playerNumber: number
     /** Notes de fidélité maillot de l'équipe (calibrent kit_fidelity), null si absentes */
@@ -431,6 +438,7 @@ export default class JudgeService {
   private rubricPrompt(input: {
     kitRefBuffers: Buffer[]
     kitRefFiles?: string[]
+    kitRefRoles?: (string | null | undefined)[]
     playerName: string
     playerNumber: number
     fidelityNotes?: string | null
@@ -441,8 +449,16 @@ export default class JudgeService {
     const sentRefs = input.kitRefBuffers.slice(0, 2)
     const refLines = sentRefs
       .map((_, i) => {
-        const file = input.kitRefFiles?.[i] || ''
-        return `   - image ${2 + i} : ${kitViewLabelFr(file)}`
+        // Rôle EXPLICITE prioritaire (chemin piloté par recette : l'admin l'a déclaré), sinon
+        // déduction historique par le suffixe du nom de fichier (-front / -back).
+        const role = input.kitRefRoles?.[i]
+        const label =
+          role === 'back'
+            ? 'vue de DOS (référence du placement nom/numéro)'
+            : role === 'front'
+              ? 'vue de FACE (référence du blason et du sponsor)'
+              : kitViewLabelFr(input.kitRefFiles?.[i] || '')
+        return `   - image ${2 + i} : ${label}`
       })
       .join('\n')
 
