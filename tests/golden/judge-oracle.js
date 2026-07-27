@@ -63,6 +63,9 @@ function loadTsModule(absPath) {
 }
 
 const JudgeService = loadTsModule(SRC).default
+// Le moteur de décision pur (lot L1). Il n'importe JudgeService qu'en `import type`, effacé à la
+// transpilation : aucun stub supplémentaire n'est requis.
+const { conclude, FOOT_V1 } = loadTsModule(path.join(ROOT, 'app/Services/CustomArt/judgeEngine.ts'))
 
 /** Client Anthropic factice : enregistre ce qu'on lui envoie, rejoue une réponse préparée. */
 function fakeAnthropic(byTool) {
@@ -230,24 +233,37 @@ async function main() {
   // ==========================================================================================
   // 2. DÉCISION — portes dures, seuils, fusion des deux passes
   // ==========================================================================================
-  const cases = {
-    nominal: nominal.result,
-    visage_sous_seuil: (await run({ face_resemblance: 6 })).result,
-    maillot_sous_seuil: (await run({ kit_fidelity: 6 })).result,
-    seuils_exactement_7: (await run({ face_resemblance: 7, kit_fidelity: 7 })).result,
-    porte_bras: (await run({ arms_visible: 3 })).result,
-    porte_mains: (await run({ hands_visible: 3 })).result,
-    porte_defaut_anatomique: (await run({ anatomy_defect: true })).result,
+  // Chaque cas = un couple de réponses de modèle. L'ORDRE compte : il détermine celui des clés
+  // de l'instantané.
+  const CASE_DEFS = [
+    ['nominal', null, null],
+    ['visage_sous_seuil', { face_resemblance: 6 }, null],
+    ['maillot_sous_seuil', { kit_fidelity: 6 }, null],
+    ['seuils_exactement_7', { face_resemblance: 7, kit_fidelity: 7 }, null],
+    ['porte_bras', { arms_visible: 3 }, null],
+    ['porte_mains', { hands_visible: 3 }, null],
+    ['porte_defaut_anatomique', { anatomy_defect: true }, null],
     // Fusion : le défaut vu par UNE SEULE passe doit suffire (max des compteurs).
-    fusion_anatomie_voit_3_bras: (await run({ arms_visible: 1 }, { arms_visible: 3 })).result,
-    fusion_rubrique_voit_3_bras: (await run({ arms_visible: 3 }, { arms_visible: 1 })).result,
+    ['fusion_anatomie_voit_3_bras', { arms_visible: 1 }, { arms_visible: 3 }],
+    ['fusion_rubrique_voit_3_bras', { arms_visible: 3 }, { arms_visible: 1 }],
     // Orthographe fausse : NON éliminatoire côté foot (contraste avec le juge générique).
-    orthographe_fausse: (await run({ name_spelling_exact: false })).result,
-    numero_faux: (await run({ number_exact: false })).result,
+    ['orthographe_fausse', { name_spelling_exact: false }, null],
+    ['numero_faux', { number_exact: false }, null],
     // Signaux faibles : suspicion uniquement, jamais un échec.
-    membre_surnumeraire_passe2: (await run(null, { extra_limb: true })).result,
-    mains_deformees_passe2: (await run(null, { hands_malformed: true })).result,
-    bras_deconnecte: (await run({ arms_connected: false })).result,
+    ['membre_surnumeraire_passe2', null, { extra_limb: true }],
+    ['mains_deformees_passe2', null, { hands_malformed: true }],
+    ['bras_deconnecte', { arms_connected: false }, null],
+  ]
+
+  const cases = {}
+  const engineCases = {}
+  for (const [name, rubricPatch, anatomyPatch] of CASE_DEFS) {
+    cases[name] = (await run(rubricPatch, anatomyPatch)).result
+    // Le MOTEUR PUR reçoit exactement les mêmes réponses de modèle que le juge legacy.
+    engineCases[name] = conclude(FOOT_V1, {
+      rubric: { ...RUBRIC, ...(rubricPatch || {}) },
+      anatomy: { ...ANATOMY, ...(anatomyPatch || {}) },
+    })
   }
 
   ok(cases.nominal.pass === true, 'cas nominal : réussite')
@@ -303,6 +319,22 @@ async function main() {
       actual === expected
         ? ''
         : 'dérive détectée. Si elle est VOULUE : npm run test:judge -- --update'
+    )
+  }
+
+  // ==========================================================================================
+  // 4. PARITÉ DU MOTEUR PUR — la preuve qui autorise la refonte
+  // ==========================================================================================
+  // Pour un même couple de réponses de modèle, conclude(FOOT_V1) doit rendre EXACTEMENT le verdict
+  // du juge legacy. La comparaison se fait sur JSON.stringify : c'est la forme réellement persistée
+  // en base, et elle dépend de l'ORDRE des clés — un deep-equal ne le verrait pas.
+  for (const [name] of CASE_DEFS) {
+    const legacy = JSON.stringify(cases[name])
+    const engine = JSON.stringify(engineCases[name])
+    ok(
+      legacy === engine,
+      `moteur pur identique au legacy — cas « ${name} »`,
+      legacy === engine ? '' : `legacy=${legacy}\n        engine=${engine}`
     )
   }
 
