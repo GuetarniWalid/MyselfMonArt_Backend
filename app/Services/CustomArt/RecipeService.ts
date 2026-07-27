@@ -33,17 +33,14 @@ const TOKENS_MAX_RANGE: [number, number] = [1, 8]
 const FRAGMENT_MAX_LEN = 2000
 const SLOTS_MAX = 12
 const SLOT_MAX_LEN = 40
-// Cap de `studio.references`. VOLONTAIREMENT MAINTENU À 8 pour l'instant.
-// Le modèle « tout-en-références » (PLAN §0.1) demandera ~31 images pour le foot (15 équipes x 1-2
-// maillots + la pose), donc un cap plus haut. Mais AUJOURD'HUI le worker envoie TOUTES les
-// références chargées au modèle, sans aucun tri : Worker.ts (referenceUrls.map(fetchBuffer) ->
-// kitRefBuffers) puis GeminiProvider (une inlineData par buffer). Relever le cap MAINTENANT ne
-// servirait à rien (aucun produit n'a plus d'1 référence) et armerait un piège : le jour où un
-// admin rangerait 15 maillots dans le metafield, le produit enverrait 16 images au modèle avec un
-// prompt qui n'en annonce qu'une.
-// => Le cap ne sera relevé qu'en P4, EN MÊME TEMPS que le branchement de la sélection par nom
-//    (RecipeField.options[].references) dans le worker. Un seul changement, jamais l'un sans l'autre.
-const REFERENCES_MAX = 8
+// Cap de `studio.references` — relevé de 8 à 40 MAINTENANT que la sélection par nom est branchée
+// (modèle « tout-en-références », PLAN §0.1 : le foot rangera ~31 images, soit 15 équipes x 1-2
+// maillots + la pose, dans ce seul metafield).
+//
+// Ce relèvement n'est sûr QUE parce qu'il va de pair avec le garde-fou du résolveur : un produit
+// SANS sélection déclarée reste plafonné à HISTORIC_REFERENCES_MAX, sinon il enverrait ses 40
+// images au modèle avec un prompt qui n'en annonce qu'une. Ne jamais dissocier les deux.
+const REFERENCES_MAX = 40
 
 // -- Champs déclarés par la recette (extension ADDITIVE de la v1 — le numéro de version du contrat
 // ne bouge PAS, cf. PLAN §3 « discipline de version ») : le socle du choix discret (ex. l'équipe

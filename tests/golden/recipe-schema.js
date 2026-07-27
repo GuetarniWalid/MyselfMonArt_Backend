@@ -496,6 +496,28 @@ ok(
   'mode historique : ordre de l’admin strictement préservé'
 )
 
+// Le cap de STOCKAGE a été relevé (40) pour que le foot range ses ~31 images dans un seul
+// metafield. Ce relèvement est INDISSOCIABLE du plafond du mode historique : sans sélection
+// déclarée, tout part au modèle — envoyer 40 images avec un prompt qui n'en annonce qu'une serait
+// exactement la bombe à retardement qu'on avait refusé d'armer.
+const manyUrls = Array.from({ length: 9 }, (_, i) => `${CDN}img-${i}.jpg`)
+try {
+  resolveGenericReferences({ recipe: familyRecipe, available: manyUrls })
+  ok(false, 'mode historique : au-delà de 8 images sans sélection => échec net')
+} catch (e) {
+  const why = (e && e.reasons ? e.reasons.join(' ; ') : e.message) || ''
+  ok(
+    flat(why).includes(flat('sans aucune sélection déclarée')),
+    'mode historique : au-delà de 8 images sans sélection => échec net',
+    `motif : ${why}`
+  )
+}
+ok(
+  resolveGenericReferences({ recipe: familyRecipe, available: manyUrls.slice(0, 8) }).items
+    .length === 8,
+  'mode historique : 8 images restent acceptées'
+)
+
 // Mode EXPLICITE : recette foot avec images partagées (la pose, commune à toutes les équipes).
 const footShared = RecipeService.parseRecipe(
   JSON.stringify({

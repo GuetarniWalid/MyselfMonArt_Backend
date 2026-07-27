@@ -26,6 +26,13 @@ import type {
  * string, insensible à la casse.
  */
 
+/**
+ * Plafond d'images en mode HISTORIQUE (aucune sélection déclarée), où tout est envoyé au modèle.
+ * C'est l'ancien cap de `studio.references` : il reste la limite de ce mode, pendant que le cap de
+ * stockage, lui, a été relevé pour les produits qui déclarent leur sélection.
+ */
+const HISTORIC_REFERENCES_MAX = 8
+
 export interface ResolvedReference {
   url: string
   role: RecipeRefRole
@@ -97,6 +104,16 @@ export function resolveGenericReferences(input: ResolveReferencesInput): Resolve
 
   // Aucune sélection déclarée : comportement historique, tout est joint sans rôle connu.
   if (picks.length === 0) {
+    // GARDE-FOU indissociable du relèvement de REFERENCES_MAX (8 -> 40) : en mode historique,
+    // TOUTES les images partent au modèle. Au-delà de ce plafond, la configuration est forcément
+    // une erreur — un produit qui range beaucoup d'images doit déclarer laquelle sert à quoi.
+    // Mieux vaut un échec net qu'un envoi de 40 images avec un prompt qui n'en annonce qu'une.
+    if (available.length > HISTORIC_REFERENCES_MAX) {
+      throw new ReferenceResolutionError([
+        `${available.length} images dans studio.references sans aucune sélection déclarée ` +
+          `(maximum ${HISTORIC_REFERENCES_MAX}) — déclarer les images par option, ou en retirer`,
+      ])
+    }
     return {
       items: available.map((url) => ({ url, role: 'style' as RecipeRefRole })),
       explicit: false,
