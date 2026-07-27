@@ -4,12 +4,14 @@
  * principal : un SIGSEGV natif intermittent (incident 13/06) n'y tue que cet enfant, le
  * worker le rattrape et le job se termine proprement (candidat non-pass). Voir JudgeRunner.ts.
  *
- * Protocole (sans @ioc, pour rester chargeable hors Adonis) :
+ * Protocole (sans @ioc, pour rester chargeable hors Adonis) — version dans judgeProtocol.ts.
+ * `protocol` et `kind` sont OBLIGATOIRES : tout ce que cet enfant ne reconnaît pas le fait sortir
+ * en erreur, jamais retomber sur un chemin ou des réglages par défaut (cf. judgeProtocol.ts).
  *   argv[2] = chemin d'un JSON d'entrée —
- *     foot (défaut)      : { candidatePath, photoPath, kitPaths[], kitFiles[],
- *                            playerName, playerNumber, fidelityNotes, model }
- *     générique (§7)     : { kind:'generic', candidatePath, tokens[], title, n,
- *                            referenceTexts{title,slots[]}, checks{text,figureCount}, model }
+ *     foot        : { protocol:1, kind:'foot', candidatePath, photoPath, kitPaths[], kitFiles[],
+ *                     playerName, playerNumber, fidelityNotes, model }
+ *     générique   : { protocol:1, kind:'generic', candidatePath, tokens[], title, n,
+ *                     referenceTexts{title,slots[]}, checks{text,figureCount}, model }
  *   argv[3] = chemin où écrire le JSON de résultat (JudgeResult)
  *   argv[4] = chemin où écrire l'APERÇU (JPEG) du candidat
  *   clé API : process.env.ANTHROPIC_API_KEY (injectée par le parent)
@@ -26,6 +28,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import JudgeService from './JudgeService'
 import GenericJudgeService from './GenericJudgeService'
 import PreviewService from './PreviewService'
+import { JUDGE_CHILD_PROTOCOL, JUDGE_CHILD_KINDS, JUDGE_CHILD_EXIT } from './judgeProtocol'
 
 async function main() {
   const inputPath = process.argv[2]
@@ -37,6 +40,25 @@ async function main() {
   }
 
   const input = JSON.parse(fs.readFileSync(inputPath, 'utf8'))
+
+  // ÉCHOUER FERMÉ (cf. judgeProtocol.ts) : un enfant qui ne comprend pas ce qu'on lui envoie sort
+  // en erreur. Le parent traite déjà ce cas (candidat écarté) ; juger à l'aveugle avec des règles
+  // qui ne sont pas celles demandées laisserait passer jusqu'à l'impression ce qu'il faut recaler.
+  if (input.protocol !== JUDGE_CHILD_PROTOCOL) {
+    console.error(
+      `judge-child: protocole ${JSON.stringify(input.protocol)} non supporté ` +
+        `(attendu ${JUDGE_CHILD_PROTOCOL}) — enfant en retard sur son parent ?`
+    )
+    process.exit(JUDGE_CHILD_EXIT.BAD_PROTOCOL)
+  }
+  if (!JUDGE_CHILD_KINDS.includes(input.kind)) {
+    console.error(
+      `judge-child: chemin de jugement ${JSON.stringify(input.kind)} inconnu ` +
+        `(attendu ${JUDGE_CHILD_KINDS.join(' | ')})`
+    )
+    process.exit(JUDGE_CHILD_EXIT.BAD_PROTOCOL)
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     console.error('judge-child: ANTHROPIC_API_KEY absente')
@@ -61,7 +83,10 @@ async function main() {
       title: input.title ?? null,
       n: Number(input.n) || 0,
       referenceTexts: input.referenceTexts || { title: null, slots: [] },
-      checks: input.checks || { text: true, figureCount: true },
+      // PAS de repli silencieux sur des contrôles par défaut : `checks` fait partie du contrat
+      // (protocole 1) et le parent le transmet toujours. Un défaut appliqué ici jugerait le
+      // candidat sur des règles que personne n'a demandées.
+      checks: input.checks,
       model: input.model,
     })
     const preview = await PreviewService.makePreview(candidateBuffer)

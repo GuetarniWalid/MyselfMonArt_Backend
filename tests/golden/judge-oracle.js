@@ -338,6 +338,43 @@ async function main() {
     )
   }
 
+  // ==========================================================================================
+  // 5. PROTOCOLE DU PROCESSUS ENFANT — échouer fermé, jamais ouvert
+  // ==========================================================================================
+  const proto = loadTsModule(path.join(ROOT, 'app/Services/CustomArt/judgeProtocol.ts'))
+  ok(proto.JUDGE_CHILD_PROTOCOL === 1, 'version de protocole exposée')
+  ok(
+    proto.JUDGE_CHILD_KINDS.includes('foot') && proto.JUDGE_CHILD_KINDS.includes('generic'),
+    'les deux chemins de jugement sont déclarés'
+  )
+
+  // Garde-fous de SOURCE (assumés comme tels) : ils ne rejouent pas l'enfant — cela demande de le
+  // compiler puis de le lancer — mais ils empêchent la disparition accidentelle du contrat.
+  // Le comportement, lui, a été vérifié en exécutant le vrai enfant compilé : protocole absent,
+  // protocole inconnu et chemin inconnu sortent tous en code 4, et une entrée valide passe.
+  const runnerSrc = fs.readFileSync(
+    path.join(ROOT, 'app/Services/CustomArt/JudgeRunner.ts'),
+    'utf8'
+  )
+  ok(
+    (runnerSrc.match(/protocol: JUDGE_CHILD_PROTOCOL/g) || []).length === 2,
+    'le parent estampille SES DEUX charges utiles (foot et générique)'
+  )
+  ok(
+    /kind: 'foot'/.test(runnerSrc) && /kind: 'generic'/.test(runnerSrc),
+    'les deux chemins sont nommés explicitement (le foot n’est plus un défaut implicite)'
+  )
+
+  const childSrc = fs.readFileSync(path.join(ROOT, 'app/Services/CustomArt/judge-child.ts'), 'utf8')
+  ok(
+    !/checks: input\.checks \|\|/.test(childSrc),
+    'aucun repli silencieux sur des contrôles par défaut dans l’enfant'
+  )
+  ok(
+    /JUDGE_CHILD_PROTOCOL/.test(childSrc) && /JUDGE_CHILD_KINDS/.test(childSrc),
+    'l’enfant valide protocole ET chemin avant de juger'
+  )
+
   console.log(`\ngolden judge-oracle : ${pass} OK, ${fail} FAIL`)
   process.exit(fail === 0 ? 0 : 1)
 }

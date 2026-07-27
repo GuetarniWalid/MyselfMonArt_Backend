@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto'
 import JudgeService, { DEFAULT_JUDGE_MODEL, JudgeResult } from './JudgeService'
 import GenericJudgeService from './GenericJudgeService'
 import PreviewService from './PreviewService'
+import { JUDGE_CHILD_PROTOCOL } from './judgeProtocol'
 
 export interface JudgeInput {
   candidateBuffer: Buffer
@@ -150,6 +151,9 @@ export default class JudgeRunner {
       await fs.writeFile(
         inputPath,
         JSON.stringify({
+          // Discriminants OBLIGATOIRES du contrat (cf. judgeProtocol.ts) : l'enfant sort en erreur
+          // sur tout ce qu'il ne reconnaît pas, plutôt que de juger avec des réglages par défaut.
+          protocol: JUDGE_CHILD_PROTOCOL,
           kind: 'generic',
           candidatePath,
           tokens: input.tokens,
@@ -197,6 +201,10 @@ export default class JudgeRunner {
       await fs.writeFile(
         inputPath,
         JSON.stringify({
+          // Le chemin foot était jusqu'ici le DÉFAUT implicite de l'enfant : il est désormais
+          // nommé explicitement, pour qu'aucune valeur inconnue ne puisse y retomber par accident.
+          protocol: JUDGE_CHILD_PROTOCOL,
+          kind: 'foot',
           candidatePath,
           photoPath,
           kitPaths,
