@@ -765,8 +765,12 @@ ok(
 // textes sont identiques caractère pour caractère, la migration ne change pas ce qu'on demande
 // au générateur — seul l'aléa du modèle subsiste, et il existait déjà.
 const { buildMasterPrompt } = loadTsModule(path.join(ROOT, 'app/Services/CustomArt/prompt.ts'))
-const FOOT_DRAFT = JSON.parse(
-  fs.readFileSync(path.join(__dirname, 'fixtures/foot-recipe.draft.json'), 'utf8')
+// Source UNIQUE partagée avec la commande qui pose la recette : une copie de chaque côté
+// finirait par diverger, et la divergence ne se verrait qu'au premier client.
+const { buildFootRecipe } = loadTsModule(path.join(ROOT, 'app/Services/CustomArt/footRecipe.ts'))
+const FOOT_DRAFT = buildFootRecipe(
+  JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/foot-recipe.draft.json'), 'utf8'))
+    .inputs.fields[0].options
 )
 let footParsedDraft = null
 try {

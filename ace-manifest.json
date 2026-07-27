@@ -808,6 +808,33 @@
         }
       ]
     },
+    "studio:post-foot-recipe": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/StudioPostFootRecipe",
+      "commandName": "studio:post-foot-recipe",
+      "description": "Pose studio.recipe + studio.references sur un produit (simulation par défaut)",
+      "args": [
+        {
+          "type": "string",
+          "propertyName": "productId",
+          "name": "productId",
+          "required": true,
+          "description": "GID du produit cible (gid://shopify/Product/...)"
+        }
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "execute",
+          "propertyName": "execute",
+          "type": "boolean",
+          "description": "Écrire réellement les metafields"
+        }
+      ]
+    },
     "test:metaobject_translations": {
       "settings": {
         "loadApp": true,
