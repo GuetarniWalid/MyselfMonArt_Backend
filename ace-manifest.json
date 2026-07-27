@@ -777,6 +777,18 @@
         }
       ]
     },
+    "studio:foot-references": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/StudioFootReferences",
+      "commandName": "studio:foot-references",
+      "description": "Liste les identifiants Shopify des maillots foot (lecture seule)",
+      "args": [],
+      "aliases": [],
+      "flags": []
+    },
     "studio:migrate-foot-kits": {
       "settings": {
         "loadApp": true,
