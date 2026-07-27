@@ -29,6 +29,12 @@ export interface GenericJudgeRunnerInput {
   n: number
   referenceTexts: { title: string | null; slots: string[] }
   checks: { text: boolean; figureCount: boolean }
+  /** Photo du client — jointe seulement si le produit le demande (parité foot). */
+  photoBuffer?: Buffer
+  /** Images de référence montrées au juge, DANS L'ORDRE, avec leur rôle. */
+  references?: { buffer: Buffer; role: 'style' | 'front' | 'back' | 'scene' }[]
+  /** Libellé de l'option choisie (ex. « Paris »), pour nommer les références. */
+  label?: string | null
 }
 
 /** Verdict + aperçu, tous deux produits hors du process principal en prod. */
@@ -145,6 +151,19 @@ export default class JudgeRunner {
     try {
       const candidatePath = path.join(dir, 'candidate.jpg')
       await fs.writeFile(candidatePath, input.candidateBuffer)
+      // Photo et références passent par des FICHIERS (comme sur le chemin foot) : `input.json`
+      // reste léger et aucune image ne transite en base64 dans un argument de processus.
+      let photoPath: string | null = null
+      if (input.photoBuffer) {
+        photoPath = path.join(dir, 'photo.jpg')
+        await fs.writeFile(photoPath, input.photoBuffer)
+      }
+      const refPaths: { path: string; role: string }[] = []
+      for (const [i, ref] of (input.references || []).entries()) {
+        const refPath = path.join(dir, `ref-${i}.jpg`)
+        await fs.writeFile(refPath, ref.buffer)
+        refPaths.push({ path: refPath, role: ref.role })
+      }
       const inputPath = path.join(dir, 'input.json')
       const outputPath = path.join(dir, 'output.json')
       const previewPath = path.join(dir, 'preview.jpg')
@@ -161,6 +180,10 @@ export default class JudgeRunner {
           n: input.n,
           referenceTexts: input.referenceTexts,
           checks: input.checks,
+          // Facultatifs (protocole 2) : absents pour un produit qui n'en déclare pas.
+          photoPath,
+          refPaths,
+          label: input.label ?? null,
           model,
         })
       )

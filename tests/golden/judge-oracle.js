@@ -342,7 +342,13 @@ async function main() {
   // 5. PROTOCOLE DU PROCESSUS ENFANT — échouer fermé, jamais ouvert
   // ==========================================================================================
   const proto = loadTsModule(path.join(ROOT, 'app/Services/CustomArt/judgeProtocol.ts'))
-  ok(proto.JUDGE_CHILD_PROTOCOL === 1, 'version de protocole exposée')
+  // On ne FIGE PAS la valeur : elle est faite pour être incrémentée à chaque évolution du contrat.
+  // Le vrai invariant est ailleurs (vérifié en garde-fou de source plus bas) : parent et enfant
+  // doivent lire la MÊME constante, jamais un nombre écrit en dur de leur côté.
+  ok(
+    Number.isInteger(proto.JUDGE_CHILD_PROTOCOL) && proto.JUDGE_CHILD_PROTOCOL >= 1,
+    'version de protocole exposée (entier positif)'
+  )
   ok(
     proto.JUDGE_CHILD_KINDS.includes('foot') && proto.JUDGE_CHILD_KINDS.includes('generic'),
     'les deux chemins de jugement sont déclarés'
@@ -363,6 +369,12 @@ async function main() {
   ok(
     /kind: 'foot'/.test(runnerSrc) && /kind: 'generic'/.test(runnerSrc),
     'les deux chemins sont nommés explicitement (le foot n’est plus un défaut implicite)'
+  )
+  // Protocole 2 : la photo et les références du chemin générique transitent par des FICHIERS,
+  // comme sur le chemin foot — jamais en base64 dans un argument de processus.
+  ok(
+    /photoPath,/.test(runnerSrc) && /refPaths,/.test(runnerSrc),
+    'le parent achemine photo et références sur le chemin générique'
   )
 
   const childSrc = fs.readFileSync(path.join(ROOT, 'app/Services/CustomArt/judge-child.ts'), 'utf8')

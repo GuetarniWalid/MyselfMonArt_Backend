@@ -8,10 +8,11 @@
  * `protocol` et `kind` sont OBLIGATOIRES : tout ce que cet enfant ne reconnaît pas le fait sortir
  * en erreur, jamais retomber sur un chemin ou des réglages par défaut (cf. judgeProtocol.ts).
  *   argv[2] = chemin d'un JSON d'entrée —
- *     foot        : { protocol:1, kind:'foot', candidatePath, photoPath, kitPaths[], kitFiles[],
+ *     foot        : { protocol:2, kind:'foot', candidatePath, photoPath, kitPaths[], kitFiles[],
  *                     playerName, playerNumber, fidelityNotes, model }
- *     générique   : { protocol:1, kind:'generic', candidatePath, tokens[], title, n,
- *                     referenceTexts{title,slots[]}, checks{text,figureCount}, model }
+ *     générique   : { protocol:2, kind:'generic', candidatePath, tokens[], title, n,
+ *                     referenceTexts{title,slots[]}, checks{text,figureCount}, model,
+ *                     photoPath?, refPaths?[{path,role}], label? }
  *   argv[3] = chemin où écrire le JSON de résultat (JudgeResult)
  *   argv[4] = chemin où écrire l'APERÇU (JPEG) du candidat
  *   clé API : process.env.ANTHROPIC_API_KEY (injectée par le parent)
@@ -77,8 +78,19 @@ async function main() {
   // Chemin GÉNÉRIQUE (recette produit, §7) : candidat seul + contexte texte — la passe
   // anatomie foot ne s'applique pas (décision Q6).
   if (input.kind === 'generic') {
+    // Photo et références (protocole 2) : relues depuis les fichiers écrits par le parent.
+    // Absentes => le juge ne voit que le candidat, exactement comme en protocole 1.
+    const genericPhoto = input.photoPath ? fs.readFileSync(input.photoPath) : undefined
+    const genericRefs = (input.refPaths || []).map((r: { path: string; role: string }) => ({
+      buffer: fs.readFileSync(r.path),
+      role: r.role,
+    }))
+
     const result = await new GenericJudgeService(anthropic).judge({
       candidateBuffer,
+      photoBuffer: genericPhoto,
+      references: genericRefs.length > 0 ? genericRefs : undefined,
+      label: input.label ?? null,
       tokens: input.tokens || [],
       title: input.title ?? null,
       n: Number(input.n) || 0,

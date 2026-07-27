@@ -22,8 +22,17 @@
  * cas anormaux (image partiellement reconstruite, rollback partiel, exécution manuelle).
  */
 
-/** Version du contrat. À incrémenter à CHAQUE changement de forme de `input.json`. */
-export const JUDGE_CHILD_PROTOCOL = 1
+/**
+ * Version du contrat. À incrémenter à CHAQUE changement de forme de `input.json`.
+ *
+ * Historique :
+ *  1 — contrat initial (foot : photo + maillots ; générique : candidat seul).
+ *  2 — le chemin générique peut recevoir `photoPath`, `refPaths[]` (avec rôles) et `label`.
+ *      Le bump est INDISPENSABLE bien que ces champs soient facultatifs : un enfant resté en
+ *      version 1 les ignorerait en silence et jugerait la fidélité d'une référence qu'on ne lui
+ *      aurait jamais montrée — précisément le fail-open que ce discriminant existe pour couper.
+ */
+export const JUDGE_CHILD_PROTOCOL = 2
 
 /** Chemins de jugement connus. Une valeur inconnue doit faire sortir l'enfant en erreur. */
 export const JUDGE_CHILD_KINDS = ['foot', 'generic'] as const
