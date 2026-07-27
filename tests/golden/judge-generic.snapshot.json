@@ -1,0 +1,623 @@
+{
+  "nominal": {
+    "scores": {
+      "quality": 8
+    },
+    "verdicts": {
+      "textCodes": [],
+      "textDetails": [],
+      "textsRead": [
+        "La famille Martin",
+        "Papa",
+        "Maman"
+      ],
+      "tokenReads": [
+        {
+          "expected": "Papa",
+          "found": true,
+          "read_as": "Papa",
+          "exact": true,
+          "position": 1
+        },
+        {
+          "expected": "Maman",
+          "found": true,
+          "read_as": "Maman",
+          "exact": true,
+          "position": 2
+        }
+      ],
+      "titleRead": {
+        "found": true,
+        "readAs": "La famille Martin",
+        "exact": true
+      },
+      "extraTexts": [],
+      "figureCount": 2,
+      "figuresTrace": "deux silhouettes de dos, main dans la main",
+      "qualityScore": 8,
+      "qualityNotes": "RAS",
+      "textExact": true
+    },
+    "pass": true,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "Bon rendu."
+  },
+  "prenom_absent": {
+    "scores": {
+      "quality": 8
+    },
+    "verdicts": {
+      "textCodes": [
+        "text_missing"
+      ],
+      "textDetails": [
+        "« Papa » absent"
+      ],
+      "textsRead": [
+        "La famille Martin",
+        "Papa",
+        "Maman"
+      ],
+      "tokenReads": [
+        {
+          "expected": "Papa",
+          "found": false,
+          "read_as": "",
+          "exact": false,
+          "position": 0
+        },
+        {
+          "expected": "Maman",
+          "found": true,
+          "read_as": "Maman",
+          "exact": true,
+          "position": 2
+        }
+      ],
+      "titleRead": {
+        "found": true,
+        "readAs": "La famille Martin",
+        "exact": true
+      },
+      "extraTexts": [],
+      "figureCount": 2,
+      "figuresTrace": "deux silhouettes de dos, main dans la main",
+      "qualityScore": 8,
+      "qualityNotes": "RAS",
+      "textExact": false
+    },
+    "pass": false,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "ÉCHEC TEXTE/FIGURES (« Papa » absent) — Bon rendu."
+  },
+  "prenom_mal_orthographie": {
+    "scores": {
+      "quality": 8
+    },
+    "verdicts": {
+      "textCodes": [
+        "text_misspelled"
+      ],
+      "textDetails": [
+        "« Papa » lu « Pappa »"
+      ],
+      "textsRead": [
+        "La famille Martin",
+        "Papa",
+        "Maman"
+      ],
+      "tokenReads": [
+        {
+          "expected": "Papa",
+          "found": true,
+          "read_as": "Pappa",
+          "exact": false,
+          "position": 1
+        },
+        {
+          "expected": "Maman",
+          "found": true,
+          "read_as": "Maman",
+          "exact": true,
+          "position": 2
+        }
+      ],
+      "titleRead": {
+        "found": true,
+        "readAs": "La famille Martin",
+        "exact": true
+      },
+      "extraTexts": [],
+      "figureCount": 2,
+      "figuresTrace": "deux silhouettes de dos, main dans la main",
+      "qualityScore": 8,
+      "qualityNotes": "RAS",
+      "textExact": false
+    },
+    "pass": false,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "ÉCHEC TEXTE/FIGURES (« Papa » lu « Pappa ») — Bon rendu."
+  },
+  "ordre_inverse": {
+    "scores": {
+      "quality": 8
+    },
+    "verdicts": {
+      "textCodes": [
+        "text_order"
+      ],
+      "textDetails": [
+        "ordre gauche->droite non respecté (« Maman » avant « Papa »)"
+      ],
+      "textsRead": [
+        "La famille Martin",
+        "Papa",
+        "Maman"
+      ],
+      "tokenReads": [
+        {
+          "expected": "Papa",
+          "found": true,
+          "read_as": "Papa",
+          "exact": true,
+          "position": 2
+        },
+        {
+          "expected": "Maman",
+          "found": true,
+          "read_as": "Maman",
+          "exact": true,
+          "position": 1
+        }
+      ],
+      "titleRead": {
+        "found": true,
+        "readAs": "La famille Martin",
+        "exact": true
+      },
+      "extraTexts": [],
+      "figureCount": 2,
+      "figuresTrace": "deux silhouettes de dos, main dans la main",
+      "qualityScore": 8,
+      "qualityNotes": "RAS",
+      "textExact": false
+    },
+    "pass": false,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "ÉCHEC TEXTE/FIGURES (ordre gauche->droite non respecté (« Maman » avant « Papa »)) — Bon rendu."
+  },
+  "titre_absent": {
+    "scores": {
+      "quality": 8
+    },
+    "verdicts": {
+      "textCodes": [
+        "text_missing"
+      ],
+      "textDetails": [
+        "titre « La famille Martin » absent"
+      ],
+      "textsRead": [
+        "La famille Martin",
+        "Papa",
+        "Maman"
+      ],
+      "tokenReads": [
+        {
+          "expected": "Papa",
+          "found": true,
+          "read_as": "Papa",
+          "exact": true,
+          "position": 1
+        },
+        {
+          "expected": "Maman",
+          "found": true,
+          "read_as": "Maman",
+          "exact": true,
+          "position": 2
+        }
+      ],
+      "titleRead": {
+        "found": false,
+        "readAs": "",
+        "exact": true
+      },
+      "extraTexts": [],
+      "figureCount": 2,
+      "figuresTrace": "deux silhouettes de dos, main dans la main",
+      "qualityScore": 8,
+      "qualityNotes": "RAS",
+      "textExact": false
+    },
+    "pass": false,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "ÉCHEC TEXTE/FIGURES (titre « La famille Martin » absent) — Bon rendu."
+  },
+  "titre_mal_orthographie": {
+    "scores": {
+      "quality": 8
+    },
+    "verdicts": {
+      "textCodes": [
+        "text_misspelled"
+      ],
+      "textDetails": [
+        "titre lu « La famille Martn »"
+      ],
+      "textsRead": [
+        "La famille Martin",
+        "Papa",
+        "Maman"
+      ],
+      "tokenReads": [
+        {
+          "expected": "Papa",
+          "found": true,
+          "read_as": "Papa",
+          "exact": true,
+          "position": 1
+        },
+        {
+          "expected": "Maman",
+          "found": true,
+          "read_as": "Maman",
+          "exact": true,
+          "position": 2
+        }
+      ],
+      "titleRead": {
+        "found": true,
+        "readAs": "La famille Martn",
+        "exact": false
+      },
+      "extraTexts": [],
+      "figureCount": 2,
+      "figuresTrace": "deux silhouettes de dos, main dans la main",
+      "qualityScore": 8,
+      "qualityNotes": "RAS",
+      "textExact": false
+    },
+    "pass": false,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "ÉCHEC TEXTE/FIGURES (titre lu « La famille Martn ») — Bon rendu."
+  },
+  "residu_de_la_reference": {
+    "scores": {
+      "quality": 8
+    },
+    "verdicts": {
+      "textCodes": [
+        "text_residual"
+      ],
+      "textDetails": [
+        "texte de la référence « DADDY » a fuité"
+      ],
+      "textsRead": [
+        "La famille Martin",
+        "Papa",
+        "Maman"
+      ],
+      "tokenReads": [
+        {
+          "expected": "Papa",
+          "found": true,
+          "read_as": "Papa",
+          "exact": true,
+          "position": 1
+        },
+        {
+          "expected": "Maman",
+          "found": true,
+          "read_as": "Maman",
+          "exact": true,
+          "position": 2
+        }
+      ],
+      "titleRead": {
+        "found": true,
+        "readAs": "La famille Martin",
+        "exact": true
+      },
+      "extraTexts": [
+        "DADDY"
+      ],
+      "figureCount": 2,
+      "figuresTrace": "deux silhouettes de dos, main dans la main",
+      "qualityScore": 8,
+      "qualityNotes": "RAS",
+      "textExact": false
+    },
+    "pass": false,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "ÉCHEC TEXTE/FIGURES (texte de la référence « DADDY » a fuité) — Bon rendu."
+  },
+  "texte_parasite": {
+    "scores": {
+      "quality": 8
+    },
+    "verdicts": {
+      "textCodes": [
+        "text_residual"
+      ],
+      "textDetails": [
+        "texte parasite « Lorem ipsum »"
+      ],
+      "textsRead": [
+        "La famille Martin",
+        "Papa",
+        "Maman"
+      ],
+      "tokenReads": [
+        {
+          "expected": "Papa",
+          "found": true,
+          "read_as": "Papa",
+          "exact": true,
+          "position": 1
+        },
+        {
+          "expected": "Maman",
+          "found": true,
+          "read_as": "Maman",
+          "exact": true,
+          "position": 2
+        }
+      ],
+      "titleRead": {
+        "found": true,
+        "readAs": "La famille Martin",
+        "exact": true
+      },
+      "extraTexts": [
+        "Lorem ipsum"
+      ],
+      "figureCount": 2,
+      "figuresTrace": "deux silhouettes de dos, main dans la main",
+      "qualityScore": 8,
+      "qualityNotes": "RAS",
+      "textExact": false
+    },
+    "pass": false,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "ÉCHEC TEXTE/FIGURES (texte parasite « Lorem ipsum ») — Bon rendu."
+  },
+  "nombre_de_figures_faux": {
+    "scores": {
+      "quality": 8
+    },
+    "verdicts": {
+      "textCodes": [
+        "figure_count"
+      ],
+      "textDetails": [
+        "3 figure(s) au lieu de 2"
+      ],
+      "textsRead": [
+        "La famille Martin",
+        "Papa",
+        "Maman"
+      ],
+      "tokenReads": [
+        {
+          "expected": "Papa",
+          "found": true,
+          "read_as": "Papa",
+          "exact": true,
+          "position": 1
+        },
+        {
+          "expected": "Maman",
+          "found": true,
+          "read_as": "Maman",
+          "exact": true,
+          "position": 2
+        }
+      ],
+      "titleRead": {
+        "found": true,
+        "readAs": "La famille Martin",
+        "exact": true
+      },
+      "extraTexts": [],
+      "figureCount": 3,
+      "figuresTrace": "deux silhouettes de dos, main dans la main",
+      "qualityScore": 8,
+      "qualityNotes": "RAS",
+      "textExact": true
+    },
+    "pass": false,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "ÉCHEC TEXTE/FIGURES (3 figure(s) au lieu de 2) — Bon rendu."
+  },
+  "qualite_sous_seuil": {
+    "scores": {
+      "quality": 5
+    },
+    "verdicts": {
+      "textCodes": [],
+      "textDetails": [],
+      "textsRead": [
+        "La famille Martin",
+        "Papa",
+        "Maman"
+      ],
+      "tokenReads": [
+        {
+          "expected": "Papa",
+          "found": true,
+          "read_as": "Papa",
+          "exact": true,
+          "position": 1
+        },
+        {
+          "expected": "Maman",
+          "found": true,
+          "read_as": "Maman",
+          "exact": true,
+          "position": 2
+        }
+      ],
+      "titleRead": {
+        "found": true,
+        "readAs": "La famille Martin",
+        "exact": true
+      },
+      "extraTexts": [],
+      "figureCount": 2,
+      "figuresTrace": "deux silhouettes de dos, main dans la main",
+      "qualityScore": 5,
+      "qualityNotes": "RAS",
+      "textExact": true
+    },
+    "pass": false,
+    "score": 5,
+    "suspicion": 0,
+    "reason": "QUALITÉ INSUFFISANTE (5/10) — Bon rendu."
+  },
+  "qualite_exactement_6": {
+    "scores": {
+      "quality": 6
+    },
+    "verdicts": {
+      "textCodes": [],
+      "textDetails": [],
+      "textsRead": [
+        "La famille Martin",
+        "Papa",
+        "Maman"
+      ],
+      "tokenReads": [
+        {
+          "expected": "Papa",
+          "found": true,
+          "read_as": "Papa",
+          "exact": true,
+          "position": 1
+        },
+        {
+          "expected": "Maman",
+          "found": true,
+          "read_as": "Maman",
+          "exact": true,
+          "position": 2
+        }
+      ],
+      "titleRead": {
+        "found": true,
+        "readAs": "La famille Martin",
+        "exact": true
+      },
+      "extraTexts": [],
+      "figureCount": 2,
+      "figuresTrace": "deux silhouettes de dos, main dans la main",
+      "qualityScore": 6,
+      "qualityNotes": "RAS",
+      "textExact": true
+    },
+    "pass": true,
+    "score": 6,
+    "suspicion": 0,
+    "reason": "Bon rendu."
+  },
+  "controle_texte_desactive": {
+    "scores": {
+      "quality": 8
+    },
+    "verdicts": {
+      "textCodes": [],
+      "textDetails": [],
+      "textsRead": [
+        "La famille Martin",
+        "Papa",
+        "Maman"
+      ],
+      "tokenReads": [
+        {
+          "expected": "Papa",
+          "found": false,
+          "read_as": "",
+          "exact": false,
+          "position": 0
+        },
+        {
+          "expected": "Maman",
+          "found": true,
+          "read_as": "Maman",
+          "exact": true,
+          "position": 2
+        }
+      ],
+      "titleRead": {
+        "found": true,
+        "readAs": "La famille Martin",
+        "exact": true
+      },
+      "extraTexts": [],
+      "figureCount": 2,
+      "figuresTrace": "deux silhouettes de dos, main dans la main",
+      "qualityScore": 8,
+      "qualityNotes": "RAS",
+      "textExact": true
+    },
+    "pass": true,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "Bon rendu."
+  },
+  "controle_comptage_desactive": {
+    "scores": {
+      "quality": 8
+    },
+    "verdicts": {
+      "textCodes": [],
+      "textDetails": [],
+      "textsRead": [
+        "La famille Martin",
+        "Papa",
+        "Maman"
+      ],
+      "tokenReads": [
+        {
+          "expected": "Papa",
+          "found": true,
+          "read_as": "Papa",
+          "exact": true,
+          "position": 1
+        },
+        {
+          "expected": "Maman",
+          "found": true,
+          "read_as": "Maman",
+          "exact": true,
+          "position": 2
+        }
+      ],
+      "titleRead": {
+        "found": true,
+        "readAs": "La famille Martin",
+        "exact": true
+      },
+      "extraTexts": [],
+      "figureCount": 3,
+      "figuresTrace": "deux silhouettes de dos, main dans la main",
+      "qualityScore": 8,
+      "qualityNotes": "RAS",
+      "textExact": true
+    },
+    "pass": true,
+    "score": 8,
+    "suspicion": 0,
+    "reason": "Bon rendu."
+  }
+}
