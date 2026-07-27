@@ -1,0 +1,8 @@
+IMAGE 1 is the CUSTOMER PHOTO. IMAGE 2 is the STYLE REFERENCE.
+Create a minimalist single continuous-line illustration on pure white background.
+The final illustration shows EXACTLY 4 person(s): Papa, Franco, Maman, Veronica.
+Replace « The Smith Family » with « La famille Martin » in the reference script font.
+Under person #1, replace « DADDY » with « Papa ».
+Under person #2, replace « FRANCO » with « Franco ».
+Under person #3, replace « MOMMY » with « Maman ».
+Under person #4, replace « VERONICA » with « Veronica ».

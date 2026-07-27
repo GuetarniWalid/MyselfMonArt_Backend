@@ -188,6 +188,17 @@ export interface StudioRecipe {
     removeExtra?: string
     replaceTitle?: string
     footer?: string
+    // -- Annonce des images PAR RÔLE (parité foot) : une phrase par image jointe, avec {index}
+    // (numéro de l'image dans l'envoi) et {label} (libellé de l'option choisie, ex. « Paris »).
+    // Utilisés seulement si des références à rôle sont transmises ; sinon `imageRoles` suffit.
+    refStyle?: string
+    refFront?: string
+    refBack?: string
+    refScene?: string
+    /** En-tête du bloc de consignes non négociables (notes de fidélité). */
+    notesBlock?: string
+    /** Consignes communes à TOUTES les options, ajoutées sous la note de l'option choisie. */
+    commonNotes?: string
   }
   judge: { text: boolean; figureCount: boolean }
 }
@@ -452,6 +463,13 @@ export default class RecipeService extends Authentication {
       'removeExtra',
       'replaceTitle',
       'footer',
+      // Parité foot (additifs) : annonce par rôle d'image + bloc de consignes non négociables.
+      'refStyle',
+      'refFront',
+      'refBack',
+      'refScene',
+      'notesBlock',
+      'commonNotes',
     ] as const
     const prompt: any = { base }
     for (const key of fragmentKeys) {

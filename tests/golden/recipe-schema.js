@@ -35,8 +35,8 @@ const STUBS = {
   './blocklist': { __esModule: true, isBlockedFirstName: () => false },
 }
 
-function loadRecipeService() {
-  const js = ts.transpileModule(fs.readFileSync(SRC, 'utf8'), {
+function loadTsModule(absPath) {
+  const js = ts.transpileModule(fs.readFileSync(absPath, 'utf8'), {
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
       target: ts.ScriptTarget.ES2020,
@@ -48,13 +48,19 @@ function loadRecipeService() {
     Object.prototype.hasOwnProperty.call(STUBS, id) ? STUBS[id] : require(id)
   const mod = { exports: {} }
   new Function('require', 'module', 'exports', js)(customRequire, mod, mod.exports)
-  if (!mod.exports.default || typeof mod.exports.default.parseRecipe !== 'function') {
-    throw new Error('RecipeService.parseRecipe introuvable')
-  }
-  return mod.exports.default
+  return mod.exports
 }
 
-const RecipeService = loadRecipeService()
+const RecipeService = loadTsModule(SRC).default
+if (!RecipeService || typeof RecipeService.parseRecipe !== 'function') {
+  throw new Error('RecipeService.parseRecipe introuvable')
+}
+// genericPrompt n'importe RecipeService qu'en `import type` (effacé à la transpilation) :
+// aucun stub nécessaire.
+const { buildGenericPrompt } = loadTsModule(
+  path.join(ROOT, 'app/Services/CustomArt/genericPrompt.ts')
+)
+const PROMPT_SNAPSHOT = path.join(__dirname, 'family-prompt.snapshot.txt')
 
 /**
  * Recette de RÉFÉRENCE — même STRUCTURE que celle du produit famille en production (mêmes clés,
@@ -284,6 +290,100 @@ try {
   /* échec capturé par l'assertion suivante */
 }
 ok(frac && frac.fields[0].integer === false, 'bornes fractionnaires ACCEPTÉES si integer:false')
+
+// ============================================================================================
+// 4. PROMPT — non-régression du texte réellement envoyé au modèle, puis parité foot
+// ============================================================================================
+const familyRecipe = RecipeService.parseRecipe(FAMILY_RECIPE)
+const familyPrompt = buildGenericPrompt({
+  recipe: familyRecipe,
+  tokens: ['Papa', 'Franco', 'Maman', 'Veronica'],
+  title: 'La famille Martin',
+})
+
+if (process.argv.includes('--update') || !fs.existsSync(PROMPT_SNAPSHOT)) {
+  fs.writeFileSync(PROMPT_SNAPSHOT, familyPrompt + '\n', 'utf8')
+  console.log(`instantané écrit : ${path.relative(ROOT, PROMPT_SNAPSHOT)}`)
+} else {
+  const expected = fs.readFileSync(PROMPT_SNAPSHOT, 'utf8').trimEnd()
+  ok(
+    familyPrompt === expected,
+    'prompt FAMILLE : texte identique à l’instantané',
+    familyPrompt === expected
+      ? ''
+      : `dérive détectée. Si elle est VOULUE : npm run test:golden -- --update\n---\n${familyPrompt}\n---`
+  )
+}
+
+// Parité foot : une phrase PAR IMAGE, avec son rôle et son index d'envoi (l'image 1 = photo client).
+const footParsed = RecipeService.parseRecipe(FOOT_RECIPE)
+const footPrompt = buildGenericPrompt({
+  recipe: footParsed,
+  tokens: [],
+  title: null,
+  references: ['front', 'back', 'scene'],
+  label: 'Paris',
+  notes: 'Bande centrale verticale ; blason côté cœur.',
+  fieldValues: { playerName: 'Walid', playerNumber: '10' },
+})
+ok(/IMAGE 2 .*FACE de Paris/s.test(footPrompt), 'image 2 annoncée FACE avec le libellé de l’option')
+ok(/IMAGE 3 .*DOS de Paris/s.test(footPrompt), 'image 3 annoncée DOS')
+ok(/IMAGE 4 .*SCÈNE/s.test(footPrompt), 'image 4 annoncée SCÈNE et POSE')
+ok(footPrompt.includes('Bande centrale verticale'), 'la note de fidélité est injectée')
+ok(/CONSIGNES DE FIDÉLITÉ/.test(footPrompt), 'le bloc de consignes non négociables est présent')
+
+// Interpolation des champs déclarés + modificateur de casse (le prénom est peint en capitales).
+const upperRecipe = RecipeService.parseRecipe(
+  JSON.stringify({
+    version: 1,
+    prompt: { base: 'Floque « {playerName:upper} » au-dessus du numéro « {playerNumber} ».' },
+  })
+)
+const upperPrompt = buildGenericPrompt({
+  recipe: upperRecipe,
+  tokens: [],
+  title: null,
+  fieldValues: { playerName: 'Walid', playerNumber: '10' },
+})
+ok(upperPrompt.includes('« WALID »'), '{champ:upper} met la valeur en capitales')
+ok(upperPrompt.includes('« 10 »'), '{champ} interpole la valeur brute')
+
+// Sécurité d'interpolation : un placeholder sans valeur reste verbatim, et un membre hérité
+// d'Object.prototype ne doit JAMAIS résoudre (sinon du code JS finirait dans le prompt).
+const safeRecipe = RecipeService.parseRecipe(
+  JSON.stringify({ version: 1, prompt: { base: 'A={inconnu} B={toString} C={constructor}' } })
+)
+const safePrompt = buildGenericPrompt({
+  recipe: safeRecipe,
+  tokens: [],
+  title: null,
+  fieldValues: { autre: 'x' },
+})
+ok(safePrompt.includes('A={inconnu}'), 'placeholder inconnu laissé verbatim')
+ok(
+  safePrompt.includes('B={toString}') && safePrompt.includes('C={constructor}'),
+  'les membres d’Object.prototype ne résolvent PAS'
+)
+
+// Sans rôles fournis : le bloc `imageRoles` UNIQUE est conservé (ici la surcharge de la recette
+// famille, qui a le sien) et aucune phrase par rôle n'apparaît.
+ok(
+  familyPrompt.includes('IMAGE 1 is the CUSTOMER PHOTO. IMAGE 2 is the STYLE REFERENCE.'),
+  'sans rôles fournis, le bloc imageRoles de la recette est conservé tel quel'
+)
+ok(!/L'IMAGE 2 (est|montre)/.test(familyPrompt), 'aucune phrase par rôle sans rôles fournis')
+ok(!/CONSIGNES DE FIDÉLITÉ/.test(familyPrompt), 'aucun bloc de notes sur une recette sans notes')
+
+// Et le DÉFAUT (recette qui ne surcharge pas imageRoles) reste bien le texte historique.
+const defaultPrompt = buildGenericPrompt({
+  recipe: RecipeService.parseRecipe(JSON.stringify({ version: 1, prompt: { base: 'Base.' } })),
+  tokens: [],
+  title: null,
+})
+ok(
+  defaultPrompt.includes('La première image jointe est la PHOTO DU CLIENT'),
+  'le bloc imageRoles par défaut est inchangé'
+)
 
 // ============================================================================================
 console.log(`\ngolden recipe-schema : ${pass} OK, ${fail} FAIL`)
