@@ -148,12 +148,21 @@ export function buildGenericPrompt(input: GenericPromptInput): string {
   } else {
     lines.push(interpolate(frag('imageRoles'), vars))
   }
-  lines.push(interpolate(recipe.prompt.base, vars))
   // Consignes non négociables : note de l'option choisie, puis consignes communes au produit.
   const noteLines = [input.notes, recipe.prompt.commonNotes].filter(
     (l): l is string => typeof l === 'string' && l.trim().length > 0
   )
-  if (noteLines.length > 0) {
+  // Exposées à l'interpolation sous `{notes}` : un prompt calibré peut ainsi les placer EXACTEMENT
+  // où il les attend (le prompt foot les veut au milieu de sa liste d'exigences, pas à la fin).
+  // Sans notes, la clé n'est pas posée et `{notes}` resterait verbatim — donc rien ne change.
+  if (noteLines.length > 0) vars.notes = noteLines.join('\n')
+
+  lines.push(interpolate(recipe.prompt.base, vars))
+
+  // Bloc autonome UNIQUEMENT si le prompt ne les a pas déjà placées lui-même : sinon elles
+  // apparaîtraient deux fois.
+  const basePlacesNotes = /\{notes\}/.test(recipe.prompt.base)
+  if (noteLines.length > 0 && !basePlacesNotes) {
     lines.push(interpolate(frag('notesBlock'), vars))
     noteLines.forEach((l) => lines.push(`  ${interpolate(l, vars)}`))
   }

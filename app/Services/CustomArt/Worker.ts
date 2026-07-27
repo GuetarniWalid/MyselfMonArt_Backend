@@ -525,21 +525,29 @@ export default class CustomArtWorker {
       const photoBuffer = await CustomArtStorage.get(job.photoPath)
       const fake = fakeProviderEnabled()
 
-      // Provider : maillon imposé (file admin), mode factice (M10), sinon le modèle de
-      // la recette (IDs -preview déjà mappés vers le stable par RecipeService).
-      let provider: CustomArtProvider | null
+      // Modèles à essayer, DANS L'ORDRE : maillon imposé (file admin), mode factice (M10),
+      // chaîne déclarée par la recette, sinon le modèle unique de la recette (comportement
+      // historique — IDs -preview déjà mappés vers le stable par RecipeService).
+      let providers: CustomArtProvider[]
       if (job.forcedProvider) {
-        provider = resolveForcedProvider(job.forcedProvider)
-        if (!provider) {
+        const forced = resolveForcedProvider(job.forcedProvider)
+        if (!forced) {
           throw new Error(`Provider imposé introuvable ou non configuré: ${job.forcedProvider}`)
         }
+        providers = [forced]
       } else if (fake) {
-        provider = resolveProviderChain()[0] || null
+        providers = resolveProviderChain().slice(0, 1)
+      } else if (recipe.providers) {
+        // Les maillons non configurés (clé API absente) sont écartés plutôt que de faire échouer
+        // toute la chaîne : c'est le principe même d'un filet de secours.
+        providers = recipe.providers.chain
+          .map((key) => makeProvider(key))
+          .filter((p): p is CustomArtProvider => Boolean(p && p.isAvailable()))
       } else {
         const built = makeProvider(`gemini:${recipe.model}`)
-        provider = built && built.isAvailable() ? built : null
+        providers = built && built.isAvailable() ? [built] : []
       }
-      if (!provider) {
+      if (providers.length === 0) {
         throw new Error('Aucun provider de génération configuré (clé API absente).')
       }
 
@@ -593,7 +601,7 @@ export default class CustomArtWorker {
         const generations = await Promise.all(
           Array.from({ length: recipe.candidates }, () =>
             CustomArtWorker.generateOneGeneric(
-              provider as CustomArtProvider,
+              providers,
               {
                 photoBuffer,
                 kitRefBuffers: refBuffers,
@@ -704,36 +712,51 @@ export default class CustomArtWorker {
   }
 
   /**
-   * Une génération générique : provider unique (pas de chaîne v1), refus modération et
-   * échec technique distingués comme côté foot (le refus TOTAL déclenche le repli artiste).
+   * Une génération générique : les modèles sont essayés DANS L'ORDRE, le premier qui produit une
+   * image gagne. Un refus de modération ou une panne passe au maillon suivant.
+   *
+   * Avec un seul maillon — cas d'un produit qui ne déclare pas de chaîne, donc la famille — le
+   * comportement est EXACTEMENT celui d'avant : succès, ou refus, ou échec technique.
+   *
+   * Refus et échec restent distingués comme côté foot : un refus TOTAL déclenche le repli artiste,
+   * alors qu'une panne technique laisse la porte ouverte à une relance.
    */
   private static async generateOneGeneric(
-    provider: CustomArtProvider,
+    providers: CustomArtProvider[],
     params: GenerateParams,
     job: CustomArtJob
   ): Promise<GenerationOutcome> {
-    try {
-      const result = await provider.generate(params)
-      if (result.providerMeta.refused || !result.imageBuffer) {
+    let sawTechnicalFailure = false
+
+    for (const provider of providers) {
+      try {
+        const result = await provider.generate(params)
+        if (result.providerMeta.refused || !result.imageBuffer) {
+          Logger.warn(
+            'custom-art (generic) uuid=%s provider=%s refus: %s',
+            job.uuid,
+            provider.key,
+            result.providerMeta.refused
+          )
+          continue
+        }
+        job.addCost('generation', result.providerMeta.estCostEur, provider.key)
+        return { kind: 'ok', result, provider }
+      } catch (error) {
         Logger.warn(
-          'custom-art (generic) uuid=%s provider=%s refus: %s',
+          'custom-art (generic) uuid=%s provider=%s échec: %s',
           job.uuid,
           provider.key,
-          result.providerMeta.refused
+          (error as any)?.message || error
         )
-        return { kind: 'refused' }
+        sawTechnicalFailure = true
       }
-      job.addCost('generation', result.providerMeta.estCostEur, provider.key)
-      return { kind: 'ok', result, provider }
-    } catch (error) {
-      Logger.warn(
-        'custom-art (generic) uuid=%s provider=%s échec: %s',
-        job.uuid,
-        provider.key,
-        (error as any)?.message || error
-      )
-      return { kind: 'failed' }
     }
+
+    // Chaîne épuisée : refus PUR (tous les modèles ont refusé la photo) si aucune panne technique
+    // n'est survenue — c'est ce qui déclenche le repli artiste, et il ne doit pas être confondu
+    // avec une indisponibilité passagère.
+    return sawTechnicalFailure ? { kind: 'failed' } : { kind: 'refused' }
   }
 
   /**

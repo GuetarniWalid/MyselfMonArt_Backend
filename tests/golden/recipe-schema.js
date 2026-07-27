@@ -156,6 +156,39 @@ rejects(
   'inconnu'
 )
 
+// `providers.chain` : filet de secours du foot (3 modèles essayés dans l'ordre). Absente d'une
+// recette qui ne la déclare pas — la famille garde son modèle unique.
+ok(!('providers' in actual), 'providers absent si non déclaré')
+const chained = RecipeService.parseRecipe(
+  JSON.stringify({
+    version: 1,
+    providers: {
+      chain: [
+        'gemini:gemini-3.1-flash-image',
+        'gemini:gemini-3-pro-image',
+        'gemini:gemini-2.5-flash-image',
+      ],
+    },
+    prompt: { base: 'x' },
+  })
+)
+ok(chained.providers.chain.length === 3, 'chaîne de 3 modèles acceptée, dans l’ordre')
+ok(
+  chained.providers.chain[0] === 'gemini:gemini-3.1-flash-image',
+  'le premier maillon est préservé'
+)
+const badChain = (chain) =>
+  JSON.stringify({ version: 1, providers: { chain }, prompt: { base: 'x' } })
+rejects(badChain([]), 'chaîne vide refusée', 'non vide')
+rejects(badChain(['pas-un-modele']), 'maillon mal formé refusé', 'invalide')
+// Un doublon ferait retenter le MÊME modèle après son refus : dépense sans aucun espoir.
+rejects(badChain(['gemini:a', 'gemini:a']), 'maillon en double refusé', 'double')
+rejects(
+  badChain(['gemini:a', 'gemini:b', 'gemini:c', 'gemini:d', 'gemini:e', 'gemini:f']),
+  'chaîne trop longue refusée',
+  'dépasse'
+)
+
 // Un tableau vide doit être traité comme absent (sinon l'invariant ci-dessus tombe).
 const emptyFields = RecipeService.parseRecipe(
   JSON.stringify({ version: 1, inputs: { fields: [] }, prompt: { base: 'x' } })
@@ -349,6 +382,40 @@ ok(/IMAGE 3 .*DOS de Paris/s.test(footPrompt), 'image 3 annoncée DOS')
 ok(/IMAGE 4 .*SCÈNE/s.test(footPrompt), 'image 4 annoncée SCÈNE et POSE')
 ok(footPrompt.includes('Bande centrale verticale'), 'la note de fidélité est injectée')
 ok(/CONSIGNES DE FIDÉLITÉ/.test(footPrompt), 'le bloc de consignes non négociables est présent')
+
+// Un prompt CALIBRÉ doit pouvoir placer les consignes exactement où il les attend (le prompt foot
+// les veut au milieu de sa liste d'exigences, pas rejetées à la fin).
+const placedRecipe = RecipeService.parseRecipe(
+  JSON.stringify({
+    version: 1,
+    prompt: { base: 'AVANT\n{notes}\nAPRES', commonNotes: 'Règle commune.' },
+  })
+)
+const placedPrompt = buildGenericPrompt({
+  recipe: placedRecipe,
+  tokens: [],
+  title: null,
+  notes: 'Note de l’option.',
+})
+ok(
+  /AVANT\nNote de l’option\.\nRègle commune\.\nAPRES/.test(placedPrompt),
+  '{notes} place les consignes à l’endroit voulu, option puis règles communes'
+)
+ok(
+  !/CONSIGNES DE FIDÉLITÉ/.test(placedPrompt),
+  'le bloc autonome n’est PAS ajouté quand le prompt les place lui-même (pas de doublon)'
+)
+// Sans notes, `{notes}` reste verbatim : aucune recette existante n'est affectée.
+ok(
+  buildGenericPrompt({
+    recipe: RecipeService.parseRecipe(
+      JSON.stringify({ version: 1, prompt: { base: 'A {notes} B' } })
+    ),
+    tokens: [],
+    title: null,
+  }).includes('A {notes} B'),
+  'sans consignes, {notes} reste verbatim'
+)
 
 // Interpolation des champs déclarés + modificateur de casse (le prénom est peint en capitales).
 const upperRecipe = RecipeService.parseRecipe(

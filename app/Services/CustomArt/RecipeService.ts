@@ -61,6 +61,9 @@ const REF_ROLES = new Set(['style', 'front', 'back', 'scene'])
 // Slot de placement quand la valeur est PEINTE sur l'œuvre (ex. 'back-name', 'back-number').
 const PRINT_SLOT_RE = /^[a-z][a-z0-9-]{0,30}$/
 const OPTION_KEY_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,40}$/
+// Chaîne de modèles : clés de la forme `<fournisseur>:<modèle>` (ex. gemini:gemini-3-pro-image).
+const PROVIDER_CHAIN_MAX = 5
+const PROVIDER_KEY_RE = /^[a-z]+:[a-z0-9.\-]+$/i
 
 // IDs *-preview morts depuis le 25/06/2026 (bench M1) : mappés vers l'ID stable, avec warn —
 // une recette copiée d'un vieux doc ne doit pas casser en silence.
@@ -186,6 +189,13 @@ export interface StudioRecipe {
    * explicite (partagées + celles de l'option choisie), et rien d'autre n'est envoyé.
    */
   references?: RecipeRefPick[]
+  /**
+   * Chaîne de modèles à essayer DANS L'ORDRE : le premier qui produit une image gagne, un refus
+   * ou une panne passe au suivant. ABSENTE : un seul modèle (`model`), et un refus part
+   * directement en revue manuelle — comportement actuel du générique, donc celui de la famille.
+   * Le poster foot en a besoin : sa chaîne est son filet contre les refus de modération.
+   */
+  providers?: { chain: string[] }
   /** Ce qui est ÉCRIT dans l'image de référence (source des substitutions §5) */
   referenceTexts: { title: string | null; slots: string[] }
   /** Fragments de prompt : base obligatoire, le reste surcharge les défauts du worker */
@@ -478,6 +488,33 @@ export default class RecipeService extends Authentication {
         ? null
         : RecipeService.parseRefPicks(json.references, 'references', reasons, REFERENCES_MAX)
 
+    // providers.chain : modèles essayés dans l'ordre. Absente -> clé non produite, un seul modèle.
+    let providerChain: string[] | null = null
+    const rawChain = json.providers?.chain
+    if (rawChain !== undefined && rawChain !== null) {
+      if (!Array.isArray(rawChain) || rawChain.length === 0) {
+        reasons.push('providers.chain doit être un tableau non vide')
+      } else if (rawChain.length > PROVIDER_CHAIN_MAX) {
+        reasons.push(`providers.chain dépasse ${PROVIDER_CHAIN_MAX} entrées`)
+      } else {
+        const entries: string[] = []
+        for (let i = 0; i < rawChain.length; i++) {
+          const key = String(rawChain[i]).trim()
+          if (!PROVIDER_KEY_RE.test(key)) {
+            reasons.push(`providers.chain[${i}] "${key}" invalide (attendu <fournisseur>:<modèle>)`)
+            continue
+          }
+          // Un doublon ferait retenter le MÊME modèle après son refus : dépense sans espoir.
+          if (entries.includes(key)) {
+            reasons.push(`providers.chain[${i}] "${key}" en double`)
+            continue
+          }
+          entries.push(key)
+        }
+        if (entries.length === rawChain.length) providerChain = entries
+      }
+    }
+
     // reference.texts (source des substitutions)
     const rawRefTexts = json.reference?.texts || {}
     const refTitle =
@@ -566,6 +603,7 @@ export default class RecipeService extends Authentication {
       // une recette v1 (famille LIVE) produit donc exactement le même objet qu'avant la v1.1.
       ...(recipeFields ? { fields: recipeFields } : {}),
       ...(sharedRefs ? { references: sharedRefs } : {}),
+      ...(providerChain ? { providers: { chain: providerChain } } : {}),
       referenceTexts: { title: refTitle, slots },
       prompt,
       judge,
