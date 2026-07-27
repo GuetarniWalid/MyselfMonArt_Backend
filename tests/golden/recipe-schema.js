@@ -632,5 +632,64 @@ ok(
 ok(labelOf({ inputs: { tokens: [] } }) === '', 'aucune donnée : libellé vide (inchangé)')
 
 // ============================================================================================
+// 8. LIBELLÉ HUMAIN CENTRALISÉ — il nomme la création sur les bons de production et les e-mails
+// ============================================================================================
+const { describeJob } = loadTsModule(path.join(ROOT, 'app/Services/CustomArt/jobLabelling.ts'))
+const describe = (patch, legacyTeamName = null) => {
+  const job = new CustomArtJob()
+  Object.assign(job, patch)
+  return describeJob(job, legacyTeamName)
+}
+
+// Job HISTORIQUE : les colonnes font foi, exactement comme aujourd'hui.
+const legacy = describe({ playerName: 'WALID', playerNumber: 10, teamId: 3 }, 'Paris')
+ok(
+  legacy.displayName === 'WALID' && legacy.number === 10 && legacy.optionName === 'Paris',
+  'job historique : prénom, numéro et équipe inchangés'
+)
+ok(legacy.incomplete === false, 'job historique : jamais signalé incomplet')
+// Un job historique SANS équipe (colonne nulle) ne doit pas inventer de nom d'option.
+ok(
+  describe({ playerName: 'WALID', playerNumber: 7, teamId: null }, 'Paris').optionName === null,
+  'job historique sans équipe : aucune option inventée'
+)
+
+// Job PILOTÉ PAR RECETTE : le libellé et l'option viennent des entrées validées.
+const driven = describe({
+  uuid: 'abcdef12-3456',
+  inputs: {
+    title: 'WALID 10',
+    fields: {
+      teamId: { type: 'choice', value: 'paris', label: 'Paris' },
+      playerNumber: { type: 'number', value: '10', label: null },
+    },
+  },
+})
+ok(driven.displayName === 'WALID 10', 'job piloté par recette : libellé issu du titre')
+ok(driven.optionName === 'Paris', 'l’option choisie est nommée par son libellé FIGÉ')
+ok(driven.number === 10, 'le numéro est repris des champs déclarés')
+
+// Libellé figé : si l'option a été renommée depuis, la commande passée garde son libellé.
+ok(
+  describe({
+    uuid: 'x',
+    inputs: { title: 'T', fields: { t: { type: 'choice', value: 'paris', label: null } } },
+  }).optionName === 'paris',
+  'sans libellé enregistré, on retombe sur la clé plutôt que sur rien'
+)
+
+// LE garde-fou : jamais de libellé VIDE sur un bon de production ou un e-mail d'atelier.
+const blank = describe({ uuid: 'deadbeef-1111', inputs: { tokens: [] } })
+ok(
+  blank.displayName.includes('deadbeef'),
+  'aucune source : on nomme par l’identifiant, pas un blanc'
+)
+ok(blank.incomplete === true, 'aucune source : l’anomalie est SIGNALÉE')
+ok(
+  describe({ uuid: 'x', inputs: { title: 'La famille Martin' } }).incomplete === false,
+  'un libellé exploitable n’est jamais signalé incomplet'
+)
+
+// ============================================================================================
 console.log(`\ngolden recipe-schema : ${pass} OK, ${fail} FAIL`)
 process.exit(fail === 0 ? 0 : 1)
