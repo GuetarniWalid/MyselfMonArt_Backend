@@ -33,7 +33,7 @@ export interface GenericJudgeRunnerInput {
   title: string | null
   n: number
   referenceTexts: { title: string | null; slots: string[] }
-  checks: { text: boolean; figureCount: boolean }
+  checks: { text: boolean; figureCount: boolean; monochrome?: boolean }
   /** Photo du client — jointe seulement si le produit le demande (parité foot). */
   photoBuffer?: Buffer
   /** Images de référence montrées au juge, DANS L'ORDRE, avec leur rôle. */

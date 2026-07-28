@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import sharp from 'sharp'
 import type { JudgeResult } from './JudgeService'
+import { colouredFraction, COLOURED_FRACTION_MAX } from './monochrome'
 
 /**
  * Juge des candidats GÉNÉRIQUES (contrat growth/STUDIO-GENERATION-RECIPE-CONTRACT.md §7) —
@@ -38,6 +39,8 @@ export type GenericTextCode =
   | 'text_order'
   | 'text_residual'
   | 'figure_count'
+  // Produit vendu « noir sur blanc » : mesuré sur l'image, jamais demandé au modèle.
+  | 'colour'
 
 const readingSchema = z.object({
   figure_count: z
@@ -135,7 +138,15 @@ export interface GenericJudgeInput {
   /** Textes présents dans l'image de RÉFÉRENCE (ne doivent PLUS apparaître) */
   referenceTexts: { title: string | null; slots: string[] }
   /** Contrôles actifs (recette §4 judge) */
-  checks: { text: boolean; figureCount: boolean }
+  checks: {
+    text: boolean
+    figureCount: boolean
+    /**
+     * Le produit est-il vendu en NOIR ET BLANC ? Déclaré par la recette (`judge.monochrome`).
+     * Absent = non contrôlé : le foot est en couleur, rien ne change pour lui.
+     */
+    monochrome?: boolean
+  }
   /**
    * Photo du client — jointe UNIQUEMENT si le produit le demande. Absente : ce juge ne voit que
    * le candidat, exactement comme avant (le produit famille est dans ce cas).
@@ -227,6 +238,20 @@ export default class GenericJudgeService {
     if (input.checks.figureCount && reading.figure_count !== input.n) {
       codes.add('figure_count')
       details.push(`${reading.figure_count} figure(s) au lieu de ${input.n}`)
+    }
+
+    // Couleur : MESURÉE, pas jugée. Le prompt l'interdit trois fois et le modèle colorie quand
+    // même (deux candidats sur trois, le 28/07/2026) — et rien ne le recalait, puisque le juge ne
+    // lit que des textes et compte des figures.
+    if (input.checks.monochrome) {
+      const { data, info } = await sharp(input.candidateBuffer)
+        .raw()
+        .toBuffer({ resolveWithObject: true })
+      const part = colouredFraction(data, info.channels)
+      if (part > COLOURED_FRACTION_MAX) {
+        codes.add('colour')
+        details.push(`${(part * 100).toFixed(1)} % de l'image est en couleur`)
+      }
     }
 
     const quality = reading.quality_score

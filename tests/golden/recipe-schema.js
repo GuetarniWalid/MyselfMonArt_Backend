@@ -156,6 +156,59 @@ rejects(
   'inconnu'
 )
 
+// `judge.monochrome` : produit vendu « noir sur blanc ». Absent d'une recette qui ne le déclare
+// pas — le foot est en couleur, il ne doit surtout pas hériter de ce contrôle.
+ok(
+  !(
+    'monochrome' in
+    RecipeService.parseRecipe(JSON.stringify({ version: 1, prompt: { base: 'x' } })).judge
+  ),
+  'judge.monochrome absent si non déclaré'
+)
+ok(
+  RecipeService.parseRecipe(
+    JSON.stringify({ version: 1, judge: { monochrome: true }, prompt: { base: 'x' } })
+  ).judge.monochrome === true,
+  'judge.monochrome repris quand il est déclaré'
+)
+
+// La MESURE de couleur elle-même. Fonction pure : on lui donne des pixels, pas une image.
+// C'est ce contrôle qui aurait recalé les deux candidats coloriés sur trois du 28/07/2026.
+const { colouredFraction, COLOURED_FRACTION_MAX } = loadTsModule(
+  path.join(ROOT, 'app/Services/CustomArt/monochrome.ts')
+)
+const pixels = (couleurs) => Buffer.from(couleurs.flat())
+const NOIR = [0, 0, 0]
+const BLANC = [255, 255, 255]
+const GRIS = [128, 128, 128]
+const ROUGE = [220, 40, 40]
+ok(
+  colouredFraction(pixels([NOIR, BLANC, GRIS, BLANC]), 3) === 0,
+  'noir, blanc et gris ne sont PAS de la couleur'
+)
+ok(colouredFraction(pixels([ROUGE, ROUGE]), 3) === 1, 'du rouge pur compte pour 100 %')
+ok(
+  colouredFraction(pixels([ROUGE, BLANC, BLANC, BLANC]), 3) === 0.25,
+  'un pixel colorié sur quatre = 25 %'
+)
+// Un dessin au trait quasi blanc avec une frange de compression ne doit pas être refusé.
+const presqueBlanc = pixels([...Array(199).fill(BLANC), ROUGE])
+ok(
+  colouredFraction(presqueBlanc, 3) <= COLOURED_FRACTION_MAX,
+  'une frange isolée reste sous le seuil de refus'
+)
+// L'alpha ne doit pas décaler la lecture des canaux.
+ok(
+  colouredFraction(
+    pixels([
+      [255, 255, 255, 255],
+      [220, 40, 40, 255],
+    ]),
+    4
+  ) === 0.5,
+  'les pixels avec transparence sont lus correctement'
+)
+
 // `providers.chain` : filet de secours (plusieurs modèles essayés dans l'ordre). La clé ne doit
 // JAMAIS apparaître sur une recette qui ne la déclare pas — sinon un produit hériterait en silence
 // d'une chaîne qu'on ne lui a pas donnée.

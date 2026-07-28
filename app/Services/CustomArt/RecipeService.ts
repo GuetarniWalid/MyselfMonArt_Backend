@@ -229,6 +229,11 @@ export interface StudioRecipe {
     text: boolean
     figureCount: boolean
     /**
+     * Le produit est-il vendu en NOIR ET BLANC ? Le contrôle est une MESURE sur l'image, pas une
+     * question posée au modèle. Absent = non contrôlé (le foot est en couleur).
+     */
+    monochrome?: boolean
+    /**
      * Le juge reçoit-il la photo du client et les images de référence ? ABSENT par défaut : il ne
      * voit que le candidat, comme aujourd'hui. Indispensable au foot — sans les maillots sous les
      * yeux, un juge note la fidélité d'un design qu'il n'a jamais vu.
@@ -581,6 +586,9 @@ export default class RecipeService extends Authentication {
       figureCount:
         json.judge?.figureCount === undefined ? Boolean(tokens) : Boolean(json.judge.figureCount),
       // Clé ajoutée UNIQUEMENT si déclarée : une recette existante produit le même objet qu'avant.
+      ...(json.judge?.monochrome === undefined
+        ? {}
+        : { monochrome: Boolean(json.judge.monochrome) }),
       ...(json.judge?.seesReferences === undefined
         ? {}
         : { seesReferences: Boolean(json.judge.seesReferences) }),

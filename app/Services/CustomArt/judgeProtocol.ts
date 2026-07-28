@@ -35,8 +35,11 @@
  *      `kitPaths`), prioritaires sur la déduction par suffixe de nom de fichier. Nécessaire pour
  *      qu'un produit piloté par recette puisse emprunter le jugement foot sans dépendre d'une
  *      convention de nommage de fichiers.
+ *  4 — `checks` du chemin générique accepte `monochrome` : le candidat d'un produit vendu « noir
+ *      sur blanc » est MESURÉ et recalé s'il est colorié. Un enfant en version 3 ignorerait ce
+ *      contrôle en silence et laisserait passer un dessin au trait colorié jusqu'à l'impression.
  */
-export const JUDGE_CHILD_PROTOCOL = 3
+export const JUDGE_CHILD_PROTOCOL = 4
 
 /** Chemins de jugement connus. Une valeur inconnue doit faire sortir l'enfant en erreur. */
 export const JUDGE_CHILD_KINDS = ['foot', 'generic'] as const
