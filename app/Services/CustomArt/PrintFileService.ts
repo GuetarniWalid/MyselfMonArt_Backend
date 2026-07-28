@@ -12,14 +12,36 @@ import { chosenCandidate } from './chosenCandidate'
 import { describeJob } from './jobLabelling'
 
 /**
- * Gabarits print Picanova (plan §9) : dimensions EXACTES en pixels + densité.
- *   30×40 cm -> 3543×4724 px @300 dpi ; 60×80 cm -> 4724×6299 px @200 dpi.
- * Les deux formats sont au ratio 3:4, comme l'œuvre générée (aspect_ratio 3:4).
+ * Gabarits print : dimensions EXACTES en pixels + densité déclarée.
+ *
+ * MÊME NOMBRE DE PIXELS POUR LES QUATRE TAILLES — seule la densité annoncée change.
+ * Ce n'est pas une paresse, c'est la seule chose honnête à faire. L'information réelle disponible
+ * plafonne à 3584 px de large (l'œuvre sort en 896×1200, l'agrandisseur la multiplie par 4).
+ * Fabriquer un fichier plus grand n'ajoute AUCUN détail : c'est de l'interpolation, qui coûte
+ * de la mémoire et du temps pour rien.
+ *
+ * Ce que ça corrige, mesuré :
+ *  - le 60×80 annonçait 200 dpi alors qu'il n'en avait réellement que 152 : il MENTAIT à l'imprimeur ;
+ *  - son gabarit 4724×6299 faisait culminer le processus à ~410 Mo (base applicative comprise,
+ *    au-delà du seuil de redémarrage du gestionnaire de processus) : une commande PAYÉE pouvait
+ *    faire redémarrer l'application en plein travail, sans erreur et sans e-mail ;
+ *  - un 90×120 à 200 dpi (7087×9449) demandait 776 Mo — plus que le conteneur entier (768 Mo).
+ * Avec un gabarit unique, le pic est CONSTANT (~260 Mo) quelle que soit la taille commandée.
+ *
+ * La densité annoncée est exacte au dpi près (px = cm ÷ 2,54 × dpi) :
+ *   3543 / (30/2,54) = 300 · / (60/2,54) = 150 · / (75/2,54) = 120 · / (90/2,54) = 100
+ *
+ * ⚠️ Le 90×120 sort donc à 100 dpi réels — le plancher du grand format, acceptable à 1,5 m de
+ * recul mais mou de près. Pour faire mieux il faut une SOURCE plus riche, pas un gabarit plus
+ * grand : demander l'image en 4K au modèle (3584×4800 de détail VRAI) et supprimer
+ * l'agrandisseur, qui n'invente aujourd'hui que du faux détail. Chantier séparé.
  */
 export const PRINT_SPECS: Record<CustomArtFormat, { width: number; height: number; dpi: number }> =
   {
     '30x40': { width: 3543, height: 4724, dpi: 300 },
-    '60x80': { width: 4724, height: 6299, dpi: 200 },
+    '60x80': { width: 3543, height: 4724, dpi: 150 },
+    '75x100': { width: 3543, height: 4724, dpi: 120 },
+    '90x120': { width: 3543, height: 4724, dpi: 100 },
   }
 
 // Modèle d'upscale Replicate (Real-ESRGAN ×4). Surchargeable par env

@@ -32,10 +32,21 @@ export interface VariantMappingResult {
 const CACHE_TTL_MS = 10 * 60 * 1000
 const cache = new Map<string, { value: VariantMappingResult | null; at: number }>()
 
-const FORMAT_PATTERNS: Array<{ re: RegExp; format: CustomArtFormat }> = [
-  { re: /30\s*[x×*]\s*40/i, format: '30x40' },
-  { re: /60\s*[x×*]\s*80/i, format: '60x80' },
-]
+/**
+ * Une expression par format, INDEXÉE PAR LE TYPE : ajouter une taille au type sans l'ajouter ici
+ * ne compile plus. C'était l'inverse avant (un simple tableau) — et c'est exactement comme ça que
+ * 75x100 et 90x120 ont pu être mis en vente sans que le studio sache les reconnaître : la variante
+ * n'était pas résolue, et le client recevait « Variante inconnue ».
+ */
+const FORMAT_REGEX: Record<CustomArtFormat, RegExp> = {
+  '30x40': /30\s*[x×*]\s*40/i,
+  '60x80': /60\s*[x×*]\s*80/i,
+  '75x100': /75\s*[x×*]\s*100/i,
+  '90x120': /90\s*[x×*]\s*120/i,
+}
+const FORMAT_PATTERNS = (Object.entries(FORMAT_REGEX) as Array<[CustomArtFormat, RegExp]>).map(
+  ([format, re]) => ({ re, format })
+)
 
 /** Slug d'une valeur d'option de finition : minuscules, sans accents, tirets. */
 function slugifyFrame(value: string): string {

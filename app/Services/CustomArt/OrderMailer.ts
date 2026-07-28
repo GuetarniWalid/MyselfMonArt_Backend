@@ -1,6 +1,7 @@
 import Env from '@ioc:Adonis/Core/Env'
 import Logger from '@ioc:Adonis/Core/Logger'
 import axios from 'axios'
+import type { CustomArtFormat } from 'App/Models/CustomArtJob'
 
 // SMTP sortant bloqué sur le droplet DO -> envoi via l'API HTTPS Resend
 // (même canal que SaveMailer / ReviewMailer / MockupsReadyMailer).
@@ -24,9 +25,11 @@ export interface OrderMailItem {
   mockupUrls: string[]
 }
 
-const FORMAT_LABELS: Record<string, string> = {
+const FORMAT_LABELS: Record<CustomArtFormat, string> = {
   '30x40': '30 × 40 cm',
   '60x80': '60 × 80 cm',
+  '75x100': '75 × 100 cm',
+  '90x120': '90 × 120 cm',
 }
 
 /**

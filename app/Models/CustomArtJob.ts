@@ -16,7 +16,7 @@ export type CustomArtJobStatus =
   // sans pass → file admin /custom-art-review + notification email
   | 'manual_review'
 
-export type CustomArtFormat = '30x40' | '60x80'
+export type CustomArtFormat = '30x40' | '60x80' | '75x100' | '90x120'
 
 /** Un candidat généré + jugé. Les `path` sont des clés storage privées, `previewPath` = aperçu réduit. */
 export interface CustomArtCandidate {

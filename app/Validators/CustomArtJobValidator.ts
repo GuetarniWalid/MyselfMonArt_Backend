@@ -29,7 +29,7 @@ export default class CustomArtJobValidator {
       rules.maxLength(60),
       rules.regex(/^(?:gid:\/\/shopify\/ProductVariant\/)?\d{1,20}$/),
     ]),
-    format: schema.enum.optional(['30x40', '60x80'] as const),
+    format: schema.enum.optional(['30x40', '60x80', '75x100', '90x120'] as const),
     // Finition cadre : slug ('none' + finitions définies côté produit Shopify)
     frame: schema.string.optional({ trim: true }, [
       rules.maxLength(30),
@@ -53,7 +53,7 @@ export default class CustomArtJobValidator {
     'playerNumber.required': 'Le numéro est requis.',
     'playerNumber.range': 'Le numéro doit être compris entre 1 et 99.',
     'variantId.regex': 'Variante invalide.',
-    'format.enum': 'Format invalide (30x40 ou 60x80).',
+    'format.enum': 'Format invalide (30x40, 60x80, 75x100 ou 90x120).',
     'frame.regex': 'Finition invalide.',
     'email.email': "L'email n'est pas valide.",
   }
