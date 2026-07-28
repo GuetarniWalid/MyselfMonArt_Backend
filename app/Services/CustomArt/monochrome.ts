@@ -49,11 +49,20 @@ export function colouredFraction(pixels: Uint8Array | Buffer, channels: number):
  * chrominance). En dessous de ce seuil, on est dans le bruit de compression ; au-dessus, quelqu'un
  * a colorié.
  *
- * Mesuré sur les six candidats RÉELS d'une création du poster famille : les rendus noir et blanc
- * donnent 0,000 % ; les rendus coloriés 11,2 % et 11,4 %. Rien entre les deux — le seuil n'a pas
- * besoin d'être fin. (Et deux candidats sur trois étaient coloriés : ce n'est pas un accident.)
+ * ÉTABLI SUR 13 CANDIDATS RÉELS du poster famille, pas au jugé :
+ *   - les rendus vraiment propres mesurent tous EXACTEMENT 0,000 % — le modèle, quand il obéit,
+ *     produit du gris pur, et le JPEG n'ajoute pas de frange détectable à ce seuil d'écart ;
+ *   - la moindre couleur VISIBLE démarre à 1,338 % (une robe jaune sur une seule figure), puis
+ *     3,5 %, 8,2 %, 11,2 % quand le modèle colorie franchement.
+ * Le seuil est donc posé au MILIEU DU VIDE : infiniment au-dessus des propres, 2,7 fois sous la
+ * plus petite infraction observée.
+ *
+ * ⚠️ Une première version le posait à 2 %, sur la foi de deux mesures seulement (0 % et 11 %) et de
+ * la conclusion trop rapide qu'il n'y avait « rien entre les deux ». Une robe jaune à 1,34 % est
+ * alors passée. La leçon : un seuil se règle sur la plus petite infraction RÉELLE, jamais sur
+ * l'écart entre les deux extrêmes.
  */
-export const COLOURED_FRACTION_MAX = 0.02
+export const COLOURED_FRACTION_MAX = 0.005
 
 /** `true` si l'image doit être refusée pour cause de couleur. */
 export function isColoured(pixels: Uint8Array | Buffer, channels: number): boolean {

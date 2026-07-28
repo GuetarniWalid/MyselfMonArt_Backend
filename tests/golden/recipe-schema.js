@@ -191,11 +191,18 @@ ok(
   colouredFraction(pixels([ROUGE, BLANC, BLANC, BLANC]), 3) === 0.25,
   'un pixel colorié sur quatre = 25 %'
 )
-// Un dessin au trait quasi blanc avec une frange de compression ne doit pas être refusé.
-const presqueBlanc = pixels([...Array(199).fill(BLANC), ROUGE])
+// Une frange de compression isolée ne doit pas être refusée...
+const presqueBlanc = pixels([...Array(999).fill(BLANC), ROUGE])
 ok(
-  colouredFraction(presqueBlanc, 3) <= COLOURED_FRACTION_MAX,
+  colouredFraction(presqueBlanc, 3) < COLOURED_FRACTION_MAX,
   'une frange isolée reste sous le seuil de refus'
+)
+// ...mais une robe coloriée sur une seule figure, si. Mesurée à 1,338 % sur un rendu RÉEL qui est
+// passé quand le seuil était encore à 2 % : c'est ce cas précis que le seuil doit attraper.
+const uneRobeJaune = pixels([...Array(9866).fill(BLANC), ...Array(134).fill(ROUGE)])
+ok(
+  colouredFraction(uneRobeJaune, 3) > COLOURED_FRACTION_MAX,
+  'une seule figure coloriée (1,34 % de l’image) est REFUSÉE'
 )
 // L'alpha ne doit pas décaler la lecture des canaux.
 ok(
