@@ -156,9 +156,18 @@ rejects(
   'inconnu'
 )
 
-// `providers.chain` : filet de secours du foot (3 modèles essayés dans l'ordre). Absente d'une
-// recette qui ne la déclare pas — la famille garde son modèle unique.
-ok(!('providers' in actual), 'providers absent si non déclaré')
+// `providers.chain` : filet de secours (plusieurs modèles essayés dans l'ordre). La clé ne doit
+// JAMAIS apparaître sur une recette qui ne la déclare pas — sinon un produit hériterait en silence
+// d'une chaîne qu'on ne lui a pas donnée.
+// ⚠️ Ce contrôle portait sur la recette FAMILLE, jusqu'à ce qu'elle se dote elle-même d'une chaîne
+// (28/07/2026 : une photo de famille contient des enfants, et le modèle refuse parfois). Il porte
+// désormais sur une recette minimale — c'est l'ABSENCE de déclaration qu'il vérifie, pas un produit.
+ok(
+  !(
+    'providers' in RecipeService.parseRecipe(JSON.stringify({ version: 1, prompt: { base: 'x' } }))
+  ),
+  'providers absent si non déclaré'
+)
 const chained = RecipeService.parseRecipe(
   JSON.stringify({
     version: 1,
@@ -452,8 +461,10 @@ ok(
 
 // Sans rôles fournis : le bloc `imageRoles` UNIQUE est conservé (ici la surcharge de la recette
 // famille, qui a le sien) et aucune phrase par rôle n'apparaît.
+// On compare au bloc RÉEL de la recette, jamais à un extrait recopié : retoucher le texte du
+// prompt est légitime et ne doit pas faire échouer un contrôle qui porte sur le MÉCANISME.
 ok(
-  familyPrompt.includes('Two images are attached. IMAGE 1 is the CUSTOMER PHOTO:'),
+  familyPrompt.includes(JSON.parse(FAMILY_RECIPE).prompt.imageRoles),
   'sans rôles fournis, le bloc imageRoles de la recette est conservé tel quel'
 )
 ok(!/L'IMAGE 2 (est|montre)/.test(familyPrompt), 'aucune phrase par rôle sans rôles fournis')
