@@ -280,12 +280,65 @@ export default class Product extends Authentication {
   }
 
   /**
-   * Lightweight scan for artworks (paintings/posters) whose variant matrix was
-   * never fully created: they carry real options but only a single (default)
-   * variant. Used by the RepairIncompleteArtworks cron to auto-heal products
-   * left behind when Shopify's daily variant-creation limit interrupts a burst
-   * publish. Cheap query (id, title, variant count, option names) — no variants
-   * payload, no per-product model fetch.
+   * Variant matrices of the reference models, per artwork type — the yardstick the
+   * incomplete-artwork scan measures against. Read from Shopify rather than hard-coded
+   * so the day a model gains a size or a frame, detection follows without a code change.
+   *
+   * Typically `{ painting: {95, 45}, poster: {7} }`: 95 for a portrait/paysage toile,
+   * 45 for a square one, 7 for a poster (there is no square poster model by design).
+   * Counts of 1 or 0 are ignored — a model reduced to its default variant is itself
+   * broken and must never become the reference the whole catalogue is compared to.
+   */
+  private async getModelVariantCounts(): Promise<Record<'painting' | 'poster', Set<number>>> {
+    const expected: Record<'painting' | 'poster', Set<number>> = {
+      painting: new Set<number>(),
+      poster: new Set<number>(),
+    }
+
+    const query = `query ModelVariantCounts {
+      products(first: 20, query: "tag:'portrait model' OR tag:'paysage model' OR tag:'square model'") {
+        nodes {
+          id
+          title
+          variantsCount { count }
+          artworkTypeMetafield: metafield(namespace: "artwork", key: "type") { value }
+        }
+      }
+    }`
+
+    try {
+      const data = await this.fetchGraphQL(query, {}, 20)
+
+      for (const node of data.products?.nodes ?? []) {
+        const type = node.artworkTypeMetafield?.value
+        const count = node.variantsCount?.count ?? 0
+        if ((type === 'painting' || type === 'poster') && count > 1) expected[type].add(count)
+      }
+
+      console.info(
+        `📐 Model matrices — toiles: [${[...expected.painting].join(', ')}] · posters: [${[
+          ...expected.poster,
+        ].join(', ')}]`
+      )
+    } catch (error: any) {
+      const msg = error instanceof Error ? error.message : String(error)
+      console.error(`❌ Could not read the model variant counts: ${msg}`)
+    }
+
+    return expected
+  }
+
+  /**
+   * Lightweight scan for published artworks (paintings/posters) whose variant matrix
+   * does not match its model's: a lone default variant because the model copy never
+   * started (webhook lost, images not yet processed, redeploy mid-copy) or a matrix cut
+   * short by Shopify's daily variant-creation limit. Used by the RepairIncompleteArtworks
+   * cron to auto-heal them. Cheap query (id, title, variant count, tags, 2 metafields) —
+   * no variants payload, no per-product model fetch.
+   *
+   * Detection deliberately does NOT look at how many options a product carries: the
+   * products that stayed broken for weeks had a single "Title" option, so a criterion
+   * requiring two options never saw them.
    */
   public async getIncompleteArtworks(): Promise<
     Array<{ id: string; title: string; variantsCount: number }>
@@ -293,6 +346,15 @@ export default class Product extends Authentication {
     const incomplete: Array<{ id: string; title: string; variantsCount: number }> = []
     let cursor: string | null = null
     let hasNextPage = true
+
+    // Reference matrices, read from the models themselves. Without them we cannot tell
+    // a complete artwork from a broken one, so the scan below returns nothing rather
+    // than queue the whole catalogue for a rewrite.
+    const expected = await this.getModelVariantCounts()
+    if (expected.painting.size === 0 && expected.poster.size === 0) {
+      console.error('❌ Incomplete-artwork scan aborted: no model variant count could be read')
+      return incomplete
+    }
 
     while (hasNextPage) {
       const query = `query IncompleteArtworksScan($cursor: String) {
@@ -303,9 +365,9 @@ export default class Product extends Authentication {
               id
               title
               variantsCount { count }
-              options(first: 3) { name }
               tags
               artworkTypeMetafield: metafield(namespace: "artwork", key: "type") { value }
+              posterIsCustomMetafield: metafield(namespace: "poster", key: "isCustom") { value }
             }
           }
           pageInfo { hasNextPage }
@@ -325,11 +387,19 @@ export default class Product extends Authentication {
         )
         if (isModel) continue
 
-        const optionCount = node.options?.length ?? 0
-        const variantsCount = node.variantsCount?.count ?? 0
+        // Personalized studio posters carry a hand-built grid that must never be
+        // converged to the standard model matrix.
+        if (node.posterIsCustomMetafield?.value === 'true') continue
 
-        // Real options but a single variant => the size×border×frame matrix is missing
-        if (optionCount >= 2 && variantsCount <= 1) {
+        const variantsCount = node.variantsCount?.count ?? 0
+        const allowed = expected[artworkType as 'painting' | 'poster']
+        if (allowed.size === 0) continue
+
+        // A finished artwork carries exactly one of its type's model matrices
+        // (95 portrait/paysage or 45 square for a toile, 7 for a poster). Anything
+        // else — a lone default variant because the copy never started, or a matrix
+        // cut short by Shopify's daily variant limit — is incomplete.
+        if (!allowed.has(variantsCount)) {
           incomplete.push({ id: node.id, title: node.title, variantsCount })
         }
       }

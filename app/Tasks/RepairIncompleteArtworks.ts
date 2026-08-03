@@ -1,21 +1,32 @@
 import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import Shopify from 'App/Services/Shopify'
+import PublishAlertMailer from 'App/Services/PublishAlertMailer'
 import { logTaskBoundary } from 'App/Utils/Logs'
 
 /**
- * Daily safety net that re-creates missing variants on artworks left incomplete
- * by Shopify's daily variant-creation limit (1,000/day once a store passes 50,000
- * variants). When a burst publish exhausts the quota, the later products keep only
- * their default variant; this cron repairs them once the quota is available again.
+ * Hourly safety net that re-creates the missing variants of any published artwork
+ * whose matrix does not match its model's — whatever cut it short:
+ *   - Shopify's daily variant-creation limit (1,000/day past 50,000 store variants),
+ *     which leaves the tail of a burst publish with a lone default variant;
+ *   - a products/create webhook that never landed, or whose async processing died in
+ *     a redeploy;
+ *   - images Shopify had not finished processing when the webhook ran, so the model
+ *     copy never even started (the product then carries a single "Title" option).
  *
  * This is the single, persistent "retry later" mechanism. The in-process retry in
- * createVariantsBulkWithRetry now fails fast (it did not survive redeploys), so the
- * two never run a competing wait. The copy is differential, so a re-run never
- * creates a variant that already exists.
+ * createVariantsBulkWithRetry fails fast (it did not survive redeploys), so the two
+ * never run a competing wait. The copy is differential, so a re-run never creates a
+ * variant that already exists.
+ *
+ * Runs hourly, not daily: an artwork is online and unsellable (one variant at 0,00 €)
+ * for as long as it waits, so the exposure window is an hour rather than a full day.
+ * The scan is cheap — a handful of paginated queries, no per-product model fetch.
  */
 export default class RepairIncompleteArtworks extends BaseTask {
   public static get schedule() {
-    return CronTimeV2.everyDayAt(4, 0)
+    // Minute 50: clear of the other hourly jobs (:05 custom-art, :20 pending posters,
+    // :30 publish) so they never contend for the Shopify rate limit.
+    return CronTimeV2.everyHourAt(50)
   }
 
   // Avoid overlapping runs (a run can be long if there is a backlog)
@@ -35,22 +46,54 @@ export default class RepairIncompleteArtworks extends BaseTask {
       console.info(`🩹 Found ${incomplete.length} incomplete artwork(s) to repair`)
 
       let repaired = 0
+      const failures: Array<{
+        productId: string
+        title: string
+        variantsCount: number
+        reason: string
+      }> = []
+
       for (const candidate of incomplete.slice(0, RepairIncompleteArtworks.MAX_PER_RUN)) {
         try {
           const product = await shopify.product.getProductById(candidate.id)
 
           if (!shopify.product.artworkCopier.canProcessProductCreate(product)) {
             console.warn(`⏭️  Skipping ${candidate.id} "${candidate.title}" (not processable)`)
+            failures.push({
+              productId: candidate.id,
+              title: candidate.title,
+              variantsCount: candidate.variantsCount,
+              reason: 'copie du modèle impossible (image ou metafield artwork.type manquant)',
+            })
             continue
           }
 
           await shopify.product.artworkCopier.copyModelDataFromImageRatio(product)
+
+          // The copy returns silently when no model matches the image ratio, so trust
+          // the variant count rather than the absence of an exception: a run that
+          // reports a repair it never made is what let these products rot for weeks.
+          const after = await shopify.product.getProductById(candidate.id)
+          const count = after.variants?.nodes?.length ?? 0
+
+          if (count <= 1) {
+            console.error(`❌ Repair had no effect on ${candidate.id} "${candidate.title}"`)
+            failures.push({
+              productId: candidate.id,
+              title: candidate.title,
+              variantsCount: count,
+              reason: 'la copie du modèle est passée sans rien créer',
+            })
+            continue
+          }
+
           repaired++
-          console.info(`✅ Repaired "${candidate.title}" (${candidate.id})`)
+          console.info(`✅ Repaired "${candidate.title}" (${candidate.id}) — ${count} variants`)
         } catch (error: any) {
           const msg = error instanceof Error ? error.message : String(error)
 
           // Shopify's daily variant limit reached — stop for today, resume next run.
+          // Not a failure to report: the next run finishes the job by itself.
           if (msg.includes('Daily variant')) {
             console.warn(
               `🛑 Daily variant limit reached after repairing ${repaired}. Stopping; will resume next run.`
@@ -59,6 +102,12 @@ export default class RepairIncompleteArtworks extends BaseTask {
           }
 
           console.error(`❌ Failed to repair ${candidate.id} "${candidate.title}": ${msg}`)
+          failures.push({
+            productId: candidate.id,
+            title: candidate.title,
+            variantsCount: candidate.variantsCount,
+            reason: msg.slice(0, 200),
+          })
         }
 
         // Gentle spacing between products
@@ -66,6 +115,18 @@ export default class RepairIncompleteArtworks extends BaseTask {
       }
 
       console.info(`🩹 Repair run done: ${repaired}/${incomplete.length} repaired`)
+
+      // Only write to the owner when a product is still online and unsellable after
+      // the automatic pass — a run that heals everything stays silent.
+      if (failures.length > 0) {
+        try {
+          await new PublishAlertMailer().sendUnrepairableArtworks(failures)
+          console.info(`📧 Alerted the owner about ${failures.length} unrepairable artwork(s)`)
+        } catch (mailError: any) {
+          const msg = mailError instanceof Error ? mailError.message : String(mailError)
+          console.error(`⚠️  Could not send the unrepairable-artworks alert: ${msg}`)
+        }
+      }
     } catch (error: any) {
       const msg = error instanceof Error ? error.message : String(error)
       console.error(`❌ RepairIncompleteArtworks failed: ${msg}`)

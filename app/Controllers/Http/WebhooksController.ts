@@ -156,14 +156,24 @@ export default class WebhooksController {
     const shopify = new Shopify()
     const product = await shopify.product.getProductById(id)
 
+    // Match the type FIRST. handleProductCreate runs this handler twice (painting then
+    // poster); checking the type last made a painting sit through the media wait a
+    // second time for the poster pass it was never going to match.
+    if (product.artworkTypeMetafield?.value !== type) return
+
+    // Shopify may still be processing the uploaded images. Giving up here leaves the
+    // product with its lone default variant, so it is not a dead end: the
+    // RepairIncompleteArtworks cron re-runs the copy on the next pass.
     const areMediaLoaded = await shopify.product.artworkCopier.areMediaImagesLoaded(product)
-    if (!areMediaLoaded) return
+    if (!areMediaLoaded) {
+      console.error(
+        `⏳ ${type} ${id}: images not processed by Shopify in time — variant matrix deferred to the repair cron`
+      )
+      return
+    }
 
     const canProcess = shopify.product.artworkCopier.canProcessProductCreate(product)
     if (!canProcess) return
-
-    // Check if product matches the type we're processing
-    if (product.artworkTypeMetafield?.value !== type) return
 
     console.info(`🚀 Filling model data on ${type}: ${id}`)
     let copyFailed = false

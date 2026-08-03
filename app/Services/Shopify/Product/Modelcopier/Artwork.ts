@@ -283,21 +283,34 @@ export default class ArtworkCopier extends ModelCopier {
     const artworkType = product.artworkTypeMetafield?.value
     if (artworkType !== 'painting' && artworkType !== 'poster') return false
     if (this.isCustomPoster(product)) return false
-    if (product.media.nodes.length < 1) return false
-    if (!product.media.nodes[1].image) return false
+    // The artwork itself is the SECOND media (the first is the sizing guide), so a
+    // product carrying a single media has nothing to measure a ratio against.
+    if (product.media.nodes.length < 2) return false
+    if (!product.media.nodes[1]?.image) return false
     return true
   }
 
+  /**
+   * Poll until Shopify has finished processing the uploaded images.
+   *
+   * The window is deliberately generous (60s): the caller is the fire-and-forget
+   * products/create webhook, which has already answered Shopify, so waiting costs
+   * nothing — whereas giving up too early leaves a published product stuck with its
+   * lone default variant at 0,00 €. The previous 10s was routinely shorter than the
+   * processing time of a 4000×4000 upload.
+   */
   public async waitForMediaImages(
     product: ProductById | Product,
-    maxRetries: number = 5,
-    delayMs: number = 2000
+    maxRetries: number = 12,
+    delayMs: number = 5000
   ): Promise<boolean> {
     console.info(`🔄 Waiting for media images to load for product ${product.id}`)
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      // Check if media images are loaded
-      const hasImages = product.media.nodes.length > 0 && product.media.nodes[1]?.image !== null
+      // The artwork is media[1]. `nodes[1]?.image !== null` was true when nodes[1]
+      // did not exist at all (undefined !== null), reporting success on a product
+      // that had no artwork image yet.
+      const hasImages = product.media.nodes.length > 1 && !!product.media.nodes[1]?.image
 
       if (hasImages) {
         console.info(
@@ -345,7 +358,7 @@ export default class ArtworkCopier extends ModelCopier {
       return false
     }
 
-    if (!product.media.nodes[1].image) return false
+    if (!product.media.nodes[1]?.image) return false
     return true
   }
 
