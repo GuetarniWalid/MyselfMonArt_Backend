@@ -1,5 +1,6 @@
 import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task'
 import Shopify from 'App/Services/Shopify'
+import ChatGPT from 'App/Services/ChatGPT'
 import PublishAlertMailer from 'App/Services/PublishAlertMailer'
 import { logTaskBoundary } from 'App/Utils/Logs'
 
@@ -40,6 +41,7 @@ export default class RepairIncompleteArtworks extends BaseTask {
   public async handle() {
     logTaskBoundary(true, 'Repair incomplete artworks')
     const shopify = new Shopify()
+    const chatGPT = new ChatGPT()
 
     try {
       const incomplete = await shopify.product.getIncompleteArtworks()
@@ -89,6 +91,20 @@ export default class RepairIncompleteArtworks extends BaseTask {
 
           repaired++
           console.info(`✅ Repaired "${candidate.title}" (${candidate.id}) — ${count} variants`)
+
+          // A product that never reached the model copy never reached colour/theme
+          // detection either — it would come back sellable but absent from every
+          // colour and theme filter of the storefront. Both detections skip a product
+          // that already carries the field, so this costs nothing on a product that
+          // only lost its variants. Never fatal: the variants are the urgent part.
+          try {
+            const enriched = await shopify.product.getProductById(candidate.id)
+            await chatGPT.colorPattern.detectAndSetColors(enriched)
+            await chatGPT.theme.detectAndSetThemes(enriched)
+          } catch (detectError: any) {
+            const msg = detectError instanceof Error ? detectError.message : String(detectError)
+            console.error(`⚠️  Colour/theme detection failed for ${candidate.id}: ${msg}`)
+          }
         } catch (error: any) {
           const msg = error instanceof Error ? error.message : String(error)
 
