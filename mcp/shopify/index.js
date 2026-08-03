@@ -67,6 +67,87 @@ function shapeMarketPricing(market) {
   }
 }
 
+// Shopify answers a missing OAuth scope with a bare "access denied", which
+// reads like "the store has no such data". Map the known cases to the scope
+// that actually has to be granted, so a permission gap is never mistaken for
+// an empty store.
+const SCOPE_HINTS = [
+  {
+    match: /marketingActivit/i,
+    scope: 'read_marketing_events',
+    what: 'reading marketing activities',
+  },
+  { match: /appInstallation/i, scope: 'read_apps', what: 'listing installed apps' },
+  { match: /discount/i, scope: 'write_discounts', what: 'creating or editing discounts' },
+  { match: /\blocations?\b/i, scope: 'read_locations', what: 'reading location details' },
+]
+function describeError(error, context) {
+  const message = error?.message || String(error)
+  if (!/access denied|not approved|requires? .*scope/i.test(message)) return message
+  const hint = SCOPE_HINTS.find((h) => h.match.test(message) || h.match.test(context || ''))
+  if (!hint) return `${message}\n\nThis looks like a missing OAuth scope rather than missing data.`
+  return (
+    `${message}\n\n` +
+    `MISSING SCOPE — this is a permission gap, not an empty store: ${hint.what} ` +
+    `requires the \`${hint.scope}\` scope, which this app has not been granted.\n` +
+    `Fix: Shopify admin → Settings → Apps and sales channels → Develop apps → ` +
+    `(this app) → Configuration → Admin API integration → add \`${hint.scope}\` → Save, ` +
+    `then Install/Update the app. The existing access token stays valid; it simply gains the scope.`
+  )
+}
+
+// Filter keys the `customers` connection actually honours, verified against the
+// live Admin API (2025-10). Anything else is SILENTLY IGNORED by Shopify — the
+// query still returns 200 with a full, unfiltered result set — so an unknown
+// key is surfaced as a warning instead of quietly producing wrong answers.
+const CUSTOMER_QUERY_KEYS = new Set([
+  'accepts_marketing',
+  'company_contact_ids',
+  'country',
+  'customer_date',
+  'email',
+  'email_marketing_state',
+  'first_name',
+  'last_abandoned_order_date',
+  'last_name',
+  'order_date',
+  'orders_count',
+  'phone',
+  'state',
+  'tag',
+  'tag_not',
+  'total_spent',
+  'updated_at',
+])
+// Keys that belong to the *segment* query language (used by listCustomerSegments
+// / customerSegmentMembers) and do nothing here — the single most likely reason
+// a customers filter appears to be "ignored".
+const SEGMENT_ONLY_KEYS = {
+  email_subscription_status: 'email_marketing_state',
+  number_of_orders: 'orders_count',
+  customer_added_date: 'customer_date',
+  amount_spent: 'total_spent',
+  created_at: 'customer_date',
+}
+function checkCustomerQuery(query) {
+  if (!query) return null
+  const warnings = []
+  for (const [, key] of query.matchAll(/(?:^|[\s()])(\w+)\s*:/g)) {
+    const lower = key.toLowerCase()
+    if (CUSTOMER_QUERY_KEYS.has(lower)) continue
+    if (SEGMENT_ONLY_KEYS[lower]) {
+      warnings.push(
+        `"${key}:" is a customer-SEGMENT field and is silently ignored by the customers search — use "${SEGMENT_ONLY_KEYS[lower]}:" here, or query it through listCustomerSegments.`
+      )
+    } else {
+      warnings.push(
+        `"${key}:" is not a supported customers filter and is silently ignored by Shopify (the results below are NOT filtered by it).`
+      )
+    }
+  }
+  return warnings.length ? warnings : null
+}
+
 // Register all tools
 function registerTools(server, shopifyClient) {
   // Product Tools
@@ -1133,26 +1214,44 @@ function registerTools(server, shopifyClient) {
   // Customer Tools
   server.tool(
     'listCustomers',
-    'List customers from the Shopify store',
+    'List customers, including their email marketing consent. NOTE: `state` is the ' +
+      'customer ACCOUNT state (ENABLED/DISABLED/INVITED) and says nothing about marketing — ' +
+      'marketing opt-in is `emailMarketingConsent.marketingState` ' +
+      '(SUBSCRIBED / NOT_SUBSCRIBED / UNSUBSCRIBED / PENDING / INVALID / REDACTED). ' +
+      'For the size of the subscriber list use listCustomerSegments instead.',
     {
       limit: z.number().optional().default(10),
       cursor: z.string().optional(),
-      query: z.string().optional(),
+      query: z
+        .string()
+        .optional()
+        .describe(
+          'Shopify customers search syntax. Supported keys (verified): email_marketing_state ' +
+            '(subscribed|not_subscribed|unsubscribed|pending), accepts_marketing, email, first_name, ' +
+            'last_name, phone, country, state, tag, tag_not, orders_count, total_spent, customer_date, ' +
+            'updated_at, order_date, last_abandoned_order_date. Ranges use > < >=: "total_spent:>100". ' +
+            'UNSUPPORTED keys are silently ignored by Shopify and return unfiltered results — ' +
+            'notably created_at (use customer_date), number_of_orders (use orders_count) and ' +
+            'email_subscription_status (use email_marketing_state; that one is segment syntax).'
+        ),
       sortKey: z
         .enum(['NAME', 'CREATED_AT', 'UPDATED_AT', 'ID', 'LOCATION', 'RELEVANCE'])
-        .optional(),
+        .optional()
+        .describe('CustomerSortKeys has no TOTAL_SPENT — rank by spend with getCustomerAnalytics.'),
       reverse: z.boolean().optional().default(false),
     },
     async (args) => {
       try {
         const result = await shopifyClient.getCustomers(args)
         const customers = result.data.customers.edges.map((edge) => edge.node)
+        const warnings = checkCustomerQuery(args.query)
         return {
           content: [
             {
               type: 'text',
               text: JSON.stringify(
                 {
+                  ...(warnings ? { warnings } : {}),
                   customers,
                   pageInfo: result.data.customers.pageInfo,
                 },
@@ -1167,7 +1266,7 @@ function registerTools(server, shopifyClient) {
           content: [
             {
               type: 'text',
-              text: `Error fetching customers: ${error.message}`,
+              text: `Error fetching customers: ${describeError(error, 'customers')}`,
             },
           ],
           isError: true,
@@ -1906,11 +2005,16 @@ function registerTools(server, shopifyClient) {
   // Discount Tools
   server.tool(
     'listDiscounts',
-    'List discount codes and automatic discounts',
+    'List discount codes AND automatic discounts, with their value (percentage or amount), ' +
+      'minimum requirement, combinesWith stacking flags, status, dates and usage count. ' +
+      'Every discount type is covered, including automatic and app-driven ones.',
     {
       limit: z.number().optional().default(10),
       cursor: z.string().optional(),
-      query: z.string().optional(),
+      query: z
+        .string()
+        .optional()
+        .describe('e.g. "status:active", "discount_type:code", "title:promo"'),
       savedSearchId: z.string().optional(),
     },
     async (args) => {
@@ -1947,38 +2051,93 @@ function registerTools(server, shopifyClient) {
   )
   server.tool(
     'createDiscountCode',
-    'Create a discount code',
+    'Create a basic discount code (percentage or fixed amount). Requires the `write_discounts` ' +
+      'scope. The created discount is returned in full — including the stored combinesWith — ' +
+      'so the stacking behaviour can be verified immediately.',
     {
       title: z.string(),
       code: z.string(),
-      startsAt: z.string().optional(),
-      endsAt: z.string().optional(),
-      usageLimit: z.number().optional(),
+      startsAt: z.string().optional().describe('ISO 8601, e.g. 2026-08-05T00:00:00Z'),
+      endsAt: z.string().optional().describe('ISO 8601. Omit for no expiry.'),
+      usageLimit: z
+        .number()
+        .optional()
+        .describe('Total times the code can be used across all customers.'),
       appliesOncePerCustomer: z.boolean().optional(),
+      combinesWith: z
+        .object({
+          orderDiscounts: z.boolean().optional().default(false),
+          productDiscounts: z.boolean().optional().default(false),
+          shippingDiscounts: z.boolean().optional().default(false),
+        })
+        .optional()
+        .describe(
+          'Whether this discount STACKS with other discounts. Every flag defaults to false, ' +
+            'which is the safe setting: Shopify then applies the better of the two rather than ' +
+            'adding them together. Setting a flag to true means the two discounts ADD UP on the ' +
+            'same order. Always sent explicitly, and readable back via listDiscounts / getDiscount.'
+        ),
       minimumRequirement: z
         .object({
-          quantity: z.number().optional(),
-          subtotal: z.string().optional(),
+          subtotal: z
+            .union([z.string(), z.number()])
+            .optional()
+            .describe('Minimum order subtotal, e.g. "50.00".'),
+          quantity: z.number().optional().describe('Minimum item quantity.'),
         })
-        .optional(),
+        .optional()
+        .describe('At most one of subtotal / quantity; subtotal wins if both are given.'),
       customerGets: z.object({
         value: z.object({
-          percentage: z.number().optional(),
-          amount: z.string().optional(),
+          percentage: z
+            .number()
+            .optional()
+            .describe('FRACTION, not percent: 0.1 = 10%. Values above 1 are rejected.'),
+          amount: z
+            .union([z.string(), z.number()])
+            .optional()
+            .describe('Fixed amount off, in the store currency, e.g. "10.00".'),
+          appliesOnEachItem: z
+            .boolean()
+            .optional()
+            .describe('For a fixed amount: apply per item instead of once per order.'),
         }),
-        items: z.enum(['all', 'products', 'collections']).optional(),
+        items: z
+          .object({
+            productIds: z.array(z.string()).optional(),
+            collectionIds: z.array(z.string()).optional(),
+          })
+          .optional()
+          .describe('Defaults to the entire order when neither list is given.'),
       }),
-      customerSelection: z.enum(['all', 'customer_segments']).optional().default('all'),
+      customerSelection: z
+        .object({
+          type: z.enum(['all', 'customers', 'customer_segments']).default('all'),
+          customerIds: z
+            .array(z.string())
+            .optional()
+            .describe(
+              'Customer GIDs when type="customers" — this is how a personal, ' +
+                'named discount with its own expiry is created.'
+            ),
+          segmentIds: z
+            .array(z.string())
+            .optional()
+            .describe('Segment GIDs when type="customer_segments" — see listCustomerSegments.'),
+        })
+        .optional()
+        .describe('Who may use the code. Defaults to everyone.'),
     },
     async (args) => {
       try {
         const result = await shopifyClient.createDiscountCode(args)
-        if (result.data.discountCodeBasicCreate.userErrors.length > 0) {
+        const payload = result.data.discountCodeBasicCreate
+        if (payload.userErrors.length > 0) {
           return {
             content: [
               {
                 type: 'text',
-                text: `Error creating discount: ${JSON.stringify(result.data.discountCodeBasicCreate.userErrors)}`,
+                text: `Error creating discount: ${JSON.stringify(payload.userErrors, null, 2)}`,
               },
             ],
             isError: true,
@@ -1988,7 +2147,7 @@ function registerTools(server, shopifyClient) {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(result.data.discountCodeBasicCreate.codeDiscountNode, null, 2),
+              text: JSON.stringify(payload.codeDiscountNode, null, 2),
             },
           ],
         }
@@ -1997,8 +2156,41 @@ function registerTools(server, shopifyClient) {
           content: [
             {
               type: 'text',
-              text: `Error creating discount: ${error.message}`,
+              text: `Error creating discount: ${describeError(error, 'discount')}`,
             },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'getDiscount',
+    'Get one discount (code or automatic) by its node ID, with its value, minimum requirement, ' +
+      'combinesWith stacking flags and usage count.',
+    {
+      id: z
+        .string()
+        .describe(
+          'Discount node GID, e.g. gid://shopify/DiscountCodeNode/123 or DiscountAutomaticNode/123'
+        ),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.getDiscount(args.id)
+        if (!result.data?.discountNode) {
+          return {
+            content: [{ type: 'text', text: `No discount found for id ${args.id}` }],
+            isError: true,
+          }
+        }
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result.data.discountNode, null, 2) }],
+        }
+      } catch (error) {
+        return {
+          content: [
+            { type: 'text', text: `Error fetching discount: ${describeError(error, 'discount')}` },
           ],
           isError: true,
         }
@@ -2107,19 +2299,54 @@ function registerTools(server, shopifyClient) {
   // Shipping Tools
   server.tool(
     'getShippingZones',
-    'Get shipping zones and rates',
+    'Get shipping zones and rates: per zone the countries covered, and per rate its name, price ' +
+      'and the price/weight conditions that gate it (this is where a free-shipping threshold lives).',
     {
       limit: z.number().optional().default(10),
     },
     async (args) => {
       try {
         const result = await shopifyClient.getShippingZones(args)
-        const zones = result.data.deliveryProfiles.edges[0].node.profileLocationGroups
+        // Flattened across every delivery profile — reading only the first one
+        // hid the rates of any additional profile.
+        const profiles = (result.data.deliveryProfiles.edges || []).map((profileEdge) => {
+          const profile = profileEdge.node
+          const zones = (profile.profileLocationGroups || []).flatMap((group) =>
+            (group.locationGroupZones?.edges || []).map((zoneEdge) => {
+              const zone = zoneEdge.node
+              return {
+                name: zone.zone?.name,
+                countries: (zone.zone?.countries || []).map((country) =>
+                  country.code?.restOfWorld ? 'REST_OF_WORLD' : country.code?.countryCode
+                ),
+                countryNames: (zone.zone?.countries || []).map((country) => country.name),
+                rates: (zone.methodDefinitions?.edges || []).map((rateEdge) => {
+                  const rate = rateEdge.node
+                  const provider = rate.rateProvider || {}
+                  return {
+                    name: rate.name,
+                    active: rate.active,
+                    description: rate.description,
+                    price: provider.price || null,
+                    carrier: provider.carrierService?.formattedName || null,
+                    carrierFixedFee: provider.fixedFee || null,
+                    conditions: (rate.methodConditions || []).map((condition) => ({
+                      field: condition.field,
+                      operator: condition.operator,
+                      value: condition.conditionCriteria,
+                    })),
+                  }
+                }),
+              }
+            })
+          )
+          return { id: profile.id, name: profile.name, isDefault: profile.default, zones }
+        })
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(zones, null, 2),
+              text: JSON.stringify({ profiles }, null, 2),
             },
           ],
         }
@@ -2128,7 +2355,7 @@ function registerTools(server, shopifyClient) {
           content: [
             {
               type: 'text',
-              text: `Error fetching shipping zones: ${error.message}`,
+              text: `Error fetching shipping zones: ${describeError(error, 'shipping')}`,
             },
           ],
           isError: true,
@@ -3608,22 +3835,13 @@ function registerTools(server, shopifyClient) {
   )
   server.tool(
     'getCustomerAnalytics',
-    'Get customer behavior analytics',
+    'Customer base metrics: total customers, marketing subscribers and subscriber rate, ' +
+      'buyers vs non-buyers, repeat rate, average order value over the given window ' +
+      '(split first-time vs returning), and the real top spenders ranked across the whole base.',
     {
-      startDate: z.string().describe('Start date (YYYY-MM-DD)'),
-      endDate: z.string().describe('End date (YYYY-MM-DD)'),
-      metrics: z
-        .array(
-          z.enum([
-            'NEW_CUSTOMERS',
-            'RETURNING_CUSTOMERS',
-            'AVERAGE_ORDER_VALUE',
-            'LIFETIME_VALUE',
-            'CHURN_RATE',
-            'RETENTION_RATE',
-          ])
-        )
-        .optional(),
+      startDate: z.string().describe('Start date (YYYY-MM-DD) — used for the AOV window'),
+      endDate: z.string().describe('End date (YYYY-MM-DD) — used for the AOV window'),
+      limit: z.number().optional().default(20).describe('How many top spenders to return'),
     },
     async (args) => {
       try {
@@ -3641,7 +3859,82 @@ function registerTools(server, shopifyClient) {
           content: [
             {
               type: 'text',
-              text: `Error fetching customer analytics: ${error.message}`,
+              text: `Error fetching customer analytics: ${describeError(error, 'customers')}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'listCustomerSegments',
+    'List customer segments with their real member count — this is how to get the size of the ' +
+      'marketing subscriber list. (Do not use customersCount with a query: Shopify accepts the ' +
+      'argument but ignores it and returns the store total for every filter.) ' +
+      "Segments use their own query language: `email_subscription_status = 'SUBSCRIBED'`, " +
+      '`number_of_orders > 1`, `customer_added_date >= -30d` — not the customers search syntax.',
+    {
+      limit: z.number().optional().default(50),
+      cursor: z.string().optional(),
+      query: z.string().optional().describe('Filter the segment list itself, e.g. by name'),
+      includeCounts: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe('Set false to skip the per-segment member count (one extra request).'),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.getCustomerSegments(args)
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result.data, null, 2) }],
+        }
+      } catch (error) {
+        return {
+          content: [
+            { type: 'text', text: `Error fetching segments: ${describeError(error, 'segments')}` },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'listInstalledApps',
+    'List the apps installed on the store (title, handle, developer, granted scopes) — ' +
+      'e.g. to check whether Shopify Email, Shopify Forms or Shopify Flow is installed. ' +
+      'Requires the `read_apps` scope.',
+    {
+      limit: z.number().optional().default(50),
+      cursor: z.string().optional(),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.getInstalledApps(args)
+        const apps = (result.data.appInstallations.edges || []).map((edge) => ({
+          installationId: edge.node.id,
+          ...edge.node.app,
+          scopes: (edge.node.accessScopes || []).map((scope) => scope.handle),
+        }))
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                { apps, pageInfo: result.data.appInstallations.pageInfo },
+                null,
+                2
+              ),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error fetching installed apps: ${describeError(error, 'appInstallations')}`,
             },
           ],
           isError: true,
@@ -3684,21 +3977,43 @@ function registerTools(server, shopifyClient) {
   )
   server.tool(
     'getMarketingReport',
-    'Get marketing campaign performance',
+    'List marketing ACTIVITIES (campaigns run by apps/channels: Shopify Email campaigns, ad ' +
+      'channels...) with status, tactic, channel, UTMs, budget and ad spend. Requires the ' +
+      '`read_marketing_events` scope. ' +
+      'IMPORTANT LIMITATION: Shopify Email AUTOMATIONS (admin → Marketing → Automations, e.g. a ' +
+      'welcome email) are NOT exposed by the Admin API — there is no automation type in the ' +
+      'schema and they are not marketing activities. An empty result here does NOT mean no ' +
+      'automation exists; whether a welcome automation is active can only be checked by hand in ' +
+      'the Shopify admin.',
     {
-      startDate: z.string().describe('Start date (YYYY-MM-DD)'),
-      endDate: z.string().describe('End date (YYYY-MM-DD)'),
-      channels: z.array(z.enum(['EMAIL', 'SOCIAL', 'SEARCH', 'DIRECT', 'REFERRAL'])).optional(),
-      campaignIds: z.array(z.string()).optional(),
+      limit: z.number().optional().default(50),
+      cursor: z.string().optional(),
+      query: z
+        .string()
+        .optional()
+        .describe('e.g. "status:active", "marketing_channel:EMAIL", "app_id:..."'),
     },
     async (args) => {
       try {
         const result = await shopifyClient.getMarketingReport(args)
+        const activities = (result.data.marketingActivities.edges || []).map((edge) => edge.node)
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(result.data, null, 2),
+              text: JSON.stringify(
+                {
+                  activities,
+                  pageInfo: result.data.marketingActivities.pageInfo,
+                  ...(activities.length
+                    ? {}
+                    : {
+                        note: 'No marketing activity returned. This connection only covers app/channel campaigns — Shopify Email automations are never listed here, as the Admin API has no automation resource. Check admin → Marketing → Automations manually.',
+                      }),
+                },
+                null,
+                2
+              ),
             },
           ],
         }
@@ -3707,7 +4022,7 @@ function registerTools(server, shopifyClient) {
           content: [
             {
               type: 'text',
-              text: `Error fetching marketing report: ${error.message}`,
+              text: `Error fetching marketing report: ${describeError(error, 'marketingActivities')}`,
             },
           ],
           isError: true,

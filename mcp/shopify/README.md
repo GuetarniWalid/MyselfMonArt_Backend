@@ -4,7 +4,7 @@ Model Context Protocol (MCP) server for Shopify Admin API integration with Claud
 
 ## Overview
 
-This module provides 70+ tools for Shopify store management:
+This module provides 80 tools for Shopify store management:
 - Products & Inventory management
 - Orders & Fulfillment
 - Customers & B2B
@@ -74,6 +74,62 @@ Configure your Shopify app with these scopes:
 - `read_analytics`, `read_reports`
 - `write_files` (required for `uploadFile` / `createFile` / `createStagedUpload`)
 - `read_publications`, `write_publications` (required to publish/unpublish a collection — the `published` flag of `createCollection` / `updateCollection`, and the `publishedOnOnlineStore` field of `getCollection`)
+- `read_shipping` (required for `getShippingZones`)
+
+### Scopes NOT granted on the production app (2026-08-03)
+
+These tools are wired and tested but answer "access denied" until the scope is
+added in *Settings → Apps and sales channels → Develop apps → (app) →
+Configuration → Admin API integration*, then the app is re-installed/updated.
+The existing `shpat_` token stays valid and simply gains the scope.
+
+| Scope | Unlocks |
+|-------|---------|
+| `write_discounts` | `createDiscountCode` — reading discounts already works via `read_discounts` |
+| `read_marketing_events` | `getMarketingReport` (marketing activities) |
+| `read_apps` | `listInstalledApps` |
+| `read_locations` | location names inside `getShippingZones` (dropped from the query, not needed for rates) |
+
+A missing scope is reported as an explicit `MISSING SCOPE` message naming the
+scope and the admin path — it is never returned as an empty result set.
+
+## Marketing: what the Admin API does and does not expose
+
+- **Campaigns / activities** — `getMarketingReport` (`marketingActivities`). App- and
+  channel-driven campaigns, with status, tactic, channel, UTMs, budget, ad spend.
+- **Automations** — **not exposed at all.** The 2025-10 Admin API schema contains no
+  automation type (searching the full type list for `Automation` returns only
+  discount types). Shopify Email automations — admin → Marketing → Automations,
+  e.g. a welcome email — are not marketing activities and have no Admin API
+  resource. Whether such an automation exists and is active can only be checked
+  by hand in the Shopify admin. `getMarketingReport` says so explicitly rather
+  than returning a misleading empty list.
+
+## Customer filtering: two different query languages
+
+`listCustomers` and `listCustomerSegments` do **not** share a syntax, which is the
+usual cause of a filter that "seems ignored":
+
+| | `listCustomers` (search syntax) | segments (`listCustomerSegments`) |
+|---|---|---|
+| marketing opt-in | `email_marketing_state:subscribed` | `email_subscription_status = 'SUBSCRIBED'` |
+| order count | `orders_count:>1` | `number_of_orders > 1` |
+| signup date | `customer_date:>2026-01-01` | `customer_added_date >= -30d` |
+| spend | `total_spent:>100` | `amount_spent > 100` |
+
+Shopify **silently ignores** an unsupported key in the customers search: the call
+returns 200 with a full, unfiltered list. `listCustomers` therefore checks the
+keys and returns a `warnings` array when a filter will not be applied.
+
+Two more traps, both verified against the live store:
+- `Customer.state` (ENABLED/DISABLED/INVITED) is the **account** state and says
+  nothing about marketing. Opt-in is `emailMarketingConsent.marketingState`.
+- `customersCount` accepts a `query` argument and **ignores it**, returning the
+  store total for every filter. For the size of a filtered list use
+  `listCustomerSegments` (member counts) instead.
+
+`CustomerSortKeys` has no `TOTAL_SPENT`; ranking by spend goes through
+`getCustomerAnalytics`, which sorts across the whole customer base.
 
 ## File upload
 

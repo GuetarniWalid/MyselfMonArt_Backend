@@ -131,6 +131,137 @@ export class ShopifyClient {
   // Input validation helpers for analytics
   // Shopify GraphQL API limits results to 250 items per request
   static SHOPIFY_MAX_LIMIT = 250
+  // Shared selections for the `Discount` union. Every concrete type gets a
+  // fragment so a discount is never returned as an empty `{}`, and the fields
+  // that drive real decisions — the value, combinesWith, the minimum
+  // requirement, the usage count — are always present when the type has them.
+  static DISCOUNT_VALUE_FIELDS = `
+    value {
+      __typename
+      ... on DiscountPercentage { percentage }
+      ... on DiscountAmount { amount { amount currencyCode } appliesOnEachItem }
+      ... on DiscountOnQuantity {
+        quantity { quantity }
+        effect { ... on DiscountPercentage { percentage } ... on DiscountAmount { amount { amount currencyCode } } }
+      }
+    }
+    items {
+      __typename
+      ... on DiscountProducts { products(first: 10) { edges { node { id title } } } }
+      ... on DiscountCollections { collections(first: 10) { edges { node { id title } } } }
+    }
+  `
+  // Present on every member of the union.
+  static DISCOUNT_CORE_FIELDS = `
+    title
+    status
+    startsAt
+    endsAt
+    createdAt
+    combinesWith { orderDiscounts productDiscounts shippingDiscounts }
+    discountClasses
+  `
+  // Only the four *Basic/*Bxgy/*FreeShipping variants expose these; the App
+  // ones do not, so they are opted into per fragment rather than shared.
+  static DISCOUNT_MINIMUM_FIELDS = `
+    minimumRequirement {
+      __typename
+      ... on DiscountMinimumSubtotal { greaterThanOrEqualToSubtotal { amount currencyCode } }
+      ... on DiscountMinimumQuantity { greaterThanOrEqualToQuantity }
+    }
+  `
+  static DISCOUNT_CODE_FIELDS = `
+    codes(first: 10) { edges { node { id code } } }
+    codesCount { count }
+    usageLimit
+    asyncUsageCount
+    appliesOncePerCustomer
+    totalSales { amount currencyCode }
+    customerSelection {
+      __typename
+      ... on DiscountCustomers { customers { id email displayName } }
+      ... on DiscountCustomerSegments { segments { id name } }
+    }
+  `
+  static DISCOUNT_BUYS_FIELDS = `
+    customerBuys {
+      value {
+        __typename
+        ... on DiscountQuantity { quantity }
+        ... on DiscountPurchaseAmount { amount }
+      }
+    }
+  `
+  static DISCOUNT_SHIPPING_FIELDS = `
+    maximumShippingPrice { amount currencyCode }
+    destinationSelection {
+      __typename
+      ... on DiscountCountries { countries includeRestOfWorld }
+    }
+  `
+  // Kept separate from the fragment so the create mutation can inline it:
+  // GraphQL rejects a document that defines a fragment it does not use, so the
+  // mutation cannot just pull in the full union fragment set.
+  static DISCOUNT_CODE_BASIC_SELECTION = `
+    ${ShopifyClient.DISCOUNT_CORE_FIELDS}
+    ${ShopifyClient.DISCOUNT_CODE_FIELDS}
+    ${ShopifyClient.DISCOUNT_MINIMUM_FIELDS}
+    summary
+    customerGets { ${ShopifyClient.DISCOUNT_VALUE_FIELDS} }
+  `
+  static DISCOUNT_FRAGMENTS = `
+    fragment CodeBasicFields on DiscountCodeBasic {
+      ${ShopifyClient.DISCOUNT_CODE_BASIC_SELECTION}
+    }
+    fragment CodeBxgyFields on DiscountCodeBxgy {
+      ${ShopifyClient.DISCOUNT_CORE_FIELDS}
+      ${ShopifyClient.DISCOUNT_CODE_FIELDS}
+      ${ShopifyClient.DISCOUNT_BUYS_FIELDS}
+      summary
+      usesPerOrderLimit
+      customerGets { ${ShopifyClient.DISCOUNT_VALUE_FIELDS} }
+    }
+    fragment CodeFreeShippingFields on DiscountCodeFreeShipping {
+      ${ShopifyClient.DISCOUNT_CORE_FIELDS}
+      ${ShopifyClient.DISCOUNT_CODE_FIELDS}
+      ${ShopifyClient.DISCOUNT_MINIMUM_FIELDS}
+      ${ShopifyClient.DISCOUNT_SHIPPING_FIELDS}
+      summary
+    }
+    fragment CodeAppFields on DiscountCodeApp {
+      ${ShopifyClient.DISCOUNT_CORE_FIELDS}
+      ${ShopifyClient.DISCOUNT_CODE_FIELDS}
+      appDiscountType { title functionId app { title } }
+    }
+    fragment AutomaticBasicFields on DiscountAutomaticBasic {
+      ${ShopifyClient.DISCOUNT_CORE_FIELDS}
+      ${ShopifyClient.DISCOUNT_MINIMUM_FIELDS}
+      summary
+      asyncUsageCount
+      customerGets { ${ShopifyClient.DISCOUNT_VALUE_FIELDS} }
+    }
+    fragment AutomaticBxgyFields on DiscountAutomaticBxgy {
+      ${ShopifyClient.DISCOUNT_CORE_FIELDS}
+      ${ShopifyClient.DISCOUNT_BUYS_FIELDS}
+      summary
+      asyncUsageCount
+      usesPerOrderLimit
+      customerGets { ${ShopifyClient.DISCOUNT_VALUE_FIELDS} }
+    }
+    fragment AutomaticFreeShippingFields on DiscountAutomaticFreeShipping {
+      ${ShopifyClient.DISCOUNT_CORE_FIELDS}
+      ${ShopifyClient.DISCOUNT_MINIMUM_FIELDS}
+      ${ShopifyClient.DISCOUNT_SHIPPING_FIELDS}
+      summary
+      asyncUsageCount
+      totalSales { amount currencyCode }
+    }
+    fragment AutomaticAppFields on DiscountAutomaticApp {
+      ${ShopifyClient.DISCOUNT_CORE_FIELDS}
+      asyncUsageCount
+      appDiscountType { title functionId app { title } }
+    }
+  `
   validateShopifyDate(date) {
     if (!date) return null
     // Allow relative dates: negative (-30d) or positive (+7d) offsets, or special keywords
@@ -1070,6 +1201,11 @@ export class ShopifyClient {
                 zip
               }
               tags
+              emailMarketingConsent {
+                marketingState
+                marketingOptInLevel
+                consentUpdatedAt
+              }
             }
           }
           pageInfo {
@@ -1566,7 +1702,11 @@ export class ShopifyClient {
   }
   // Discount operations
   async getDiscounts(params) {
+    // The `discount` field is a union of 8 concrete types. Any type without a
+    // fragment comes back as an empty object `{}`, so every one is covered here
+    // — including the app-driven and BXGY variants that used to render blank.
     const query = `
+      ${ShopifyClient.DISCOUNT_FRAGMENTS}
       query getDiscounts($first: Int!, $after: String, $query: String, $savedSearchId: ID) {
         discountNodes(first: $first, after: $after, query: $query, savedSearchId: $savedSearchId) {
           edges {
@@ -1574,40 +1714,15 @@ export class ShopifyClient {
             node {
               id
               discount {
-                ... on DiscountCodeBasic {
-                  title
-                  status
-                  startsAt
-                  endsAt
-                  usageLimit
-                  asyncUsageCount
-                  codes(first: 10) {
-                    edges {
-                      node {
-                        code
-                      }
-                    }
-                  }
-                  customerGets {
-                    value {
-                      ... on DiscountPercentage {
-                        percentage
-                      }
-                      ... on DiscountAmount {
-                        amount {
-                          amount
-                          currencyCode
-                        }
-                      }
-                    }
-                  }
-                }
-                ... on DiscountAutomaticBasic {
-                  title
-                  status
-                  startsAt
-                  endsAt
-                }
+                __typename
+                ...CodeBasicFields
+                ...CodeBxgyFields
+                ...CodeFreeShippingFields
+                ...CodeAppFields
+                ...AutomaticBasicFields
+                ...AutomaticBxgyFields
+                ...AutomaticFreeShippingFields
+                ...AutomaticAppFields
               }
             }
           }
@@ -1626,6 +1741,88 @@ export class ShopifyClient {
     }
     return this.graphql(query, variables)
   }
+  // Maps the flat tool arguments onto DiscountCodeBasicInput. The nesting here
+  // is not cosmetic: Shopify expects `{subtotal: {greaterThanOrEqualToSubtotal}}`,
+  // `{discountAmount: {amount}}` and `{items: {all}}`, and silently rejects the
+  // flattened shapes.
+  buildDiscountCodeBasicInput(params) {
+    const input = {
+      title: params.title,
+      code: params.code,
+      startsAt: params.startsAt,
+      endsAt: params.endsAt,
+      usageLimit: params.usageLimit,
+      appliesOncePerCustomer: params.appliesOncePerCustomer,
+    }
+    // combinesWith drives whether this discount stacks with the others. Left
+    // unset Shopify defaults every flag to false ("best of the two" applies),
+    // which is the safe default — but it is always sent explicitly so the
+    // stored value matches what was asked for, and can be read back.
+    input.combinesWith = {
+      orderDiscounts: params.combinesWith?.orderDiscounts ?? false,
+      productDiscounts: params.combinesWith?.productDiscounts ?? false,
+      shippingDiscounts: params.combinesWith?.shippingDiscounts ?? false,
+    }
+    // Buyer eligibility. `context` replaces the deprecated `customerSelection`.
+    const sel = params.customerSelection
+    if (!sel || sel.type === 'all') {
+      input.context = { all: 'ALL' }
+    } else if (sel.type === 'customers') {
+      if (!sel.customerIds?.length) {
+        throw new Error('customerSelection.type "customers" requires customerIds (customer GIDs).')
+      }
+      input.context = { customers: { add: sel.customerIds } }
+    } else if (sel.type === 'customer_segments') {
+      if (!sel.segmentIds?.length) {
+        throw new Error(
+          'customerSelection.type "customer_segments" requires segmentIds (segment GIDs — see listCustomerSegments).'
+        )
+      }
+      input.context = { customerSegments: { add: sel.segmentIds } }
+    }
+    // Minimum requirement (at most one of the two).
+    const min = params.minimumRequirement
+    if (min?.subtotal !== undefined && min?.subtotal !== null) {
+      input.minimumRequirement = {
+        subtotal: { greaterThanOrEqualToSubtotal: String(min.subtotal) },
+      }
+    } else if (min?.quantity !== undefined && min?.quantity !== null) {
+      input.minimumRequirement = {
+        quantity: { greaterThanOrEqualToQuantity: String(min.quantity) },
+      }
+    }
+    // What the customer gets.
+    const gets = params.customerGets
+    if (gets) {
+      const value = {}
+      if (gets.value?.percentage !== undefined && gets.value?.percentage !== null) {
+        const pct = Number(gets.value.percentage)
+        // Shopify takes a fraction: 0.1 = 10%. Passing 10 here would create a
+        // 1000% discount, so anything above 1 is refused rather than shipped.
+        if (!(pct > 0 && pct <= 1)) {
+          throw new Error(
+            `customerGets.value.percentage must be a fraction between 0 and 1 (0.1 = 10%). Received ${gets.value.percentage}.`
+          )
+        }
+        value.percentage = pct
+      } else if (gets.value?.amount !== undefined && gets.value?.amount !== null) {
+        value.discountAmount = {
+          amount: String(gets.value.amount),
+          appliesOnEachItem: gets.value.appliesOnEachItem ?? false,
+        }
+      } else {
+        throw new Error('customerGets.value requires either `percentage` (0-1) or `amount`.')
+      }
+      let items = { all: true }
+      if (gets.items?.productIds?.length) {
+        items = { products: { productsToAdd: gets.items.productIds } }
+      } else if (gets.items?.collectionIds?.length) {
+        items = { collections: { add: gets.items.collectionIds } }
+      }
+      input.customerGets = { value, items }
+    }
+    return input
+  }
   async createDiscountCode(params) {
     const mutation = `
       mutation createDiscountCode($basicCodeDiscount: DiscountCodeBasicInput!) {
@@ -1633,39 +1830,46 @@ export class ShopifyClient {
           codeDiscountNode {
             id
             codeDiscount {
+              __typename
               ... on DiscountCodeBasic {
-                title
-                codes(first: 1) {
-                  edges {
-                    node {
-                      code
-                    }
-                  }
-                }
+                ${ShopifyClient.DISCOUNT_CODE_BASIC_SELECTION}
               }
             }
           }
           userErrors {
             field
+            code
             message
           }
         }
       }
     `
-    const basicCodeDiscount = {
-      title: params.title,
-      code: params.code,
-      startsAt: params.startsAt,
-      endsAt: params.endsAt,
-      usageLimit: params.usageLimit,
-      appliesOncePerCustomer: params.appliesOncePerCustomer,
-      minimumRequirement: params.minimumRequirement,
-      customerGets: params.customerGets,
-      customerSelection: params.customerSelection
-        ? { all: params.customerSelection === 'all' }
-        : { all: true },
-    }
+    const basicCodeDiscount = this.buildDiscountCodeBasicInput(params)
     return this.graphql(mutation, { basicCodeDiscount })
+  }
+  // Read a single discount back — used to confirm what combinesWith actually
+  // ended up stored, which is the setting that decides whether discounts stack.
+  async getDiscount(id) {
+    const query = `
+      ${ShopifyClient.DISCOUNT_FRAGMENTS}
+      query getDiscount($id: ID!) {
+        discountNode(id: $id) {
+          id
+          discount {
+            __typename
+            ...CodeBasicFields
+            ...CodeBxgyFields
+            ...CodeFreeShippingFields
+            ...CodeAppFields
+            ...AutomaticBasicFields
+            ...AutomaticBxgyFields
+            ...AutomaticFreeShippingFields
+            ...AutomaticAppFields
+          }
+        }
+      }
+    `
+    return this.graphql(query, { id })
   }
   // Fulfillment operations
   async getFulfillmentOrders(params) {
@@ -1743,6 +1947,9 @@ export class ShopifyClient {
     return this.graphql(mutation, { fulfillment })
   }
   async getShippingZones(params) {
+    // `code` returns DeliveryCountryCodeOrRestOfWorld, not a scalar — it needs a
+    // sub-selection. methodConditions carry the price/weight thresholds, which
+    // is where a "free over X" rule actually lives.
     const query = `
       query getShippingZones($first: Int!) {
         deliveryProfiles(first: $first) {
@@ -1750,36 +1957,66 @@ export class ShopifyClient {
             node {
               id
               name
+              default
               profileLocationGroups {
                 locationGroup {
                   id
-                  locations(first: 10) {
-                    edges {
-                      node {
-                        name
-                      }
-                    }
-                  }
                 }
-                locationGroupZones(first: 10) {
+                locationGroupZones(first: 50) {
                   edges {
                     node {
                       zone {
+                        id
                         name
                         countries {
-                          code
                           name
+                          code {
+                            countryCode
+                            restOfWorld
+                          }
                         }
                       }
-                      methodDefinitions(first: 10) {
+                      methodDefinitions(first: 50) {
                         edges {
                           node {
+                            id
                             name
+                            active
+                            description
                             rateProvider {
+                              __typename
                               ... on DeliveryRateDefinition {
+                                id
                                 price {
                                   amount
                                   currencyCode
+                                }
+                              }
+                              ... on DeliveryParticipant {
+                                id
+                                fixedFee {
+                                  amount
+                                  currencyCode
+                                }
+                                percentageOfRateFee
+                                carrierService {
+                                  formattedName
+                                }
+                              }
+                            }
+                            methodConditions {
+                              id
+                              field
+                              operator
+                              conditionCriteria {
+                                __typename
+                                ... on MoneyV2 {
+                                  amount
+                                  currencyCode
+                                }
+                                ... on Weight {
+                                  value
+                                  unit
                                 }
                               }
                             }
@@ -2816,29 +3053,197 @@ export class ShopifyClient {
     }
   }
   async getCustomerAnalytics(params) {
-    // Validate inputs
-    const limit = this.validatePositiveInt(params?.limit, 'limit', 100)
+    const limit = this.validatePositiveInt(params?.limit, 'limit', 20)
+    // `CustomerSortKeys` has no TOTAL_SPENT (only CREATED_AT/ID/LOCATION/NAME/
+    // RELEVANCE/UPDATED_AT), so ranking by spend cannot go through the
+    // `customers` connection at all. `customerSegmentMembers` accepts a free-form
+    // sortKey and sorts across the whole base, not just the page fetched.
+    //
+    // Counts come from customerSegmentMembers.totalCount too — `customersCount`
+    // accepts a `query` argument but ignores it, returning the store total for
+    // every filter, which would silently produce wrong numbers.
+    const ALL = 'customer_added_date >= -36500d'
     const query = `
-      query getCustomerAnalytics($limit: Int!) {
-        customers(first: $limit, sortKey: TOTAL_SPENT, reverse: true) {
+      query getCustomerAnalytics($limit: Int!, $all: String!, $subscribed: String!, $noOrder: String!, $oneOrder: String!, $repeat: String!) {
+        topSpenders: customerSegmentMembers(first: $limit, query: $all, sortKey: "amount_spent", reverse: true) {
+          totalCount
           edges {
             node {
               id
+              displayName
+              defaultEmailAddress { emailAddress marketingState }
+              amountSpent { amount currencyCode }
               numberOfOrders
-              amountSpent {
-                amount
-                currencyCode
-              }
-              createdAt
             }
           }
-          pageInfo {
-            hasNextPage
+        }
+        totalCustomers: customerSegmentMembers(first: 1, query: $all) { totalCount }
+        subscribers: customerSegmentMembers(first: 1, query: $subscribed) { totalCount }
+        withoutOrder: customerSegmentMembers(first: 1, query: $noOrder) { totalCount }
+        withOrder: customerSegmentMembers(first: 1, query: $oneOrder) { totalCount }
+        repeatCustomers: customerSegmentMembers(first: 1, query: $repeat) { totalCount }
+      }
+    `
+    const result = await this.graphql(query, {
+      limit,
+      all: ALL,
+      subscribed: "email_subscription_status = 'SUBSCRIBED'",
+      noOrder: 'number_of_orders = 0',
+      oneOrder: 'number_of_orders >= 1',
+      repeat: 'number_of_orders > 1',
+    })
+    const d = result.data || {}
+    const total = d.totalCustomers?.totalCount ?? 0
+    const withOrder = d.withOrder?.totalCount ?? 0
+    const repeat = d.repeatCustomers?.totalCount ?? 0
+    const subscribers = d.subscribers?.totalCount ?? 0
+    // Average order value over the requested window, computed from orders —
+    // ShopifyQL has no `customers` dataset and rejects sum() on this plan.
+    const aov = await this.getAverageOrderValue(params)
+    return {
+      data: {
+        counts: {
+          totalCustomers: total,
+          marketingSubscribers: subscribers,
+          subscriberRate: total ? Number((subscribers / total).toFixed(4)) : null,
+          customersWithoutOrder: d.withoutOrder?.totalCount ?? 0,
+          customersWithAtLeastOneOrder: withOrder,
+          repeatCustomers: repeat,
+          repeatRate: withOrder ? Number((repeat / withOrder).toFixed(4)) : null,
+        },
+        averageOrderValue: aov,
+        topSpenders: (d.topSpenders?.edges || []).map((e) => e.node),
+      },
+    }
+  }
+  // AOV + new-customer split over a date window, straight from the orders.
+  async getAverageOrderValue(params) {
+    let range
+    try {
+      range = this.getISODateRange(params)
+    } catch {
+      range = null
+    }
+    if (!range?.startDate || !range?.endDate) return null
+    const gqlQuery = `
+      query aov($query: String!) {
+        orders(first: ${ShopifyClient.SHOPIFY_MAX_LIMIT}, query: $query) {
+          edges {
+            node {
+              currentTotalPriceSet { shopMoney { amount currencyCode } }
+              customer { numberOfOrders }
+            }
           }
+          pageInfo { hasNextPage }
         }
       }
     `
-    return this.graphql(query, { limit })
+    const res = await this.graphql(gqlQuery, {
+      query: `created_at:>=${range.startDate} created_at:<=${range.endDate}`,
+    })
+    const nodes = (res.data?.orders?.edges || []).map((e) => e.node)
+    if (!nodes.length) return { orders: 0, averageOrderValue: null, truncated: false }
+    let sum = 0
+    let currency = null
+    let firstTimeBuyers = 0
+    for (const n of nodes) {
+      const money = n.currentTotalPriceSet?.shopMoney
+      sum += Number(money?.amount || 0)
+      currency = currency || money?.currencyCode
+      if (Number(n.customer?.numberOfOrders || 0) <= 1) firstTimeBuyers += 1
+    }
+    return {
+      orders: nodes.length,
+      // `truncated` matters: past 250 orders the average covers only the page.
+      truncated: Boolean(res.data?.orders?.pageInfo?.hasNextPage),
+      totalSales: Number(sum.toFixed(2)),
+      averageOrderValue: Number((sum / nodes.length).toFixed(2)),
+      currencyCode: currency,
+      ordersFromFirstTimeBuyers: firstTimeBuyers,
+      ordersFromReturningBuyers: nodes.length - firstTimeBuyers,
+      window: { startDate: range.startDate, endDate: range.endDate },
+    }
+  }
+  // Customer segments with a real member count each. `segments` alone has no
+  // size field — the count comes from customerSegmentMembers.totalCount.
+  async getCustomerSegments(params) {
+    const limit = this.validatePositiveInt(params?.limit, 'limit', 50)
+    const listQuery = `
+      query getSegments($first: Int!, $after: String, $query: String) {
+        segmentsCount { count precision }
+        segments(first: $first, after: $after, query: $query, sortKey: CREATION_DATE) {
+          edges {
+            cursor
+            node { id name query creationDate lastEditDate }
+          }
+          pageInfo { hasNextPage hasPreviousPage }
+        }
+      }
+    `
+    const listed = await this.graphql(listQuery, {
+      first: limit,
+      after: params?.cursor,
+      query: params?.query,
+    })
+    const segments = (listed.data?.segments?.edges || []).map((e) => e.node)
+    if (!params || params.includeCounts !== false) {
+      // One aliased count per segment, in a single request.
+      const aliases = segments
+        .map(
+          (s, i) => `s${i}: customerSegmentMembers(first: 1, segmentId: "${s.id}") { totalCount }`
+        )
+        .join('\n')
+      if (aliases) {
+        try {
+          const counts = await this.graphql(`query segmentCounts { ${aliases} }`)
+          segments.forEach((s, i) => {
+            s.memberCount = counts.data?.[`s${i}`]?.totalCount ?? null
+          })
+        } catch (error) {
+          segments.forEach((s) => {
+            s.memberCount = null
+            s.memberCountError = error.message
+          })
+        }
+      }
+    }
+    return {
+      data: {
+        segmentsCount: listed.data?.segmentsCount,
+        segments,
+        pageInfo: listed.data?.segments?.pageInfo,
+      },
+    }
+  }
+  // Installed apps. Requires the `read_apps` scope; without it Shopify answers
+  // a bare "access denied" on the whole connection.
+  async getInstalledApps(params) {
+    const limit = this.validatePositiveInt(params?.limit, 'limit', 50)
+    const query = `
+      query getInstalledApps($first: Int!, $after: String) {
+        appInstallations(first: $first, after: $after, sortKey: APP_TITLE) {
+          edges {
+            cursor
+            node {
+              id
+              launchUrl
+              app {
+                id
+                title
+                handle
+                developerName
+                shopifyDeveloped
+                embedded
+                appStoreAppUrl
+              }
+              accessScopes { handle }
+            }
+          }
+          pageInfo { hasNextPage hasPreviousPage }
+        }
+      }
+    `
+    return this.graphql(query, { first: limit, after: params?.cursor })
   }
   async getInventoryReport(_params) {
     const query = `
@@ -2865,30 +3270,61 @@ export class ShopifyClient {
     `
     return this.graphql(query)
   }
-  async getMarketingReport(_params) {
+  // Marketing activities = app/channel campaigns (Shopify Email campaigns, ad
+  // channels...). Shopify Email *automations* are not part of this connection —
+  // the Admin API has no automation type at all. Requires `read_marketing_events`.
+  async getMarketingReport(params) {
+    const limit = this.validatePositiveInt(params?.limit, 'limit', 50)
     const query = `
-      query getMarketingReport {
-        marketingActivities(first: 50) {
+      query getMarketingReport($first: Int!, $after: String, $query: String) {
+        marketingActivities(first: $first, after: $after, query: $query, sortKey: CREATED_AT, reverse: true) {
           edges {
+            cursor
             node {
               id
               title
               status
+              statusLabel
+              statusTransitionedAt
+              tactic
+              marketingChannelType
+              sourceAndMedium
+              isExternal
+              hierarchyLevel
+              createdAt
+              updatedAt
+              activityListUrl
+              adSpend { amount currencyCode }
               budget {
                 budgetType
-                total {
-                  amount
-                  currencyCode
-                }
+                total { amount currencyCode }
               }
-              marketingChannel
-              createdAt
+              app { id title handle }
+              marketingEvent {
+                id
+                type
+                channelHandle
+                description
+                startedAt
+                endedAt
+                scheduledToEndAt
+                manageUrl
+                previewUrl
+                utmCampaign
+                utmMedium
+                utmSource
+              }
             }
           }
+          pageInfo { hasNextPage hasPreviousPage }
         }
       }
     `
-    return this.graphql(query)
+    return this.graphql(query, {
+      first: limit,
+      after: params?.cursor,
+      query: params?.query,
+    })
   }
   async getFinancialSummary(params) {
     // Validate and convert dates to ISO format for GraphQL search query
