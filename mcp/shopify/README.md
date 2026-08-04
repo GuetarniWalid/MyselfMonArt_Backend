@@ -80,13 +80,13 @@ Configure your Shopify app with these scopes:
 ### Scopes NOT granted on the production app (re-checked 2026-08-04)
 
 Verified by querying `currentAppInstallation { accessScopes }` with the production
-token — not from memory. `write_discounts`, `read_marketing_events` and `read_apps`
-were missing in the 2026-08-03 audit and **have since been granted**; only these
-two remain:
+token — not from memory. 54 scopes granted. `write_discounts`,
+`read_marketing_events`, `read_apps` (missing in the 2026-08-03 audit) and
+`read_locales` (granted the same day, `listShopLocales` confirmed working against
+the production endpoint) have all since been added. One remains:
 
 | Scope | Unlocks |
 |-------|---------|
-| `read_locales` | `listShopLocales` — and `webPresence.defaultLocale` / `alternateLocales` on markets. `read_markets_home` also satisfies it. |
 | `read_locations` | location names inside `getShippingZones` (dropped from the query, not needed for rates) |
 
 Add it in *Settings → Apps and sales channels → Develop apps → (app) →
@@ -94,7 +94,7 @@ Configuration → Admin API integration*, then re-install/update the app. The
 existing `shpat_` token stays valid and simply gains the scope.
 
 Already granted and used by the policy/translation tools: `read_legal_policies`,
-`write_legal_policies`, `read_translations`, `write_translations`.
+`write_legal_policies`, `read_translations`, `write_translations`, `read_locales`.
 
 A missing scope is reported as an explicit `MISSING SCOPE` message naming the
 scope and the admin path — it is never returned as an empty result set.
@@ -110,7 +110,7 @@ that otherwise means copy-pasting into the admin five times.
 | `updateShopPolicy` | Rewrites one policy body — always returns `previousBody` for diff/rollback |
 | `getTranslatableContent` | Source content + the `digest` every translation must be bound to (any resource GID, not just policies) |
 | `registerTranslations` | Publishes translations, refusing stale/missing digests before the write |
-| `listShopLocales` | Published/primary locales (**needs `read_locales`**, see above) |
+| `listShopLocales` | Published/primary locales — `fr` primary, `en`/`de`/`es`/`nl` published, none unpublished |
 
 ### The ordering rule
 
@@ -145,8 +145,10 @@ one is stale or missing, quoting the fresh digest so the retry is immediate.
 - A policy with an empty body is **still** translatable (valid digest over the
   empty string) — but it is omitted from the `translatableResources(SHOP_POLICY)`
   *list*, so query it by GID via `translatableResource`.
-- Published locales, probed by write: `en`, `de`, `es`, `nl` accepted; `it`, `pt`,
-  `ja` rejected with `INVALID_LOCALE_FOR_SHOP`.
+- Locales (confirmed via `shopLocales` once `read_locales` was granted): `fr`
+  **primary**, plus `en`, `de`, `es`, `nl` — all five published, none unpublished.
+  Matches the earlier write-probe, where `it`, `pt` and `ja` were rejected with
+  `INVALID_LOCALE_FOR_SHOP`.
 - `shopPolicyUpdate` works on **Basic** — no plan restriction observed.
 - **Body limit: 512 KB.** Measured on the (empty) shipping policy, restored after:
   600 000 chars → `TOO_BIG` *"Body is too big (maximum is 512 KB)"*, nothing
