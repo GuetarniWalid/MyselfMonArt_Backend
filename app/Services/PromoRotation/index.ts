@@ -192,8 +192,19 @@ export default class PromoRotationService {
       const message = error?.message ?? String(error)
       Logger.error('promo rotation %s: échec — %s', isoWeek, message)
 
-      const row = await PromoRotation.findBy('iso_week', isoWeek)
-      if (row) return await this.recordFailure(row, message)
+      try {
+        const row = await PromoRotation.findBy('iso_week', isoWeek)
+        if (row) return await this.recordFailure(row, message)
+      } catch (bookkeeping) {
+        // Double faute (base injoignable, par exemple) : on journalise la panne de
+        // journalisation et on rend quand même la main. Cette méthode ne lève jamais — le
+        // ménage qui suit dans la tâche doit pouvoir tourner, et le scheduler survivre.
+        Logger.error(
+          'promo rotation %s: échec du comptage de l’échec — %s',
+          isoWeek,
+          bookkeeping?.message ?? String(bookkeeping)
+        )
+      }
 
       return {
         isoWeek,
@@ -363,7 +374,17 @@ export default class PromoRotationService {
     if (existing) return existing
 
     try {
-      return await PromoRotation.create({ isoWeek, code, endsAt, endsTs, status: 'pending' })
+      // `attempts: 0` explicite : le DEFAULT de la colonne n'existe que côté base, l'instance
+      // renvoyée par `create()` garderait sinon `undefined` — et `undefined + 1` vaut NaN,
+      // que MySQL rejette au premier échec (« Unknown column 'NaN' »).
+      return await PromoRotation.create({
+        isoWeek,
+        code,
+        endsAt,
+        endsTs,
+        status: 'pending',
+        attempts: 0,
+      })
     } catch (error) {
       // Course perdue contre un autre lancement : sa ligne fait foi.
       const row = await PromoRotation.findBy('iso_week', isoWeek)
@@ -472,7 +493,9 @@ export default class PromoRotationService {
 
   /** Compte l'échec, alerte au deuxième, et ne touche à rien d'autre. */
   private async recordFailure(row: PromoRotation, message: string): Promise<RotationOutcome> {
-    row.attempts += 1
+    // Ceinture et bretelles : compter un échec ne doit JAMAIS pouvoir échouer à son tour,
+    // sinon la vraie cause de la panne est masquée par une erreur SQL sans rapport.
+    row.attempts = Number(row.attempts ?? 0) + 1
     row.lastError = message.slice(0, 2000)
     await row.save()
 

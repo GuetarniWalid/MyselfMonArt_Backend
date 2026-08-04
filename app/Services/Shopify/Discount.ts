@@ -78,9 +78,10 @@ export default class Discount extends Authentication {
    *     continuerait d'afficher un code que le checkout refuse. Le garde-fou est
    *     `appliesOncePerCustomer` combiné au sous-total minimum.
    *
-   * Note API : `customerSelection` n'existe plus dans `DiscountCodeBasicInput` depuis les
-   * versions récentes de l'Admin API (vérifié par introspection en 2025-07) — une remise à
-   * code s'adresse par défaut à tous les clients.
+   * Note API : `customerSelection` a été REMPLACÉ par `context` dans `DiscountCodeBasicInput`
+   * (Admin API 2025-07). Le champ n'est pas optionnel malgré ce que laisse croire le schéma :
+   * l'omettre fait échouer la mutation sur « BLANK Context can't be blank ». `{ all: ALL }`
+   * est la traduction exacte de l'ancien `customerSelection: { all: true }`.
    */
   public async createBasicCodeDiscount(
     input: BasicCodeDiscountInput
@@ -99,6 +100,8 @@ export default class Discount extends Authentication {
         startsAt: input.startsAt,
         endsAt: input.endsAt,
         appliesOncePerCustomer: input.appliesOncePerCustomer,
+        // Tous les acheteurs (ex-`customerSelection: { all: true }`) — obligatoire.
+        context: { all: 'ALL' },
         customerGets: {
           items: { all: true },
           value: { discountAmount: { amount: input.amount, appliesOnEachItem: false } },
