@@ -10,6 +10,7 @@ import Page from './Page'
 import Product from './Product'
 import Publications from './Publications'
 import Shipping from './Shipping'
+import Shop from './Shop'
 import Translator from './Translator'
 import Variant from './Variant'
 import Webhook from './Webhook'
@@ -26,6 +27,7 @@ export default class Shopify {
   public product: Product
   public publications: Publications
   public shipping: Shipping
+  public shop: Shop
   public variant: Variant
   public webhook: Webhook
 
@@ -41,6 +43,7 @@ export default class Shopify {
     this.product = new Product()
     this.publications = new Publications()
     this.shipping = new Shipping()
+    this.shop = new Shop()
     this.variant = new Variant()
     this.webhook = new Webhook()
   }

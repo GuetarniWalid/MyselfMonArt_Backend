@@ -8,7 +8,7 @@
     "build": "node ace build --production",
     "start": "node server.js && node ace scheduler:run",
     "test": "node ace test",
-    "test:golden": "node tests/golden/recipe-schema.js && node tests/golden/judge-oracle.js && node tests/golden/generic-judge-oracle.js && node tests/golden/print-formats.js",
+    "test:golden": "node tests/golden/recipe-schema.js && node tests/golden/judge-oracle.js && node tests/golden/generic-judge-oracle.js && node tests/golden/print-formats.js && node tests/golden/promo-rotation.js",
     "test:judge": "node tests/golden/judge-oracle.js",
     "test:judge:generic": "node tests/golden/generic-judge-oracle.js",
     "lint": "eslint . --ext=.ts",
@@ -124,6 +124,9 @@
       "node tests/golden/judge-oracle.js",
       "node tests/golden/generic-judge-oracle.js",
       "node tests/golden/print-formats.js"
+    ],
+    "app/Services/PromoRotation/*.ts": [
+      "node tests/golden/promo-rotation.js"
     ]
   }
 }

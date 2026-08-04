@@ -272,3 +272,8 @@ Route.get('/custom-art-review', async ({ view }) => {
 Route.get('/custom-art-print-queue', async ({ view }) => {
   return view.render('pages/custom-art-print-queue')
 }).middleware(['auth'])
+
+// Santé de la rotation automatique du code promo (cf. app/Tasks/RotatePromoCode.ts) :
+// code courant, date de fin, jours restants — sans ouvrir l'admin Shopify.
+// Publique et sans secret : le code est déjà affiché sur chaque fiche produit.
+Route.get('/promo/status', 'PromoController.status').middleware(['throttle:60,60'])

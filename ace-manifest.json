@@ -354,6 +354,31 @@
         }
       ]
     },
+    "promo:rotate": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/PromoRotateNow",
+      "commandName": "promo:rotate",
+      "description": "Publie le code promo de la semaine (remise Shopify + métachamps de boutique). Idempotent.",
+      "args": [],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "status",
+          "propertyName": "status",
+          "type": "boolean",
+          "description": "Affiche l’état courant sans rien écrire"
+        },
+        {
+          "name": "skip-cleanup",
+          "propertyName": "skipCleanup",
+          "type": "boolean",
+          "description": "Saute le ménage des remises expirées depuis plus de 30 jours"
+        }
+      ]
+    },
     "shopify:rebuild_poster_cadre": {
       "settings": {
         "loadApp": true,

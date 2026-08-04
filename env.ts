@@ -149,4 +149,8 @@ export default Env.rules({
   GMAIL_PUBSUB_VERIFICATION_TOKEN: Env.schema.string.optional(),
   // Adresse e-mail de la boîte SAV : sert à ignorer ses propres messages (anti-boucle).
   BUSINESS_EMAIL: Env.schema.string.optional(),
+  // Secret de dérivation du code promo hebdomadaire (HMAC de la semaine ISO). Optionnel :
+  // à défaut, APP_KEY sert de secret — lui aussi jamais commité et toujours présent, pour
+  // qu'une variable oubliée ne fige jamais la rotation. cf. App/Services/PromoRotation/code.ts
+  PROMO_CODE_SECRET: Env.schema.string.optional(),
 })

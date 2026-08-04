@@ -105,6 +105,39 @@ export default class Metafield extends Authentication {
     }
   }
 
+  /**
+   * Upsert ATOMIQUE de plusieurs metafields en un seul appel : soit tout est écrit, soit
+   * rien ne l'est. Indispensable quand plusieurs clés doivent rester cohérentes entre elles
+   * (par ex. le code promo et sa date de fin : un thème ne doit jamais lire l'un sans l'autre).
+   */
+  public async setMany(
+    metafields: Array<{
+      ownerId: string
+      namespace: string
+      key: string
+      value: string
+      type?: string
+    }>
+  ) {
+    const query = `mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
+      metafieldsSet(metafields: $metafields) {
+        metafields { key namespace value }
+        userErrors { field message code }
+      }
+    }`
+
+    const response = await this.fetchGraphQL(query, { metafields })
+
+    if (response.metafieldsSet.userErrors?.length) {
+      const messages = response.metafieldsSet.userErrors
+        .map((e: { code?: string; message: string }) => `${e.code ?? ''} ${e.message}`.trim())
+        .join(' | ')
+      throw new Error(messages)
+    }
+
+    return response.metafieldsSet.metafields
+  }
+
   /** Supprime un metafield (owner/namespace/key). Best-effort : ignore l'absence. */
   public async delete(ownerId: string, namespace: string, key: string): Promise<void> {
     const query = `mutation MetafieldsDelete($metafields: [MetafieldIdentifierInput!]!) {
