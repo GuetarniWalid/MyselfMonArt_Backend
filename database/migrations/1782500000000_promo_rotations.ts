@@ -26,8 +26,11 @@ export default class extends BaseSchema {
       table.string('iso_week', 10).notNullable().unique('uniq_promo_rotation_iso_week')
       // Code publié, ex. "MERCI-K7QXR" (déterministe : HMAC(secret, iso_week))
       table.string('code', 32).notNullable()
-      // Fin de validité de la remise (instant absolu) + le même instant en secondes epoch,
-      // exactement ce qui est publié dans les métachamps promo.ends_at / promo.ends_ts.
+      // Fin de validité de la remise, deux fois. `ends_ts` (secondes epoch) est la SOURCE DE
+      // VÉRITÉ : un entier ressort de la base tel qu'il y est entré, là où un TIMESTAMP se
+      // fait réinterpréter par le fuseau de session MySQL puis par celui du process Node —
+      // un décalage silencieux de une à deux heures selon la saison. `ends_at` n'est qu'un
+      // doublon lisible à l'œil nu quand on inspecte la table ; aucun code ne s'en sert.
       table.timestamp('ends_at', { useTz: true }).notNullable()
       table.bigInteger('ends_ts').notNullable()
       // GID de la remise Shopify, renseigné seulement après RELECTURE confirmée

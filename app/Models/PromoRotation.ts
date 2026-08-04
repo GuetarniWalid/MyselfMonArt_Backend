@@ -15,10 +15,15 @@ export default class PromoRotation extends BaseModel {
   @column()
   public code: string
 
+  /**
+   * Doublon LISIBLE de la fin de validité, pour qui inspecte la table à l'œil nu.
+   * ⚠️ Ne jamais s'en servir pour comparer ou republier : un TIMESTAMP se fait réinterpréter
+   * par le fuseau de session MySQL puis par celui du process Node. La vérité est `endsTs`.
+   */
   @column.dateTime()
   public endsAt: DateTime
 
-  /** Le même instant que `endsAt`, en secondes epoch (ce qui part dans promo.ends_ts). */
+  /** Le même instant, en secondes epoch — SOURCE DE VÉRITÉ (aucun fuseau à réinterpréter). */
   @column()
   public endsTs: number
 

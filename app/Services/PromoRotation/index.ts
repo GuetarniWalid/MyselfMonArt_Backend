@@ -20,6 +20,14 @@ const CLEANUP_GRACE_DAYS = 30
 /** Deux passages en échec consécutifs déclenchent l'alerte e-mail. */
 const ALERT_AFTER_ATTEMPTS = 2
 
+/**
+ * Fuseau utilisé pour METTRE EN FORME une date déjà décidée, là où on ne veut pas payer un
+ * appel Shopify (route de santé, e-mail d'alerte). L'instant, lui, vient toujours de
+ * `ends_ts` : se tromper de fuseau ici ne change qu'un affichage, jamais une expiration.
+ * Le fuseau réel de la boutique est relu à chaque écriture, dans `rotate()`.
+ */
+const SHOP_TIMEZONE = FALLBACK_TIMEZONE
+
 export interface RotationOutcome {
   isoWeek: string
   code: string
@@ -99,7 +107,7 @@ export default class PromoRotationService {
       // --- Étape 3 : garde en base --------------------------------------------------
       // La ligne seule ne suffit pas à sauter le travail : une semaine amorcée mais non
       // publiée doit être retentée (§8). Seul `published` est un état terminal.
-      const row = await this.claimWeek(isoWeek, code, window.endsAt, planned.endsTs)
+      const row = await this.claimWeek(isoWeek, code, window.endsAt.toUTC(), planned.endsTs)
 
       if (row.status === 'published') {
         return await this.verifyPublished(row, shop.id, timezone)
@@ -152,7 +160,10 @@ export default class PromoRotationService {
 
       row.code = code
       row.discountGid = node.id
-      row.endsAt = confirmedEnd
+      // `ends_ts` est la SOURCE DE VÉRITÉ de l'instant de fin (un entier n'a pas de fuseau,
+      // donc rien à réinterpréter au retour de la base) ; `ends_at` n'est qu'un doublon
+      // lisible à l'œil nu dans la table. cf. `verifyPublished`.
+      row.endsAt = confirmedEnd.toUTC()
       row.endsTs = ends.endsTs
       row.status = 'published'
       row.publishedAt = DateTime.now()
@@ -205,12 +216,14 @@ export default class PromoRotationService {
    * touchée, faute d'être connue de cette table.
    */
   public async cleanup(): Promise<number> {
-    const cutoff = DateTime.now().minus({ days: CLEANUP_GRACE_DAYS })
+    // Comparaison sur `ends_ts` (epoch) et non `ends_at` : un entier ne dépend d'aucun
+    // fuseau ni d'aucun réglage de session MySQL.
+    const cutoff = Math.floor(DateTime.now().minus({ days: CLEANUP_GRACE_DAYS }).toSeconds())
 
     const stale = await PromoRotation.query()
       .whereNotNull('discount_gid')
       .whereNull('deactivated_at')
-      .where('ends_at', '<', cutoff.toSQL({ includeOffset: false })!)
+      .where('ends_ts', '<', cutoff)
 
     let done = 0
     for (const row of stale) {
@@ -240,10 +253,11 @@ export default class PromoRotationService {
    */
   public async status() {
     const now = DateTime.now()
+    const nowTs = Math.floor(now.toSeconds())
 
     const current = await PromoRotation.query()
       .where('status', 'published')
-      .orderBy('ends_at', 'desc')
+      .orderBy('ends_ts', 'desc')
       .first()
 
     const lastSuccess = await PromoRotation.query()
@@ -253,14 +267,17 @@ export default class PromoRotationService {
 
     const lastAttempt = await PromoRotation.query().orderBy('id', 'desc').first()
 
-    const live = current !== null && current.endsAt > now
+    const live = current !== null && current.endsTs > nowTs
 
     return {
       ok: live,
       code: live ? current!.code : null,
-      endsAt: live ? current!.endsAt.toISO() : null,
+      // Rendu dans le fuseau de la boutique pour être comparable, caractère pour caractère,
+      // au métachamp `promo.ends_at` que lit le thème (cf. `?live=1` du contrôleur). La
+      // vérité reste `ends_ts` — ceci n'est qu'une mise en forme.
+      endsAt: live ? renderEnds(DateTime.fromSeconds(current!.endsTs), SHOP_TIMEZONE).endsAt : null,
       endsTs: live ? current!.endsTs : null,
-      daysRemaining: live ? Math.max(0, Math.ceil(current!.endsAt.diff(now, 'days').days)) : 0,
+      daysRemaining: live ? Math.max(0, Math.ceil((current!.endsTs - nowTs) / 86400)) : 0,
       isoWeek: current?.isoWeek ?? null,
       validityDays: VALIDITY_DAYS,
       lastSuccessAt: lastSuccess?.publishedAt?.toISO() ?? null,
@@ -369,7 +386,11 @@ export default class PromoRotationService {
     shopId: string,
     timezone: string
   ): Promise<RotationOutcome> {
-    const ends = renderEnds(row.endsAt, timezone)
+    // On repart de `ends_ts` et JAMAIS de la colonne `ends_at` : un entier revient de la
+    // base tel qu'il y est entré, là où un TIMESTAMP se fait réinterpréter par le fuseau de
+    // session MySQL et celui du process Node. Le moindre décalage ferait conclure ici à une
+    // non-conformité, et republierait chaque jour une date fausse de deux heures.
+    const ends = renderEnds(DateTime.fromSeconds(row.endsTs), timezone)
 
     let live: Record<string, string | null>
     try {
@@ -487,8 +508,8 @@ export default class PromoRotationService {
 
     const stillLive = await PromoRotation.query()
       .where('status', 'published')
-      .where('ends_at', '>', now.toSQL({ includeOffset: false })!)
-      .orderBy('ends_at', 'desc')
+      .where('ends_ts', '>', Math.floor(now.toSeconds()))
+      .orderBy('ends_ts', 'desc')
       .first()
 
     const sent = await new PromoAlertMailer().sendRotationFailure({
@@ -498,7 +519,9 @@ export default class PromoRotationService {
         ? Math.floor(now.diff(lastSuccess.publishedAt, 'days').days)
         : null,
       currentCode: stillLive?.code ?? null,
-      currentEndsAt: stillLive?.endsAt.toISO() ?? null,
+      currentEndsAt: stillLive
+        ? renderEnds(DateTime.fromSeconds(stillLive.endsTs), SHOP_TIMEZONE).endsAt
+        : null,
       error: message,
     })
 
