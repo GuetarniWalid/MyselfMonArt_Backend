@@ -23,8 +23,12 @@ export default class PromoRotation extends BaseModel {
   @column.dateTime()
   public endsAt: DateTime
 
-  /** Le même instant, en secondes epoch — SOURCE DE VÉRITÉ (aucun fuseau à réinterpréter). */
-  @column()
+  /**
+   * Le même instant, en secondes epoch — SOURCE DE VÉRITÉ (aucun fuseau à réinterpréter).
+   * `consume` force le nombre : selon la configuration du driver, un BIGINT peut revenir en
+   * chaîne, et `DateTime.fromSeconds('1790812799')` produit une date INVALIDE en silence.
+   */
+  @column({ consume: (value) => (value === null ? value : Number(value)) })
   public endsTs: number
 
   @column()
