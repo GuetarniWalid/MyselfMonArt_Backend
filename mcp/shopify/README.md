@@ -4,13 +4,14 @@ Model Context Protocol (MCP) server for Shopify Admin API integration with Claud
 
 ## Overview
 
-This module provides 80 tools for Shopify store management:
+This module provides 85 tools for Shopify store management:
 - Products & Inventory management
 - Orders & Fulfillment
 - Customers & B2B
 - Analytics & Reporting
 - Marketing & Discounts
 - File & Media upload (Files library)
+- Legal policies & translations (see below)
 
 ## Mode: Authless
 
@@ -76,22 +77,85 @@ Configure your Shopify app with these scopes:
 - `read_publications`, `write_publications` (required to publish/unpublish a collection — the `published` flag of `createCollection` / `updateCollection`, and the `publishedOnOnlineStore` field of `getCollection`)
 - `read_shipping` (required for `getShippingZones`)
 
-### Scopes NOT granted on the production app (2026-08-03)
+### Scopes NOT granted on the production app (re-checked 2026-08-04)
 
-These tools are wired and tested but answer "access denied" until the scope is
-added in *Settings → Apps and sales channels → Develop apps → (app) →
-Configuration → Admin API integration*, then the app is re-installed/updated.
-The existing `shpat_` token stays valid and simply gains the scope.
+Verified by querying `currentAppInstallation { accessScopes }` with the production
+token — not from memory. `write_discounts`, `read_marketing_events` and `read_apps`
+were missing in the 2026-08-03 audit and **have since been granted**; only these
+two remain:
 
 | Scope | Unlocks |
 |-------|---------|
-| `write_discounts` | `createDiscountCode` — reading discounts already works via `read_discounts` |
-| `read_marketing_events` | `getMarketingReport` (marketing activities) |
-| `read_apps` | `listInstalledApps` |
+| `read_locales` | `listShopLocales` — and `webPresence.defaultLocale` / `alternateLocales` on markets. `read_markets_home` also satisfies it. |
 | `read_locations` | location names inside `getShippingZones` (dropped from the query, not needed for rates) |
+
+Add it in *Settings → Apps and sales channels → Develop apps → (app) →
+Configuration → Admin API integration*, then re-install/update the app. The
+existing `shpat_` token stays valid and simply gains the scope.
+
+Already granted and used by the policy/translation tools: `read_legal_policies`,
+`write_legal_policies`, `read_translations`, `write_translations`.
 
 A missing scope is reported as an explicit `MISSING SCOPE` message naming the
 scope and the admin path — it is never returned as an empty result set.
+
+## Legal policies & translations
+
+Five tools cover the "edit a legal text, then publish it in every language" loop
+that otherwise means copy-pasting into the admin five times.
+
+| Tool | What it does |
+|------|--------------|
+| `getShopPolicies` | Every policy with its **full HTML body**, plus `absentTypes` (types the shop does not have) and `isEmpty` (present but blank) |
+| `updateShopPolicy` | Rewrites one policy body — always returns `previousBody` for diff/rollback |
+| `getTranslatableContent` | Source content + the `digest` every translation must be bound to (any resource GID, not just policies) |
+| `registerTranslations` | Publishes translations, refusing stale/missing digests before the write |
+| `listShopLocales` | Published/primary locales (**needs `read_locales`**, see above) |
+
+### The ordering rule
+
+A translation is bound to a **digest of the source text**, so editing the source
+invalidates every digest attached to it:
+
+1. `updateShopPolicy` — write the new source body
+2. `getTranslatableContent` — re-read the digests, they just changed
+3. `registerTranslations` — publish with the fresh digests
+
+Both failure modes of the reverse order were measured on this store (2026-08-04,
+on a throwaway unpublished page, since deleted):
+
+- Translating **before** the source edit: the translation is stored fine, then the
+  source edit silently flips it to `outdated: true` — Translate & Adapt shows it
+  as needing review.
+- Reusing a digest read **before** the edit: hard rejection with
+  `INVALID_TRANSLATABLE_CONTENT` / *"Translatable content hash is invalid"*, and
+  nothing is written. A digest is valid for exactly one version of the source.
+
+`registerTranslations` re-reads the live digests and refuses the call itself if
+one is stale or missing, quoting the fresh digest so the retry is immediate.
+
+### Verified API facts (2025-10, this store)
+
+- `shop.privacyPolicy` / `shop.refundPolicy` / … **do not exist**. The only entry
+  point is the `shop.shopPolicies` list.
+- `shopPolicyUpdate` takes `ShopPolicyInput { type, body }` — **no `id` argument**.
+  `updateShopPolicy` accepts a GID and resolves it to its type.
+- Shop policies **are** translatable resources (`SHOP_POLICY`); their single
+  translatable key is **`body`**, of type HTML. Source locale is `fr`.
+- A policy with an empty body is **still** translatable (valid digest over the
+  empty string) — but it is omitted from the `translatableResources(SHOP_POLICY)`
+  *list*, so query it by GID via `translatableResource`.
+- Published locales, probed by write: `en`, `de`, `es`, `nl` accepted; `it`, `pt`,
+  `ja` rejected with `INVALID_LOCALE_FOR_SHOP`.
+- `shopPolicyUpdate` works on **Basic** — no plan restriction observed.
+- **Body limit: 512 KB.** Measured on the (empty) shipping policy, restored after:
+  600 000 chars → `TOO_BIG` *"Body is too big (maximum is 512 KB)"*, nothing
+  written; 300 000 chars accepted. `TOO_BIG` is the only value of
+  `ShopPolicyErrorCode`. For scale, the longest policy on this shop is 27 509 chars.
+- **The body is stored verbatim — Shopify does not sanitise it.** A probe
+  containing `<script>`, `<iframe>`, `<style>`, `<form>`, `javascript:` hrefs,
+  `onclick`/`onerror` handlers, `data-*` attributes and a custom element came back
+  byte-identical (464/464 chars). Sanitise before writing.
 
 ## Marketing: what the Admin API does and does not expose
 

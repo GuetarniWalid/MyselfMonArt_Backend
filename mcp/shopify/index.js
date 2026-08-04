@@ -80,6 +80,21 @@ const SCOPE_HINTS = [
   { match: /appInstallation/i, scope: 'read_apps', what: 'listing installed apps' },
   { match: /discount/i, scope: 'write_discounts', what: 'creating or editing discounts' },
   { match: /\blocations?\b/i, scope: 'read_locations', what: 'reading location details' },
+  {
+    match: /shopLocales|defaultLocale|alternateLocales/i,
+    scope: 'read_locales',
+    what: 'listing the published/primary locales of the shop',
+  },
+  {
+    match: /shopPolic/i,
+    scope: 'read_legal_policies (read) / write_legal_policies (write)',
+    what: 'reading or editing the shop legal policies',
+  },
+  {
+    match: /translatableResource|translationsRegister/i,
+    scope: 'read_translations (read) / write_translations (write)',
+    what: 'reading translatable content or publishing translations',
+  },
 ]
 function describeError(error, context) {
   const message = error?.message || String(error)
@@ -4555,6 +4570,586 @@ function registerTools(server, shopifyClient) {
             {
               type: 'text',
               text: `Error updating image alt: ${error.message}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  // ===========================================================================
+  // Shop policies (legal texts) + translations
+  //
+  // Ordering rule enforced by these tools — a translation is bound to a DIGEST
+  // of the source text, so editing the source invalidates every digest:
+  //   1. updateShopPolicy       (write the new source body)
+  //   2. getTranslatableContent (re-read the digests — they just changed)
+  //   3. registerTranslations   (publish, with the FRESH digests)
+  // Done in the wrong order, the translations are stored against a stale digest
+  // and Translate & Adapt flags them "outdated".
+  // ===========================================================================
+  const SHOP_POLICY_TYPES = [
+    'REFUND_POLICY',
+    'SHIPPING_POLICY',
+    'PRIVACY_POLICY',
+    'TERMS_OF_SERVICE',
+    'TERMS_OF_SALE',
+    'LEGAL_NOTICE',
+    'SUBSCRIPTION_POLICY',
+    'CONTACT_INFORMATION',
+  ]
+  server.tool(
+    'getShopPolicies',
+    'READ every legal policy of the shop with its FULL HTML body — the read half of a safe read-modify-write on legal text. ' +
+      'Returns per policy: { id (ShopPolicy GID), type, title, url, body (full HTML), bodyLength, isEmpty, createdAt, updatedAt }. ' +
+      'Also returns `absentTypes`: policy types that exist in the Shopify enum but are NOT returned for this shop — so "no policy" is never confused with "the API hid it". ' +
+      'A policy present with bodyLength 0 EXISTS but is empty (it is still addressable and still translatable) — that is different from an absent type. ' +
+      'Requires the read_legal_policies scope. Use the returned `id` (or `type`) with updateShopPolicy, and the `id` with getTranslatableContent.',
+    {
+      type: z
+        .enum(SHOP_POLICY_TYPES)
+        .optional()
+        .describe('Optionally return only this policy type. Omit to return all of them.'),
+      includeBody: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'Include the full HTML body (default true). Set false for a cheap inventory of ids/types/urls only.'
+        ),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.getShopPolicies()
+        const all = result.data.shop.shopPolicies || []
+        const present = all.map((p) => p.type)
+        const selected = args.type ? all.filter((p) => p.type === args.type) : all
+        if (args.type && selected.length === 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text:
+                  `No policy of type ${args.type} exists on this shop.\n` +
+                  `This is the SHOP not having it — the API answered normally and returned ` +
+                  `${all.length} other policies (${present.join(', ')}).`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        const policies = selected.map((p) => ({
+          id: p.id,
+          type: p.type,
+          title: p.title,
+          url: p.url,
+          bodyLength: (p.body || '').length,
+          isEmpty: (p.body || '').length === 0,
+          createdAt: p.createdAt,
+          updatedAt: p.updatedAt,
+          ...(args.includeBody ? { body: p.body } : {}),
+        }))
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  policies,
+                  absentTypes: SHOP_POLICY_TYPES.filter((t) => !present.includes(t)),
+                  note: 'absentTypes = not configured on this shop (not an API limitation). A policy with isEmpty:true exists and can still be updated and translated.',
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error fetching shop policies: ${describeError(error, 'shopPolicies')}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'updateShopPolicy',
+    'WRITE the HTML body of one legal policy (privacy, refund, terms, legal notice, ...) via shopPolicyUpdate. Requires the write_legal_policies scope. ' +
+      'ALWAYS returns `previousBody`: the exact body read back from Shopify immediately BEFORE the write, so the change can be diffed and rolled back by calling this tool again with that value. ' +
+      'ADDRESSING: the Shopify mutation takes ShopPolicyInput { type, body } and has NO id argument — pass `id` (a ShopPolicy GID) and this tool resolves it to its type for you, or pass `type` directly. One of the two is required. ' +
+      'Refuses to blank a non-empty policy unless allowEmptyBody is true, and short-circuits (no write, changed:false) when the new body is byte-identical to the current one. ' +
+      'BODY LIMITS (measured 2026-08-04): max 512 KB — above it Shopify answers userError TOO_BIG "Body is too big (maximum is 512 KB)" and writes nothing. The HTML is stored VERBATIM, with no server-side sanitising: script/iframe/style/form tags, inline styles, data-* attributes, custom elements and event handlers (onclick, onerror) all come back byte-identical. Sanitise before sending. ' +
+      '⚠️ ORDERING: writing the source body INVALIDATES the translation digests of that policy. After this call you MUST re-read them with getTranslatableContent and only then publish with registerTranslations — never the reverse.',
+    {
+      id: z
+        .string()
+        .optional()
+        .describe(
+          'ShopPolicy GID, e.g. gid://shopify/ShopPolicy/25851756799 (from getShopPolicies).'
+        ),
+      type: z
+        .enum(SHOP_POLICY_TYPES)
+        .optional()
+        .describe(
+          'Policy type, e.g. PRIVACY_POLICY. Alternative to `id` — this is what the mutation actually takes.'
+        ),
+      body: z.string().describe('The new body, as HTML. Replaces the existing body entirely.'),
+      allowEmptyBody: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe('Safety latch: must be true to overwrite a non-empty policy with an empty body.'),
+    },
+    async (args) => {
+      try {
+        if (!args.id && !args.type) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: 'Error: pass either `id` (ShopPolicy GID) or `type`. Call getShopPolicies to list both.',
+              },
+            ],
+            isError: true,
+          }
+        }
+        // Read BEFORE writing: this both resolves id -> type (the mutation has no
+        // id argument) and captures previousBody for the diff/rollback.
+        const before = await shopifyClient.getShopPolicies()
+        const all = before.data.shop.shopPolicies || []
+        const target = args.id
+          ? all.find((p) => p.id === args.id)
+          : all.find((p) => p.type === args.type)
+        if (!target) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text:
+                  `Error: no policy matching ${args.id ? `id ${args.id}` : `type ${args.type}`} on this shop.\n` +
+                  `Existing policies: ${all.map((p) => `${p.type} (${p.id})`).join(', ')}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        const previousBody = target.body || ''
+        if (args.body === previousBody) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    changed: false,
+                    id: target.id,
+                    type: target.type,
+                    reason:
+                      'New body is byte-identical to the current one — nothing was written, so the translation digests are untouched.',
+                    bodyLength: previousBody.length,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          }
+        }
+        if (args.body.length === 0 && previousBody.length > 0 && !args.allowEmptyBody) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text:
+                  `Refused: this would blank ${target.type} (${previousBody.length} chars of legal text) with an empty body.\n` +
+                  `If that is really intended, call again with allowEmptyBody: true.`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        const result = await shopifyClient.shopPolicyUpdate(target.type, args.body)
+        const payload = result.data.shopPolicyUpdate
+        if (payload.userErrors && payload.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text:
+                  `shopPolicyUpdate rejected the write — NOTHING was changed.\n` +
+                  `userErrors: ${JSON.stringify(payload.userErrors, null, 2)}\n` +
+                  `(code TOO_BIG = the body exceeds the size Shopify accepts for a policy; the previous body is intact.)`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  changed: true,
+                  id: payload.shopPolicy.id,
+                  type: payload.shopPolicy.type,
+                  title: payload.shopPolicy.title,
+                  url: payload.shopPolicy.url,
+                  updatedAt: payload.shopPolicy.updatedAt,
+                  previousBodyLength: previousBody.length,
+                  newBodyLength: (payload.shopPolicy.body || '').length,
+                  previousBody,
+                  nextStep:
+                    'The translation digests of this policy are now STALE. Re-read them with getTranslatableContent(resourceId: "' +
+                    payload.shopPolicy.id +
+                    '") before calling registerTranslations.',
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error updating shop policy: ${describeError(error, 'shopPolicy')}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'getTranslatableContent',
+    'READ the translatable source content of ANY resource GID (shop policy, product, collection, page, blog, article, metaobject, menu, theme...) together with the `digest` each translation must be registered against. ' +
+      'THIS IS THE MANDATORY STEP BEFORE registerTranslations: translationsRegister requires a translatableContentDigest, and that digest changes every time the SOURCE text is edited. ' +
+      'Returns translatableContent[] as { key, value, valueLength, digest, locale (the SOURCE locale), type } — for a shop policy the single key is `body` and its type is HTML. ' +
+      'Pass `locales` to also read back the translations already published for those locales, each with an `outdated` flag (true = registered against an older digest, i.e. Translate & Adapt shows it as needing review). ' +
+      'Requires the read_translations scope. A null translatableResource means the GID is unknown or its type is NOT translatable — that is reported as an error, never as empty content. ' +
+      'An existing resource whose source text is empty returns value:"" WITH a valid digest (an empty body is still translatable) — do not read that as "not translatable".',
+    {
+      resourceId: z
+        .string()
+        .describe(
+          'The resource GID, e.g. gid://shopify/ShopPolicy/25851756799 or gid://shopify/Product/123.'
+        ),
+      locales: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Optional locale codes ("en", "de", "es", "nl") to also return the translations already stored for this resource, with their outdated flag.'
+        ),
+      includeValues: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          'Include the full source/translation text (default true). Set false to get digests and lengths only.'
+        ),
+    },
+    async (args) => {
+      try {
+        const result = await shopifyClient.getTranslatableContent(args.resourceId)
+        const resource = result.data.translatableResource
+        if (!resource) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text:
+                  `Error: translatableResource returned null for ${args.resourceId}.\n` +
+                  `That means the GID does not exist OR its resource type is not translatable — it does NOT mean "the resource has no text".\n` +
+                  `Check the GID, and check the type is one of Shopify's translatable resource types (SHOP_POLICY, PRODUCT, COLLECTION, PAGE, BLOG, ARTICLE, METAOBJECT, MENU, LINK, FILTER, ONLINE_STORE_THEME*, EMAIL_TEMPLATE, ...).`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        const content = (resource.translatableContent || []).map((c) => ({
+          key: c.key,
+          type: c.type,
+          locale: c.locale,
+          digest: c.digest,
+          valueLength: (c.value || '').length,
+          isEmptySource: (c.value || '').length === 0,
+          ...(args.includeValues ? { value: c.value } : {}),
+        }))
+        const out = {
+          resourceId: resource.resourceId,
+          sourceLocale: content[0]?.locale ?? null,
+          translatableContent: content,
+          note: 'Copy `digest` verbatim into registerTranslations as translatableContentDigest. It is only valid for the CURRENT source text — re-read it after any edit of the source.',
+        }
+        if (args.locales && args.locales.length > 0) {
+          const tr = await shopifyClient.getTranslationsForLocales(args.resourceId, args.locales)
+          const node = tr.data.translatableResource || {}
+          out.existingTranslations = {}
+          args.locales.forEach((locale, i) => {
+            const rows = node[`l${i}`] || []
+            out.existingTranslations[locale] =
+              rows.length === 0
+                ? {
+                    published: false,
+                    note: 'No translation stored for this locale on this resource.',
+                  }
+                : {
+                    published: true,
+                    entries: rows.map((r) => ({
+                      key: r.key,
+                      outdated: r.outdated,
+                      updatedAt: r.updatedAt,
+                      valueLength: (r.value || '').length,
+                      ...(args.includeValues ? { value: r.value } : {}),
+                    })),
+                  }
+          })
+          out.localeNote =
+            'A locale that is simply absent here has no translation stored. Reading an UNPUBLISHED or non-existent locale also returns an empty list without error — use listShopLocales to tell the two apart.'
+        }
+        return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }] }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error fetching translatable content: ${describeError(error, 'translatableResource')}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'registerTranslations',
+    'WRITE (publish) translations for a resource via translationsRegister. Requires the write_translations scope. ' +
+      '⚠️ MANDATORY ORDER when the source text is ALSO being changed:\n' +
+      '  1. write the new SOURCE text first (updateShopPolicy / updateProduct / updatePage ...),\n' +
+      '  2. THEN re-read the digests with getTranslatableContent — editing the source CHANGES them,\n' +
+      '  3. THEN call this tool with those fresh digests.\n' +
+      'Both failure modes were measured on this store (2026-08-04): (a) translating BEFORE editing the source — the translation is stored fine, then the source edit silently flips it to `outdated: true` and Translate & Adapt shows it as needing review; (b) reusing a digest read before the edit — the call is HARD-REJECTED with INVALID_TRANSLATABLE_CONTENT "Translatable content hash is invalid" and nothing is written. A digest is valid for exactly one version of the source text.\n' +
+      'This tool re-reads the current digests and REFUSES the call if any supplied translatableContentDigest is stale or if a key does not exist on the resource — the fresh digest is returned in the error so the retry is immediate. Pass autoRefreshDigest:true to substitute the fresh digest automatically instead of failing (only safe when the translation was written against the CURRENT source text). ' +
+      'It also blocks a value identical to the source text: Shopify rejects those, and on this store that has previously caused an endless re-translation loop. ' +
+      'Locales must be PUBLISHED on the shop (see listShopLocales) — an unpublished one fails with INVALID_LOCALE_FOR_SHOP.',
+    {
+      resourceId: z
+        .string()
+        .describe('The resource GID being translated, e.g. gid://shopify/ShopPolicy/25851756799.'),
+      translations: z
+        .array(
+          z.object({
+            locale: z
+              .string()
+              .describe(
+                'Target locale code, e.g. "en", "de", "es", "nl". Must be published on the shop.'
+              ),
+            key: z
+              .string()
+              .describe(
+                'Translatable key, exactly as returned by getTranslatableContent (for a shop policy: "body").'
+              ),
+            value: z.string().describe('The translated text (HTML for a policy body).'),
+            translatableContentDigest: z
+              .string()
+              .optional()
+              .describe(
+                'The digest of the CURRENT source text for this key, from getTranslatableContent. Required unless autoRefreshDigest is true.'
+              ),
+          })
+        )
+        .min(1)
+        .max(50)
+        .describe('One entry per (locale, key) pair.'),
+      autoRefreshDigest: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          'When true, a missing or stale digest is replaced by the current one instead of failing. Only use it when the translation was produced from the CURRENT source text.'
+        ),
+    },
+    async (args) => {
+      try {
+        // Pre-flight against the live digests: a stale digest is the single most
+        // common way translations silently land as "outdated".
+        const current = await shopifyClient.getTranslatableContent(args.resourceId)
+        const resource = current.data.translatableResource
+        if (!resource) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text:
+                  `Error: ${args.resourceId} is unknown or not a translatable resource — nothing was written.\n` +
+                  `(This is the API not exposing this type as translatable, not an empty resource.)`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        const byKey = new Map((resource.translatableContent || []).map((c) => [c.key, c]))
+        const validKeys = [...byKey.keys()]
+        const problems = []
+        const warnings = []
+        const refreshed = []
+        const payloadTranslations = args.translations.map((t) => {
+          const source = byKey.get(t.key)
+          if (!source) {
+            problems.push(
+              `key "${t.key}" does not exist on this resource. Valid keys: ${validKeys.join(', ') || '(none)'}.`
+            )
+            return t
+          }
+          if (t.value === source.value) {
+            // Verified 2026-08-04: Shopify ACCEPTS an identical value on a page
+            // body_html, but rejects it on other resource types (product option
+            // values), where re-submitting it has previously caused an endless
+            // re-translation loop on this store. So: warn, do not block.
+            warnings.push(
+              `locale "${t.locale}" key "${t.key}": the value is byte-identical to the source text — that is an untranslated entry. Shopify accepts it on some resource types and rejects it on others (product option values), where it has caused re-translation loops on this store.`
+            )
+          }
+          if (!t.translatableContentDigest) {
+            if (!args.autoRefreshDigest) {
+              problems.push(
+                `locale "${t.locale}" key "${t.key}": translatableContentDigest is missing. Current digest: ${source.digest}`
+              )
+              return t
+            }
+            refreshed.push(`${t.locale}/${t.key} (was missing)`)
+            return { ...t, translatableContentDigest: source.digest }
+          }
+          if (t.translatableContentDigest !== source.digest) {
+            if (!args.autoRefreshDigest) {
+              problems.push(
+                `locale "${t.locale}" key "${t.key}": STALE digest. You sent ${t.translatableContentDigest}, the source is now ${source.digest}. ` +
+                  `The source text changed since you read it — re-read it with getTranslatableContent and re-translate if the meaning changed.`
+              )
+              return t
+            }
+            refreshed.push(
+              `${t.locale}/${t.key} (was ${t.translatableContentDigest.slice(0, 12)}…)`
+            )
+            return { ...t, translatableContentDigest: source.digest }
+          }
+          return t
+        })
+        if (problems.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text:
+                  `Refused before writing — NOTHING was published:\n- ${problems.join('\n- ')}\n\n` +
+                  `Fix the entries and call again (or pass autoRefreshDigest:true if only the digest is out of date and the translation still matches the current source).`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        const result = await shopifyClient.translationsRegister(
+          args.resourceId,
+          payloadTranslations
+        )
+        const payload = result.data.translationsRegister
+        if (payload.userErrors && payload.userErrors.length > 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text:
+                  `translationsRegister returned userErrors — treat the publish as FAILED for the listed entries:\n` +
+                  `${JSON.stringify(payload.userErrors, null, 2)}\n` +
+                  `Common codes: INVALID_LOCALE_FOR_SHOP (locale not published — check listShopLocales), ` +
+                  `INVALID_KEY_FOR_MODEL (wrong key), RESOURCE_NOT_TRANSLATABLE, FAILS_RESOURCE_VALIDATION (value rejected, e.g. identical to source).`,
+              },
+            ],
+            isError: true,
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  resourceId: args.resourceId,
+                  registered: (payload.translations || []).map((t) => ({
+                    locale: t.locale,
+                    key: t.key,
+                    outdated: t.outdated,
+                    updatedAt: t.updatedAt,
+                    valueLength: (t.value || '').length,
+                  })),
+                  digestsRefreshed: refreshed.length > 0 ? refreshed : undefined,
+                  warnings: warnings.length > 0 ? warnings : undefined,
+                  note:
+                    'outdated:false means the translation is bound to the CURRENT source digest. ' +
+                    'If any entry comes back outdated:true, the source text changed between the read and this write — re-read the digests and publish again.',
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error registering translations: ${describeError(error, 'translationsRegister')}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+  server.tool(
+    'listShopLocales',
+    'READ the locales configured on the shop: code, name, which one is PRIMARY (the source language every digest is computed from) and which are PUBLISHED (live on the storefront). ' +
+      'Call it before registerTranslations so you never write into a locale that is not published — Shopify answers INVALID_LOCALE_FOR_SHOP for those, and reading an unpublished locale returns an empty list with no error at all, which is easy to misread as "no translation yet". ' +
+      'Requires the read_locales scope (read_markets_home also works). If that scope is missing this tool says so explicitly instead of returning an empty list.',
+    {},
+    async () => {
+      try {
+        const result = await shopifyClient.getShopLocales()
+        const locales = result.data.shopLocales || []
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  locales,
+                  primary: locales.find((l) => l.primary)?.locale ?? null,
+                  published: locales.filter((l) => l.published).map((l) => l.locale),
+                  unpublished: locales.filter((l) => !l.published).map((l) => l.locale),
+                  note: 'Only `published` locales accept translations. The `primary` locale is the source — never register a translation into it.',
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error fetching shop locales: ${describeError(error, 'shopLocales')}`,
             },
           ],
           isError: true,

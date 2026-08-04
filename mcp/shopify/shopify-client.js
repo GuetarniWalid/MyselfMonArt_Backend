@@ -3729,5 +3729,137 @@ export class ShopifyClient {
       ...fileResult,
     }
   }
+  // ---------------------------------------------------------------------------
+  // Shop policies (legal texts) + translations
+  //
+  // Verified against the live Admin API 2025-10 on this store:
+  //  - `shop.privacyPolicy` / `shop.refundPolicy` / ... DO NOT EXIST. The only
+  //    entry point is the `shop.shopPolicies` LIST.
+  //  - `shopPolicyUpdate` takes ShopPolicyInput { type, body } — there is NO id
+  //    argument, so a GID has to be resolved to its ShopPolicyType first.
+  //  - Shop policies ARE translatable resources (SHOP_POLICY) and their single
+  //    translatable key is `body` (type HTML).
+  // ---------------------------------------------------------------------------
+  async getShopPolicies() {
+    const query = `
+      query getShopPolicies {
+        shop {
+          shopPolicies {
+            id
+            type
+            title
+            url
+            body
+            createdAt
+            updatedAt
+          }
+        }
+      }
+    `
+    return this.graphql(query)
+  }
+  // ShopPolicyInput is { type, body } — the policy is addressed by TYPE, not by id.
+  async shopPolicyUpdate(type, body) {
+    const mutation = `
+      mutation shopPolicyUpdate($shopPolicy: ShopPolicyInput!) {
+        shopPolicyUpdate(shopPolicy: $shopPolicy) {
+          shopPolicy {
+            id
+            type
+            title
+            url
+            body
+            updatedAt
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `
+    return this.graphql(mutation, { shopPolicy: { type, body } })
+  }
+  // Source-of-truth content + digests for ANY translatable resource GID.
+  // Returns null `translatableResource` when the GID is unknown or the resource
+  // type is not translatable — which is NOT the same as an empty `value`.
+  async getTranslatableContent(resourceId) {
+    const query = `
+      query getTranslatableContent($resourceId: ID!) {
+        translatableResource(resourceId: $resourceId) {
+          resourceId
+          translatableContent {
+            key
+            value
+            digest
+            locale
+            type
+          }
+        }
+      }
+    `
+    return this.graphql(query, { resourceId })
+  }
+  // Existing translations for one resource across several locales. `translations`
+  // takes ONE locale per call, so each locale gets its own aliased field; the
+  // locale itself travels as a GraphQL variable (never interpolated).
+  async getTranslationsForLocales(resourceId, locales) {
+    const aliases = locales
+      .map(
+        (_, i) => `l${i}: translations(locale: $loc${i}) { key locale value outdated updatedAt }`
+      )
+      .join('\n          ')
+    const varDefs = locales.map((_, i) => `$loc${i}: String!`).join(', ')
+    const query = `
+      query getTranslations($resourceId: ID!, ${varDefs}) {
+        translatableResource(resourceId: $resourceId) {
+          resourceId
+          ${aliases}
+        }
+      }
+    `
+    const variables = { resourceId }
+    locales.forEach((locale, i) => {
+      variables[`loc${i}`] = locale
+    })
+    return this.graphql(query, variables)
+  }
+  async translationsRegister(resourceId, translations) {
+    const mutation = `
+      mutation translationsRegister($resourceId: ID!, $translations: [TranslationInput!]!) {
+        translationsRegister(resourceId: $resourceId, translations: $translations) {
+          translations {
+            key
+            locale
+            value
+            outdated
+            updatedAt
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `
+    return this.graphql(mutation, { resourceId, translations })
+  }
+  // Requires the `read_locales` scope (or `read_markets_home`). Without it the
+  // Admin API answers ACCESS_DENIED — it never answers "no locales".
+  async getShopLocales() {
+    const query = `
+      query getShopLocales {
+        shopLocales {
+          locale
+          name
+          primary
+          published
+        }
+      }
+    `
+    return this.graphql(query)
+  }
 }
 //# sourceMappingURL=shopify-client.js.map
