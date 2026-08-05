@@ -153,4 +153,52 @@ export default Env.rules({
   // à défaut, APP_KEY sert de secret — lui aussi jamais commité et toujours présent, pour
   // qu'une variable oubliée ne fige jamais la rotation. cf. App/Services/PromoRotation/code.ts
   PROMO_CODE_SECRET: Env.schema.string.optional(),
+
+  // --- Séquence e-mail du bon de 15 € (cf. App/Services/Newsletter/) -----------------
+  // Tout est OPTIONNEL : sans transport configuré, le cron ne réserve même pas de ligne
+  // d'envoi et le dispositif reste dormant. Rien ne casse au démarrage.
+  //
+  // Transport forcé : 'ses' (API HTTPS) | 'smtp'. Absent = SES s'il est configuré, SMTP sinon.
+  NEWSLETTER_MAIL_TRANSPORT: Env.schema.string.optional(),
+  // Expéditeur. Sous-domaine DÉDIÉ (mail.myselfmonart.com), jamais le domaine racine et
+  // surtout jamais un domaine cousin type « myselfmonart-news.com » : c'est le motif que
+  // recherchent les filtres antiphishing.
+  NEWSLETTER_MAIL_FROM: Env.schema.string.optional(),
+  NEWSLETTER_MAIL_FROM_NAME: Env.schema.string.optional(),
+  // ⚠️ OBLIGATOIRE en pratique : `mail.myselfmonart.com` n'a AUCUNE boîte de réception.
+  // Sans Reply-To, toute réponse d'un client tombe dans le vide — et une réponse restée sans
+  // réponse finit en signalement de spam.
+  NEWSLETTER_MAIL_REPLY_TO: Env.schema.string.optional(),
+  // Mention postale complète de l'expéditeur, affichée en pied de chaque e-mail (obligation
+  // légale). À défaut, seul « SAS KINDOPIA » apparaît — insuffisant.
+  NEWSLETTER_POSTAL_ADDRESS: Env.schema.string.optional(),
+  // Secret des empreintes d'adresse et des jetons de désabonnement. À défaut, APP_KEY.
+  // ⛔ NE JAMAIS LE CHANGER une fois en service : il rendrait la liste repoussoir illisible
+  // et transformerait en 404 tous les liens « se désabonner » déjà partis.
+  NEWSLETTER_SECRET: Env.schema.string.optional(),
+
+  // --- Amazon SES : API HTTPS (transport primaire) -----------------------------------
+  // ⚠️ Ce sont les identifiants IAM, PAS les identifiants SMTP : le « mot de passe SMTP » de
+  // SES est une signature dérivée de la clé secrète, et la dérivation ne s'inverse pas.
+  SES_ACCESS_KEY_ID: Env.schema.string.optional(),
+  SES_SECRET_ACCESS_KEY: Env.schema.string.optional(),
+  SES_REGION: Env.schema.string.optional(),
+  // ⛔ Nom du « configuration set » SES. SANS LUI, AUCUN rebond ni plainte ne remonte : c'est
+  // lui qui fait publier les événements vers SNS. Le dispositif écrirait alors à des adresses
+  // mortes jusqu'à la suspension du compte, sans qu'aucun écran ne montre rien d'anormal.
+  SES_CONFIGURATION_SET: Env.schema.string.optional(),
+  // Jeton partagé attendu dans ?token= de POST /webhooks/ses. Vide = endpoint FERMÉ.
+  SES_WEBHOOK_TOKEN: Env.schema.string.optional(),
+  // Liste blanche des TopicArn SNS acceptés (séparateur virgule). C'est ce qui arrête un
+  // message valablement signé mais provenant d'un autre topic.
+  SES_SNS_TOPIC_ARN: Env.schema.string.optional(),
+
+  // --- Transport de secours : SMTP brut ----------------------------------------------
+  // ⛔ PORT PAR DÉFAUT 2587, PAS 587 : les ports 25, 465 et 587 sont FILTRÉS sur le droplet
+  // DigitalOcean (vérifié depuis le conteneur applicatif). 2587 est le port alternatif de
+  // SES ; SMTP2GO et Brevo écoutent sur 2525.
+  NEWSLETTER_SMTP_HOST: Env.schema.string.optional(),
+  NEWSLETTER_SMTP_PORT: Env.schema.number.optional(),
+  NEWSLETTER_SMTP_USER: Env.schema.string.optional(),
+  NEWSLETTER_SMTP_PASSWORD: Env.schema.string.optional(),
 })

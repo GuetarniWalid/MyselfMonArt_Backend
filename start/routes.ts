@@ -273,6 +273,30 @@ Route.get('/custom-art-print-queue', async ({ view }) => {
   return view.render('pages/custom-art-print-queue')
 }).middleware(['auth'])
 
+// Séquence e-mail du bon de 15 € (cf. app/Services/Newsletter/).
+//
+// L'encart produit poste ici en fetch ; la réponse porte le CODE NOMINATIF, que l'encart
+// affiche immédiatement — d'où le throttle généreux mais réel (10/h par IP, plus une garde
+// de 3/jour par ADRESSE en base, qu'un redémarrage ne remet pas à zéro).
+Route.post('/api/newsletter/subscribe', 'NewsletterController.subscribe').middleware([
+  'throttle:10,3600',
+])
+// Santé du dispositif, sans donnée personnelle — même esprit que /promo/status.
+Route.get('/api/newsletter/status', 'NewsletterController.status').middleware(['throttle:60,60'])
+
+// Désabonnement RFC 8058. Les deux verbes ne font PAS la même chose, et c'est essentiel :
+//   GET  -> page de confirmation, N'AGIT PAS. Les antispams récupèrent automatiquement les
+//           URL des en-têtes d'e-mail ; un GET actif produirait des désinscriptions fantômes.
+//   POST -> désabonne. Sert le formulaire humain ET le un-clic de Gmail/Yahoo.
+// Volontairement à la racine et court (/u/...) : cette URL voyage dans un en-tête.
+Route.get('/u/:token', 'NewsletterController.unsubscribePage').middleware(['throttle:60,60'])
+Route.post('/u/:token', 'NewsletterController.unsubscribe').middleware(['throttle:60,60'])
+
+// Rebonds et plaintes SES, livrés par SNS. Authentifié par ?token= (comparaison à temps
+// constant) + liste blanche de TopicArn. Le corps arrive en `text/plain` : le contrôleur lit
+// `request.raw()`, jamais `request.body()` (cf. config/bodyparser.ts, `raw.types: ['text/*']`).
+Route.post('/webhooks/ses', 'SesWebhookController.receive')
+
 // Santé de la rotation automatique du code promo (cf. app/Tasks/RotatePromoCode.ts) :
 // code courant, date de fin, jours restants — sans ouvrir l'admin Shopify.
 // Publique et sans secret : le code est déjà affiché sur chaque fiche produit.

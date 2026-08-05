@@ -91,7 +91,38 @@ export const csrf: ShieldConfig['csrf'] = {
 	| ```
   |
   */
-  exceptRoutes: [],
+  /**
+   * ⛔ Ces exceptions sont une ASSURANCE, pas un correctif d'un bug actuel.
+   *
+   * Aujourd'hui le middleware de Shield n'est PAS enregistré dans `start/kernel.ts` (seul
+   * BodyParser l'est), donc aucune vérification CSRF n'a lieu — c'est d'ailleurs pourquoi les
+   * webhooks Shopify fonctionnent. Le jour où quelqu'un branchera Shield, ces routes doivent
+   * continuer de passer, et il ne faut surtout pas que la panne soit à découvrir à ce
+   * moment-là :
+   *
+   *   • `/u/:token` reçoit le POST un-clic de Gmail et Yahoo, sans cookie ni jeton. Un 403 y
+   *     rendrait le désabonnement techniquement présent mais fonctionnellement MORT. Le
+   *     lecteur qui veut partir cliquerait alors sur « signaler comme spam » — et à
+   *     120 envois par semaine, une seule plainte représente dix fois le seuil contractuel
+   *     de SES, donc la suspension du compte d'envoi.
+   *   • `/webhooks/ses` reçoit les rebonds et les plaintes ; les perdre, c'est écrire à des
+   *     adresses mortes jusqu'à la suspension.
+   *   • `/api/newsletter/subscribe` est appelé par le thème, en cross-origin.
+   *
+   * ⚠️ La comparaison est un `Array.includes` sur le PATRON de route
+   * (`node_modules/@adonisjs/shield/build/src/csrf.js`) : pas de joker. `/u/*` ne
+   * fonctionnerait PAS — il faut le patron exact, `/u/:token`.
+   */
+  exceptRoutes: [
+    '/api/newsletter/subscribe',
+    '/u/:token',
+    '/webhooks/ses',
+    // Webhooks entrants existants, pour la même raison.
+    '/webhooks',
+    '/api/webhooks',
+    '/webhooks/meta',
+    '/webhooks/email',
+  ],
 
   /*
   |--------------------------------------------------------------------------

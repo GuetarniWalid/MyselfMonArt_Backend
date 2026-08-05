@@ -8,6 +8,15 @@ export interface CodeDiscountSummary {
   status: string
   startsAt: string | null
   endsAt: string | null
+  /**
+   * Nombre d'utilisations comptabilisées. « async » parce que Shopify l'incrémente en différé :
+   * il peut donc RETARDER sur la réalité, jamais l'inventer. On ne s'en sert que dans le sens
+   * sûr — « > 0 donc la personne a acheté, on arrête la séquence ». Le lire à 0 ne prouve rien
+   * et ne déclenche donc aucune décision.
+   */
+  asyncUsageCount: number
+  /** Quota total du code. `null` = illimité (cas du code public hebdomadaire). */
+  usageLimit: number | null
 }
 
 export interface BasicCodeDiscountInput {
@@ -21,6 +30,16 @@ export interface BasicCodeDiscountInput {
   /** Sous-total minimum exigé, ex. "80.0". */
   minimumSubtotal: string
   appliesOncePerCustomer: boolean
+  /**
+   * Quota TOTAL du code, toutes personnes confondues. À laisser absent pour le code public
+   * hebdomadaire (un quota épuisé y creuserait un trou invisible : l'encart continuerait
+   * d'afficher un code que le checkout refuse).
+   *
+   * À poser à 1 pour un code NOMINATIF, où c'est au contraire la garantie recherchée :
+   * « une seule fois » devient infalsifiable, là où `appliesOncePerCustomer` seul se contourne
+   * avec une deuxième adresse.
+   */
+  usageLimit?: number
 }
 
 export default class Discount extends Authentication {
@@ -45,7 +64,7 @@ export default class Discount extends Authentication {
         id
         codeDiscount {
           __typename
-          ... on DiscountCodeBasic { title status startsAt endsAt }
+          ... on DiscountCodeBasic { title status startsAt endsAt asyncUsageCount usageLimit }
         }
       }
     }`
@@ -60,6 +79,8 @@ export default class Discount extends Authentication {
       status: node.codeDiscount.status ?? '',
       startsAt: node.codeDiscount.startsAt ?? null,
       endsAt: node.codeDiscount.endsAt ?? null,
+      asyncUsageCount: node.codeDiscount.asyncUsageCount ?? 0,
+      usageLimit: node.codeDiscount.usageLimit ?? null,
     }
   }
 
@@ -74,9 +95,10 @@ export default class Discount extends Authentication {
    *   • `combinesWith` : les trois à `false`. C'est ce réglage qui fait appliquer par
    *     Shopify LA MEILLEURE des deux remises face à une promotion automatique déjà en
    *     place. Une seule case à `true` et les remises s'ADDITIONNENT.
-   *   • Aucun `usageLimit` global. Un quota épuisé creuserait un trou invisible : l'encart
-   *     continuerait d'afficher un code que le checkout refuse. Le garde-fou est
-   *     `appliesOncePerCustomer` combiné au sous-total minimum.
+   *   • `usageLimit` est un CHOIX D'APPELANT, pas un réglage par défaut. Le code public
+   *     hebdomadaire n'en a aucun (un quota épuisé y creuserait un trou invisible : l'encart
+   *     continuerait d'afficher un code que le checkout refuse) ; un code nominatif en a
+   *     toujours un, à 1.
    *
    * Note API : `customerSelection` a été REMPLACÉ par `context` dans `DiscountCodeBasicInput`
    * (Admin API 2025-07). Le champ n'est pas optionnel malgré ce que laisse croire le schéma :
@@ -100,6 +122,7 @@ export default class Discount extends Authentication {
         startsAt: input.startsAt,
         endsAt: input.endsAt,
         appliesOncePerCustomer: input.appliesOncePerCustomer,
+        ...(input.usageLimit === undefined ? {} : { usageLimit: input.usageLimit }),
         // Tous les acheteurs (ex-`customerSelection: { all: true }`) — obligatoire.
         context: { all: 'ALL' },
         customerGets: {

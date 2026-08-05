@@ -210,6 +210,38 @@ class CircuitBreaker {
   }
 }
 
+/**
+ * Erreur portant le hash `errors` d'une réponse Shopify 200.
+ *
+ * Shopify répond HTTP 200 avec des champs à `null` ET un message dans `errors` quand un accès
+ * manque — un refus d'accès est donc invisible pour qui ne regarde que le statut. `fetchGraphQL`
+ * lève déjà dans ce cas ; ce qui manquait, c'est de DISTINGUER les causes :
+ *
+ *   • `ACCESS_DENIED` est définitif — le relancer en boucle exponentielle ne le réparera jamais,
+ *     et le silence ferait passer une perte d'accès aux données client pour une panne réseau.
+ *     C'est précisément le risque du §2 (accès en tolérance héritée, révocable sans préavis).
+ *   • `THROTTLED` / erreur interne sont passagers et se retentent.
+ *
+ * L'exception reste une `Error` au message inchangé : les appelants existants, qui ne lisent
+ * que `.message`, ne voient aucune différence.
+ */
+export class ShopifyGraphQLError extends Error {
+  public readonly codes: string[]
+  public readonly accessDenied: boolean
+  /** Les champs que Shopify a tout de même renvoyés — utiles au diagnostic, jamais à décider. */
+  public readonly partialData: any
+
+  constructor(message: string, errors: any[], partialData: any) {
+    super(message)
+    this.name = 'ShopifyGraphQLError'
+    this.codes = (errors ?? [])
+      .map((e) => e?.extensions?.code)
+      .filter((c): c is string => typeof c === 'string')
+    this.accessDenied = this.codes.includes('ACCESS_DENIED')
+    this.partialData = partialData
+  }
+}
+
 export default class Authentication {
   protected shopUrl = Env.get('SHOPIFY_SHOP_URL')
   protected apiVersion = Env.get('SHOPIFY_API_VERSION')
@@ -264,6 +296,10 @@ export default class Authentication {
 
   private isRetryableError(error: any): boolean {
     if (!error || !error.message) return false
+
+    // Un refus d'accès est DÉFINITIF : le relancer ne fait que retarder l'alerte et masquer,
+    // derrière un bruit de réseau, la seule panne qui exige une intervention humaine.
+    if (error instanceof ShopifyGraphQLError && error.accessDenied) return false
 
     const message = error.message.toLowerCase()
 
@@ -340,7 +376,11 @@ export default class Authentication {
           if (responseBody.errors) {
             console.error('Shopify GraphQL errors:', JSON.stringify(responseBody.errors, null, 2))
             const errorMessages = responseBody.errors.map((error: any) => error.message).join(', ')
-            throw new Error(`Shopify GraphQL API errors: ${errorMessages}`)
+            throw new ShopifyGraphQLError(
+              `Shopify GraphQL API errors: ${errorMessages}`,
+              responseBody.errors,
+              responseBody.data
+            )
           }
 
           return responseBody.data

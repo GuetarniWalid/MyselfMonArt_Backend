@@ -281,6 +281,53 @@
       "aliases": [],
       "flags": []
     },
+    "newsletter:erase": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/NewsletterErase",
+      "commandName": "newsletter:erase",
+      "description": "Efface les données personnelles d’une adresse (RGPD art. 17)",
+      "args": [
+        {
+          "type": "string",
+          "propertyName": "email",
+          "name": "email",
+          "required": true,
+          "description": "Adresse e-mail à effacer"
+        }
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "execute",
+          "propertyName": "execute",
+          "type": "boolean",
+          "description": "Effacer réellement (sans ce drapeau : simulation)"
+        }
+      ]
+    },
+    "newsletter:export": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/NewsletterExport",
+      "commandName": "newsletter:export",
+      "description": "Exporte en JSON les données détenues sur une adresse (RGPD art. 15)",
+      "args": [
+        {
+          "type": "string",
+          "propertyName": "email",
+          "name": "email",
+          "required": true,
+          "description": "Adresse e-mail concernée"
+        }
+      ],
+      "aliases": [],
+      "flags": []
+    },
     "photoshop:mockup_automation": {
       "settings": {
         "loadApp": true,
