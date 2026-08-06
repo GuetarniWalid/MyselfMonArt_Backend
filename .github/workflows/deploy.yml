@@ -8,6 +8,18 @@ on:
       - main
       - test
       - feature/automated-mockup-generation  # Testing automated mockup feature in production
+  # Déclenchement MANUEL — filet de sécurité, pas un confort.
+  #
+  # Constaté le 2026-08-06 : un push sur `main` (commit 6bb7d66) n'a produit AUCUN run, ni
+  # échec ni file d'attente — zéro `check-runs` sur le commit. GitHub perd un événement de
+  # temps en temps. Sans `workflow_dispatch`, le seul recours était de pousser un commit vide
+  # pour réamorcer la pompe : `main` se retrouve donc en avance sur la production, en silence,
+  # et la seule façon de s'en rendre compte est de vérifier à la main qu'une migration attendue
+  # a bien été appliquée.
+  #
+  # Relance : onglet Actions -> « Deploy to DigitalOcean with Docker » -> « Run workflow ».
+  # Le déploiement est idempotent (image reconstruite, `migration:run` ne rejoue rien).
+  workflow_dispatch:
 
 jobs:
   build-and-push:
