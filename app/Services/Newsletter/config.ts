@@ -150,5 +150,15 @@ export const MAX_SUBSCRIBES_PER_IP_PER_HOUR = 10
  */
 export const TERMS_VERSION = '2026-08'
 
-/** Mentions légales obligatoires en pied d'e-mail (art. L34-5 CPCE / RGPD). */
-export const POSTAL_SENDER = 'SAS KINDOPIA'
+/**
+ * Mention postale du pied d'e-mail — VIDE PAR DÉFAUT, décision du marchand.
+ *
+ * Ce n'est pas une obligation légale en Europe : l'art. L34-5 du CPCE exige que l'expéditeur
+ * soit identifiable et qu'un moyen de s'opposer existe, ce qu'assurent déjà le nom
+ * d'expéditeur, l'adresse de contact et le lien de désabonnement.
+ *
+ * ⚠️ Le CAN-SPAM Act américain, lui, EXIGE une adresse postale physique dès qu'un
+ * destinataire est aux États-Unis. Renseigner `NEWSLETTER_POSTAL_ADDRESS` si la séquence
+ * s'ouvre un jour à ce marché.
+ */
+export const POSTAL_SENDER = ''

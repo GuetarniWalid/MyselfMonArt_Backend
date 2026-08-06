@@ -124,7 +124,7 @@ réserve même pas de ligne d'envoi). Rien ne casse au démarrage.
 | `NEWSLETTER_MAIL_FROM` | `bonjour@mail.myselfmonart.com` |
 | `NEWSLETTER_MAIL_FROM_NAME` | `MyselfMonArt` |
 | `NEWSLETTER_MAIL_REPLY_TO` | ⚠️ **obligatoire en pratique** — `mail.myselfmonart.com` n'a aucune boîte de réception |
-| `NEWSLETTER_POSTAL_ADDRESS` | ⚠️ **à renseigner** — mention postale complète en pied d'e-mail (obligation légale) |
+| `NEWSLETTER_POSTAL_ADDRESS` | facultatif — **laissé vide sur décision du marchand** (voir §7) |
 | `NEWSLETTER_SECRET` | Vide = `APP_KEY`. ⛔ **ne jamais le changer ensuite** (voir §6) |
 | `SES_ACCESS_KEY_ID` / `SES_SECRET_ACCESS_KEY` | identifiants **IAM** |
 | `SES_REGION` | `eu-west-1` |
@@ -189,3 +189,28 @@ Shopify ne sont pas souscriptibles pour une app créée depuis l'admin.
 | Envoyer aux ~750 abonnés dormants | Base non sollicitée depuis des mois → rebonds à deux chiffres sur un domaine neuf. Ils n'ont pas de ligne `purpose='bon15'`, ils sont hors d'atteinte : ne pas contourner. |
 | Relancer un envoi resté en `unknown` | Ce statut signifie précisément « on ne sait pas si le message est parti ». Un doublon coûte une plainte ; un e-mail manquant ne coûte rien. |
 | Toucher au compte Resend ou à `send.myselfmonart.com` | C'est le canal du studio. Il reste isolé — et c'est par lui que passent les **alertes** de ce dispositif, pour qu'elles survivent à une panne de SES. |
+
+
+---
+
+## 7. Mention postale : volontairement absente
+
+Le marchand a choisi de ne pas afficher son adresse postale en pied d'e-mail.
+`NEWSLETTER_POSTAL_ADDRESS` reste vide, et la ligne n'est simplement pas rendue.
+
+**C'est tenable en Europe.** Le brief la présentait comme une obligation légale ; c'est
+inexact. L'art. L34-5 du CPCE et la directive e-commerce exigent que l'expéditeur soit
+clairement identifiable et qu'un moyen de s'opposer existe — assurés ici par le nom
+d'expéditeur, l'adresse de contact en pied, le rappel du contexte de collecte et le lien de
+désabonnement. Aucun texte européen n'impose une adresse postale dans un e-mail commercial.
+
+**⚠️ La règle change aux États-Unis.** Le CAN-SPAM Act exige une adresse postale physique
+valide dès qu'un destinataire est américain, quelle que soit la localisation de l'expéditeur.
+La séquence ne cible aujourd'hui que l'Europe (fr/en/de/es/nl), mais l'encart est ouvert à
+tous : si un client américain s'inscrit, l'e-mail qu'il reçoit n'est pas conforme. Une boîte
+postale suffit à régler la question — poser `NEWSLETTER_POSTAL_ADDRESS` et redémarrer, sans
+rien changer au code.
+
+Effet secondaire à connaître : plusieurs filtres antispam considèrent la présence d'une
+adresse postale comme un signal positif. Son absence ne bloque rien, mais elle retire un point
+d'appui sur un domaine d'envoi neuf.

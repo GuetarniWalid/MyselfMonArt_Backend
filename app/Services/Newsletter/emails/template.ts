@@ -40,7 +40,19 @@ export interface RenderInput {
   unsubscribeUrl: string
   contactEmail: string
   /** Mention postale complète de l'expéditeur (obligation légale). */
-  postalAddress: string
+  /**
+   * Mention postale de l'expéditeur, en pied d'e-mail. VIDE = la ligne n'apparaît pas.
+   *
+   * Contrairement à ce que laissait entendre le brief, ce n'est PAS une obligation légale en
+   * Europe : l'art. L34-5 du CPCE et la directive e-commerce exigent que l'expéditeur soit
+   * clairement identifiable et qu'une adresse de contact permette de s'opposer — c'est déjà
+   * assuré par le nom d'expéditeur, l'adresse de contact et le lien de désabonnement.
+   *
+   * ⚠️ La règle change hors d'Europe : le CAN-SPAM Act américain, lui, exige une adresse
+   * postale physique dès qu'un destinataire est aux États-Unis. À renseigner si la séquence
+   * s'ouvre un jour à ce marché.
+   */
+  postalAddress?: string
 }
 
 export interface RenderedEmail {
@@ -223,7 +235,11 @@ export function renderNewsletterEmail(input: RenderInput): RenderedEmail {
         ${col(
           `<p style="margin:0 0 12px 0; font:400 12px/1.6 ${BODY}; color:${TERRA_DEEP};">${esc(context)}</p>
            <p style="margin:0 0 12px 0; font:400 12px/1.6 ${BODY}; color:${TERRA_DEEP};">${esc(contact)}</p>
-           <p style="margin:0 0 14px 0; font:400 12px/1.6 ${BODY}; color:${TERRA_DEEP};">${esc(input.postalAddress)}</p>
+           ${
+             input.postalAddress
+               ? `<p style="margin:0 0 14px 0; font:400 12px/1.6 ${BODY}; color:${TERRA_DEEP};">${esc(input.postalAddress)}</p>`
+               : ''
+           }
            <p style="margin:0; font:400 13px/1.6 ${BODY};">
              <a href="${escUrl(input.unsubscribeUrl)}" style="color:${TERRA_DEEP}; text-decoration:underline;">${esc(strings.footer.unsubscribe)}</a>
            </p>`,
@@ -255,7 +271,8 @@ export function renderNewsletterEmail(input: RenderInput): RenderedEmail {
     '---',
     context,
     contact,
-    input.postalAddress,
+    // Ligne omise quand la mention postale n'est pas renseignée — pas de ligne vide en pied.
+    ...(input.postalAddress ? [input.postalAddress] : []),
     `${strings.footer.unsubscribe} : ${input.unsubscribeUrl}`,
   ].join('\n')
 

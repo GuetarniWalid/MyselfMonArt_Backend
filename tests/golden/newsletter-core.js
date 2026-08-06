@@ -233,7 +233,6 @@ const BASE = {
   storeUrl: 'https://www.myselfmonart.com',
   unsubscribeUrl: 'https://backend.myselfmonart.com/u/JETON',
   contactEmail: 'contact@myselfmonart.com',
-  postalAddress: 'SAS KINDOPIA, 1 rue Exemple, 75000 Paris',
 }
 
 check('chaque e-mail, dans chaque langue, porte le code et le désabonnement', () => {
@@ -265,8 +264,8 @@ check('chaque e-mail, dans chaque langue, porte le code et le désabonnement', (
         `${locale}/${emailNo} : lien de désabonnement absent de la version texte`
       )
 
-      // Mentions légales obligatoires.
-      assert.ok(out.html.includes('KINDOPIA'), `${locale}/${emailNo} : mention postale absente`)
+      // Identification de l'expéditeur : c'est l'adresse de contact qui l'assure, pas une
+      // adresse postale (non exigée en Europe — décision du marchand de ne pas l'afficher).
       assert.ok(
         out.html.includes(BASE.contactEmail),
         `${locale}/${emailNo} : adresse de contact absente`
@@ -307,6 +306,32 @@ check('le texte injecté est échappé (pas d’injection HTML par le code)', ()
   })
   assert.ok(!out.html.includes('<script>'), 'le code doit être échappé dans le HTML')
   assert.ok(out.html.includes('&lt;script&gt;'))
+})
+
+// --- Mention postale : facultative, et absente par défaut --------------------------------
+// Le marchand a choisi de ne pas afficher son adresse. Ce n'est pas une obligation en Europe
+// (art. L34-5 CPCE : identification de l'expéditeur + moyen de s'opposer, tous deux assurés).
+// ⚠️ Le CAN-SPAM américain l'EXIGE : si la séquence s'ouvre aux États-Unis, il faudra la poser.
+check('sans mention postale : aucune ligne vide, aucun « undefined »', () => {
+  const out = template.renderNewsletterEmail({ ...BASE, emailNo: 1, locale: 'fr' })
+  assert.ok(!/undefined/.test(out.html), 'le HTML ne doit pas contenir « undefined »')
+  assert.ok(!/undefined/.test(out.text), 'le texte ne doit pas contenir « undefined »')
+  assert.ok(!out.text.includes('\n\n\n'), 'pas de trou dans le pied de page texte')
+  // Ce qui identifie l'expéditeur reste bien présent.
+  assert.ok(out.html.includes(BASE.contactEmail))
+  assert.ok(out.html.includes(BASE.unsubscribeUrl))
+})
+
+check('avec mention postale : elle apparaît dans les deux versions', () => {
+  const adresse = 'SAS KINDOPIA, 1 rue Exemple, 75000 Paris'
+  const out = template.renderNewsletterEmail({
+    ...BASE,
+    emailNo: 1,
+    locale: 'fr',
+    postalAddress: adresse,
+  })
+  assert.ok(out.html.includes('KINDOPIA'), 'mention absente du HTML')
+  assert.ok(out.text.includes('KINDOPIA'), 'mention absente de la version texte')
 })
 
 if (failures) {

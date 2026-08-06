@@ -14,7 +14,6 @@ import {
   MAX_STALENESS_DAYS,
   MIN_HOURS_BEFORE_EXPIRY,
   MIN_HOURS_BETWEEN_EMAILS,
-  POSTAL_SENDER,
   PURPOSE,
   SEQUENCE_GAP_DAYS,
   SEQUENCE_LENGTH,
@@ -316,7 +315,10 @@ export default class NewsletterSequence {
       storeUrl: Env.get('STOREFRONT_URL') || 'https://www.myselfmonart.com',
       unsubscribeUrl: this.unsubscribeUrl(subscriber),
       contactEmail: Env.get('NEWSLETTER_MAIL_REPLY_TO') || 'contact@myselfmonart.com',
-      postalAddress: Env.get('NEWSLETTER_POSTAL_ADDRESS') || POSTAL_SENDER,
+      // Vide = pas de ligne d'adresse en pied. Décision du marchand, et légalement tenable en
+      // Europe : l'identification de l'expéditeur est assurée par le nom d'expéditeur,
+      // l'adresse de contact et le lien de désabonnement (cf. RenderInput.postalAddress).
+      postalAddress: (Env.get('NEWSLETTER_POSTAL_ADDRESS') as string | undefined) || '',
     })
 
     const sender = senderAddress()
