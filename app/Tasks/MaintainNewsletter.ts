@@ -3,6 +3,8 @@ import { BaseTask, CronTimeV2 } from 'adonis5-scheduler/build/src/Scheduler/Task
 import Shopify from 'App/Services/Shopify'
 import NewsletterErasure from 'App/Services/Newsletter/Erasure'
 import NewsletterHealth from 'App/Services/Newsletter/Health'
+import NewsletterMarkets from 'App/Services/Newsletter/Markets'
+import NewsletterRates from 'App/Services/Newsletter/Rates'
 
 /**
  * Entretien quotidien de la newsletter. Quatre travaux, du plus au moins urgent.
@@ -28,6 +30,13 @@ export default class MaintainNewsletter extends BaseTask {
 
   public async handle() {
     await this.reconcileWebhooks()
+
+    // Taux de change et table des marchés : rafraîchis ICI pour que le chemin d'inscription
+    // trouve toujours un cache chaud. L'encart doit répondre en moins de 2 secondes — il ne
+    // doit jamais être le premier à découvrir que la BCE est lente. Les deux échouent en
+    // silence utile : le dernier état connu reste en place (cf. `Rates.ts` et `Markets.ts`).
+    await new NewsletterRates().refresh()
+    await new NewsletterMarkets().refresh()
 
     const health = new NewsletterHealth()
 

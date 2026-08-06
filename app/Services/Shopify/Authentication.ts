@@ -247,11 +247,27 @@ export default class Authentication {
   protected apiVersion = Env.get('SHOPIFY_API_VERSION')
   protected accessToken = Env.get('SHOPIFY_ACCESS_TOKEN_SECRET')
   protected client: AxiosInstance
-  private urlGraphQL = `${this.shopUrl}/${this.apiVersion}/graphql.json`
   private costLimiter = ShopifyCostRateLimiter.getInstance() // Shared singleton instance
   private circuitBreaker = new CircuitBreaker()
 
-  constructor() {
+  /**
+   * `apiVersionOverride` permet à un service d'ÉPINGLER sa propre version d'API, sans toucher
+   * à celle de tout le reste du back-end.
+   *
+   * Un seul service s'en sert aujourd'hui — `Discount`, qui a besoin de 2026-07 pour
+   * l'éligibilité par marché (cf. son en-tête). Faire glisser la version GLOBALE pour ce seul
+   * besoin exposerait au passage la publication produit, les traductions et les webhooks à des
+   * changements de rupture qu'aucun test ne couvre ici.
+   *
+   * La valeur attendue a la même forme que `SHOPIFY_API_VERSION` (`admin/api/AAAA-MM`) ; un
+   * simple `AAAA-MM` est accepté et préfixé.
+   */
+  constructor(apiVersionOverride?: string) {
+    if (apiVersionOverride) {
+      const trimmed = apiVersionOverride.replace(/^\/+|\/+$/g, '')
+      this.apiVersion = trimmed.startsWith('admin/api/') ? trimmed : `admin/api/${trimmed}`
+    }
+
     this.client = axios.create({
       headers: {
         'Content-Type': 'application/json',
@@ -259,6 +275,15 @@ export default class Authentication {
       },
       baseURL: `${this.shopUrl}/${this.apiVersion}`,
     })
+  }
+
+  /**
+   * Construit à la LECTURE et non à l'initialisation du champ : les initialiseurs de champs de
+   * la classe de base s'exécutent avant le corps du constructeur, donc une URL figée là
+   * ignorerait toujours `apiVersionOverride`.
+   */
+  private get urlGraphQL(): string {
+    return `${this.shopUrl}/${this.apiVersion}/graphql.json`
   }
 
   private async retryWithBackoff<T>(

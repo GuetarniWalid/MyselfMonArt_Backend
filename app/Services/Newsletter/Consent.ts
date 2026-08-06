@@ -7,7 +7,7 @@ import NewsletterSubscriber from 'App/Models/NewsletterSubscriber'
 import NewsletterSuppression from 'App/Models/NewsletterSuppression'
 import type { ConsentEventKind } from 'App/Models/NewsletterConsentEvent'
 import type { SuppressionReason } from 'App/Models/NewsletterSuppression'
-import { PURPOSE, SUPPRESSION_RETENTION_YEARS } from './config'
+import { CUSTOMER_TAG, PURPOSE, SUPPRESSION_RETENTION_YEARS } from './config'
 
 /**
  * Consentement : la PREUVE (locale, immuable), la PROPAGATION vers Shopify, et la LISTE
@@ -119,6 +119,7 @@ export default class NewsletterConsent {
       }
 
       subscriber.shopifyCustomerId = customerId
+      await this.tagSource(customerId)
       return await this.markSynced(subscriber)
     } catch (error) {
       return await this.markSyncFailed(subscriber, this.describe(error))
@@ -169,6 +170,38 @@ export default class NewsletterConsent {
       return await this.markSynced(subscriber)
     } catch (error) {
       return await this.markSyncFailed(subscriber, this.describe(error))
+    }
+  }
+
+  /**
+   * Pose l'étiquette de SOURCE sur la fiche client — « d'où vient cet inscrit ? ».
+   *
+   * ⛔ Par une SECONDE mutation (`tagsAdd`), jamais via `tags` dans `customerSet` : ce champ
+   * REMPLACE la liste au lieu de l'enrichir, et l'effacerait chez un client déjà existant.
+   *
+   * ⚠️ NE FAIT JAMAIS ÉCHOUER LA SYNCHRONISATION. Sans l'étiquette, le marchand perd la
+   * possibilité de filtrer ses inscrits par source dans son admin — c'est un manque de confort,
+   * pas une atteinte au consentement. Le faire remonter en échec relancerait `pushSubscribed`
+   * en boucle, donc réécrirait `SUBSCRIBED` sans raison.
+   */
+  private async tagSource(customerId: string): Promise<void> {
+    try {
+      const tagged = await this.shopify.customer.addTags(customerId, [CUSTOMER_TAG])
+      if (!tagged.ok) {
+        Logger.warn(
+          'newsletter: étiquette %s non posée sur %s — %s',
+          CUSTOMER_TAG,
+          customerId,
+          tagged.userErrors.join(' | ') || 'refus'
+        )
+      }
+    } catch (error) {
+      Logger.warn(
+        'newsletter: étiquette %s en échec sur %s — %s',
+        CUSTOMER_TAG,
+        customerId,
+        (error as any)?.message ?? error
+      )
     }
   }
 

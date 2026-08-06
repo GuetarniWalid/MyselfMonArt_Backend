@@ -54,6 +54,9 @@ const identity = load('app/Services/Newsletter/identity.ts')
 const config = load('app/Services/Newsletter/config.ts')
 const template = load('app/Services/Newsletter/emails/template.ts')
 const strings = load('app/Services/Newsletter/emails/strings.ts')
+const expiry = load('app/Services/Newsletter/expiry.ts')
+const currency = load('app/Services/Newsletter/currency.ts')
+const { DateTime } = require('luxon')
 
 let failures = 0
 function check(label, fn) {
@@ -164,17 +167,222 @@ check('code : réellement varié (pas de générateur figé)', () => {
 // --- Constantes du dispositif -------------------------------------------------------
 check('constantes : les invariants qui protègent le compte d’envoi', () => {
   assert.strictEqual(config.PURPOSE, 'bon15', 'le marqueur de finalité protège les dormants')
-  assert.strictEqual(config.VOUCHER_VALIDITY_DAYS, 14)
+  assert.strictEqual(config.VOUCHER_VALIDITY_DAYS, 7)
   assert.strictEqual(config.SEQUENCE_LENGTH, 3)
-  assert.deepStrictEqual([...config.SEQUENCE_GAP_DAYS], [3, 4], 'E2 à J+3, E3 à J+7')
+  assert.deepStrictEqual([...config.SEQUENCE_GAP_DAYS], [3, 3], 'E2 à J+3, E3 à J+6')
   assert.ok(config.MIN_HOURS_BETWEEN_EMAILS >= 24, 'plancher absolu entre deux e-mails')
-  assert.ok(config.MIN_HOURS_BEFORE_EXPIRY >= 72, 'garde des 72 h avant expiration du bon')
   // Liste BLANCHE : une valeur inconnue de l'énuméré Shopify ne doit jamais autoriser un envoi.
   assert.deepStrictEqual(
     [...config.SUBSCRIBABLE_PRIOR_STATES],
     ['NOT_SUBSCRIBED', 'PENDING', 'SUBSCRIBED']
   )
   assert.ok(!config.SUBSCRIBABLE_PRIOR_STATES.includes('UNSUBSCRIBED'))
+})
+
+// ⛔ LE LIEN LE PLUS FRAGILE DU DISPOSITIF, et celui qui casse EN SILENCE.
+//
+// E3 dit « votre bon s'arrête demain ». Trois valeurs doivent rester cohérentes pour que ce
+// soit vrai : la validité du bon (7 j), la date d'envoi de E3 (J+6), et la marge minimale
+// exigée avant expiration. Si l'une bouge sans les autres, soit E3 annonce une échéance fausse
+// — ce qui fait cliquer sur « signaler comme spam » —, soit il ne part JAMAIS, et rien dans les
+// compteurs ne ressemble à une panne.
+check('E3 part la veille de l’échéance annoncée, et la garde d’expiration le laisse passer', () => {
+  const [gap1, gap2] = config.SEQUENCE_GAP_DAYS
+  const e3Day = gap1 + gap2
+  assert.strictEqual(
+    e3Day,
+    config.VOUCHER_VALIDITY_DAYS - 1,
+    'E3 doit tomber la VEILLE de la date annoncée, sinon « demain » est faux'
+  )
+
+  // Marge réellement disponible quand E3 part, dans le pire cas : le bon s'arrête au lendemain
+  // de la date annoncée à 11:59:59 UTC, donc au minimum (7 - 6) jours + ~11 h après E3, moins
+  // les 2 h du décalage de Paris en été.
+  const worstCaseHoursLeft = 24 + 11 - 2
+  assert.ok(
+    config.minHoursBeforeExpiry(3) < worstCaseHoursLeft,
+    `la garde de E3 (${config.minHoursBeforeExpiry(3)} h) doit rester sous les ${worstCaseHoursLeft} h ` +
+      'disponibles, sinon E3 est sauté à chaque fois'
+  )
+  // E2 part à J+3 : il lui reste plus de 100 h, la garde stricte y est tenable.
+  assert.ok(config.minHoursBeforeExpiry(2) >= 72, 'E2 garde la marge de 72 h')
+})
+
+// --- Fenêtre de validité du bon ------------------------------------------------------
+//
+// Deux instants distincts, et les confondre est le bug que ces tests existent pour empêcher :
+// la DATE ANNONCÉE (J+7, en Europe/Paris, la seule que le client lit) et l'INSTANT DE FIN posé
+// chez Shopify (11:59:59 UTC le LENDEMAIN de cette date).
+
+check('la date annoncée tombe à J+7, calculée en Europe/Paris', () => {
+  // Le cas du brief : inscription le 6 août 2026 à 14 h 11, heure de Paris.
+  const w = expiry.voucherWindow(DateTime.fromISO('2026-08-06T14:11:00', { zone: 'Europe/Paris' }))
+  assert.strictEqual(w.announcedDate, '2026-08-13', 'inscription le 6 août -> annoncé le 13')
+  assert.strictEqual(w.endsAtIso, '2026-08-14T11:59:59Z', 'fin au LENDEMAIN, à 11:59:59 UTC')
+})
+
+check('l’instant de fin est toujours 11:59:59 UTC, le lendemain de la date annoncée', () => {
+  // Balayage sur une année entière, à des heures qui encadrent les deux minuits (Paris et UTC).
+  for (let day = 0; day < 365; day++) {
+    for (const heure of ['00:05', '12:00', '23:55']) {
+      const signup = DateTime.fromISO(`2026-01-01T${heure}`, { zone: 'Europe/Paris' }).plus({
+        days: day,
+      })
+      const w = expiry.voucherWindow(signup)
+
+      // La date annoncée est bien J+7 dans le CALENDRIER de Paris.
+      assert.strictEqual(
+        w.announcedDate,
+        signup.plus({ days: 7 }).toFormat('yyyy-MM-dd'),
+        `date annoncée fausse pour ${signup.toISO()}`
+      )
+
+      // Et la fin est le lendemain de cette date, à 11:59:59 UTC — pile.
+      const end = DateTime.fromISO(w.endsAtIso, { zone: 'utc' })
+      assert.strictEqual(end.hour, 11, `heure de fin fausse pour ${signup.toISO()}`)
+      assert.strictEqual(end.minute, 59)
+      assert.strictEqual(end.second, 59)
+      assert.strictEqual(
+        end.toFormat('yyyy-MM-dd'),
+        DateTime.fromISO(`${w.announcedDate}T00:00:00Z`, { zone: 'utc' })
+          .plus({ days: 1 })
+          .toFormat('yyyy-MM-dd'),
+        `la fin doit tomber le LENDEMAIN de la date annoncée (${signup.toISO()})`
+      )
+    }
+  }
+})
+
+// ⛔ Le passage à l'heure d'hiver est exactement l'endroit où un « UTC+2 » codé en dur ferait
+// dériver la date annoncée d'un jour, sur les inscriptions du soir, pendant tout l'hiver.
+check('le changement d’heure ne décale pas la date annoncée', () => {
+  // 2026-10-25 : la France repasse à UTC+1. Une inscription à 23 h 30 le 24 octobre est encore
+  // le 24 à Paris, alors qu'elle est déjà le 24 à 21:30 UTC — et le 25 dans un « UTC+2 » figé.
+  const veille = DateTime.fromISO('2026-10-24T23:30:00', { zone: 'Europe/Paris' })
+  assert.strictEqual(expiry.voucherWindow(veille).announcedDate, '2026-10-31')
+
+  // Et une inscription qui ENJAMBE le changement : 7 jours calendaires restent 7 jours.
+  const avant = DateTime.fromISO('2026-10-22T23:30:00', { zone: 'Europe/Paris' })
+  assert.strictEqual(expiry.voucherWindow(avant).announcedDate, '2026-10-29')
+})
+
+check(
+  'la date annoncée se reconstruit depuis l’instant de fin (lignes d’avant la correction)',
+  () => {
+    const w = expiry.voucherWindow(
+      DateTime.fromISO('2026-08-06T14:11:00', { zone: 'Europe/Paris' })
+    )
+    assert.strictEqual(expiry.announcedDateFromEnd(w.endsTs), w.announcedDate)
+  }
+)
+
+// ⛔ La promesse « valable jusqu'au 13 août » doit rester vraie dans TOUS les fuseaux ouverts à
+// la vente. C'est toute la raison du décalage à 11:59:59 UTC : le bon doit encore vivre à
+// 23 h 59 heure locale du dernier client, où qu'il soit.
+check('le bon vit encore à la fin de la journée annoncée, de Honolulu à Helsinki', () => {
+  const w = expiry.voucherWindow(DateTime.fromISO('2026-08-06T14:11:00', { zone: 'Europe/Paris' }))
+  const fuseaux = [
+    ['Pacific/Honolulu', 'Honolulu'],
+    ['America/Los_Angeles', 'Los Angeles'],
+    ['America/Toronto', 'Toronto'],
+    ['Europe/London', 'Londres'],
+    ['Europe/Paris', 'Paris'],
+    ['Europe/Zurich', 'Zurich'],
+    ['Europe/Helsinki', 'Helsinki'],
+  ]
+  for (const [zone, nom] of fuseaux) {
+    const dernierInstant = DateTime.fromISO(`${w.announcedDate}T23:59:59`, { zone })
+    assert.ok(
+      dernierInstant.toSeconds() < w.endsTs,
+      `le bon serait déjà mort à ${nom} alors qu’on lui annonce le ${w.announcedDate}`
+    )
+  }
+})
+
+// --- Devises --------------------------------------------------------------------------
+
+check('la devise ne se déduit jamais de la langue', () => {
+  assert.strictEqual(currency.resolveCurrency('USD'), 'USD')
+  assert.strictEqual(currency.resolveCurrency('usd'), 'USD')
+  // Devise absente : on tombe sur le PAYS, jamais sur la langue.
+  assert.strictEqual(currency.resolveCurrency(undefined, 'US'), 'USD')
+  assert.strictEqual(currency.resolveCurrency('', 'CH'), 'CHF')
+  assert.strictEqual(currency.resolveCurrency(null, 'GB'), 'GBP')
+  assert.strictEqual(currency.resolveCurrency(null, 'CA'), 'CAD')
+  // Un Allemand paie en euros, un Suisse peut lire en français et payer en francs.
+  assert.strictEqual(currency.resolveCurrency(undefined, 'DE'), 'EUR')
+  assert.strictEqual(currency.resolveCurrency('CHF', 'FR'), 'CHF')
+  // Devise inconnue, pays inconnu : euro, jamais un échec.
+  assert.strictEqual(currency.resolveCurrency('JPY', 'JP'), 'EUR')
+  assert.strictEqual(currency.resolveCurrency(undefined, undefined), 'EUR')
+})
+
+// ⛔ LE SENS DE LA MARGE EST TOUT L'INTÉRÊT DU CALCUL, et il est ASYMÉTRIQUE :
+// le client reçoit toujours AU MOINS ce qui lui a été promis, et n'est jamais refusé sur un
+// seuil qu'il croyait atteint. Un client qui reçoit 15,31 $ au lieu de 15 $ ne se plaint
+// jamais ; un client qui reçoit 14,96 $ écrit au service client.
+check('le montant posé dépasse toujours la cible, le seuil reste toujours en dessous', () => {
+  const taux = { USD: 1.1542, CAD: 1.6156, CHF: 0.9346, GBP: 0.85705 }
+
+  for (const [devise, tauxDuJour] of Object.entries(taux)) {
+    const offre = currency.offerFor(devise)
+    const posé = currency.eurAmountsFor(devise, tauxDuJour)
+
+    // Reconverti au taux du jour, le client voit AU MOINS sa cible ronde…
+    assert.ok(
+      posé.amount * tauxDuJour >= offre.amount,
+      `${devise} : ${(posé.amount * tauxDuJour).toFixed(2)} < ${offre.amount} promis`
+    )
+    // …et le seuil exigé reste SOUS le seuil annoncé.
+    assert.ok(
+      posé.threshold * tauxDuJour <= offre.threshold,
+      `${devise} : seuil ${(posé.threshold * tauxDuJour).toFixed(2)} > ${offre.threshold} annoncé`
+    )
+
+    // La marge de 2 % absorbe la dérive du taux sur les 7 jours de validité — et l'écart entre
+    // le taux BCE et celui que Shopify applique réellement au paiement. On vérifie qu'elle
+    // tient encore après une variation d'un point et demi dans le sens défavorable.
+    const dérivé = tauxDuJour * 0.985
+    assert.ok(
+      posé.amount * dérivé >= offre.amount,
+      `${devise} : la marge ne survit pas à une dérive de 1,5 % du taux`
+    )
+  }
+})
+
+check('l’euro ne passe par aucun calcul : 15 € et 80 € en dur', () => {
+  const posé = currency.eurAmountsFor('EUR', 1)
+  assert.strictEqual(posé.amount, 15)
+  assert.strictEqual(posé.threshold, 80)
+  // Et même avec un taux absurde : l'euro est la devise de la boutique, il ne se convertit pas.
+  assert.deepStrictEqual(currency.eurAmountsFor('EUR', 42), { amount: 15, threshold: 80 })
+})
+
+check('un taux absent ou absurde ne fait jamais échouer un calcul', () => {
+  for (const mauvais of [0, -1, NaN, Infinity, undefined, null]) {
+    const posé = currency.eurAmountsFor('USD', mauvais)
+    assert.ok(Number.isFinite(posé.amount) && posé.amount > 0, `montant invalide pour ${mauvais}`)
+    assert.ok(Number.isFinite(posé.threshold) && posé.threshold > 0)
+  }
+})
+
+check('les montants s’écrivent avec une devise non ambiguë', () => {
+  assert.strictEqual(currency.moneyLabel(15, 'EUR', 'fr'), '15 €')
+  assert.strictEqual(currency.moneyLabel(15, 'USD', 'en'), '15 $')
+  // « 20 $ » seul laisserait un lecteur allemand deviner de quel dollar il s'agit.
+  assert.strictEqual(currency.moneyLabel(20, 'CAD', 'de'), '20 $ CA')
+  assert.strictEqual(currency.moneyLabel(14, 'CHF', 'fr'), '14 CHF')
+  assert.strictEqual(currency.moneyLabel(13, 'GBP', 'en'), '13 £')
+})
+
+check('chaque devise servie a une offre, et les cibles sont bien rondes', () => {
+  for (const devise of currency.VOUCHER_CURRENCIES) {
+    const offre = currency.offerFor(devise)
+    assert.ok(Number.isInteger(offre.amount), `${devise} : montant non rond`)
+    assert.ok(Number.isInteger(offre.threshold), `${devise} : seuil non rond`)
+    assert.ok(offre.threshold > offre.amount, `${devise} : seuil sous le montant du bon`)
+    assert.ok(currency.FALLBACK_RATES[devise] > 0, `${devise} : pas de taux de repli à froid`)
+  }
 })
 
 // --- Traductions --------------------------------------------------------------------
@@ -226,10 +434,11 @@ check('liens : le français sans préfixe, les autres avec', () => {
 // --- Rendu des e-mails --------------------------------------------------------------
 const BASE = {
   code: 'MERCI-A7F3K2',
-  expiresTs: 1786000000,
+  announcedDate: '2026-08-06',
   signupTs: 1784800000,
-  amountEur: 15,
-  minSubtotalEur: 80,
+  amount: 15,
+  threshold: 80,
+  currency: 'EUR',
   storeUrl: 'https://www.myselfmonart.com',
   unsubscribeUrl: 'https://backend.myselfmonart.com/u/JETON',
   contactEmail: 'contact@myselfmonart.com',
@@ -271,11 +480,16 @@ check('chaque e-mail, dans chaque langue, porte le code et le désabonnement', (
         `${locale}/${emailNo} : adresse de contact absente`
       )
 
-      // Le lien boutique doit porter le préfixe de langue.
-      const expected = `https://www.myselfmonart.com${template.localePath(locale)}/collections/all`
+      // Le bouton APPLIQUE le code, et son chemin de retour porte le préfixe de langue :
+      // sans lui, un Néerlandais atterrit sur une page française avec son code appliqué.
+      const expected = `https://www.myselfmonart.com/discount/MERCI-A7F3K2?redirect=${template.localePath(locale)}/collections/all`
       assert.ok(
         out.html.includes(expected),
-        `${locale}/${emailNo} : lien non localisé (${expected})`
+        `${locale}/${emailNo} : lien d’application non localisé (${expected})`
+      )
+      assert.ok(
+        out.text.includes(expected),
+        `${locale}/${emailNo} : lien absent de la version texte`
       )
     }
   }
@@ -285,8 +499,20 @@ check('le contexte de collecte rappelle la date d’inscription', () => {
   const out = template.renderNewsletterEmail({ ...BASE, emailNo: 1, locale: 'fr' })
   // 1784800000 -> 23/07 en Europe/Paris
   assert.ok(out.html.includes('23/07'), 'la date d’inscription doit figurer au pied de page')
-  // Et l'échéance du bon, en toutes lettres, dans le corps.
-  assert.ok(out.html.includes('6 août 2026'), 'la date d’expiration doit être lisible')
+  // Et l'échéance ANNONCÉE, en toutes lettres, dans le corps.
+  assert.ok(out.html.includes('6 août 2026'), 'la date annoncée doit être lisible')
+})
+
+// ⛔ « 23 h 59 » ne serait vrai qu'à Paris. Le bon est ouvert aux États-Unis, au Canada, à la
+// Suisse et au Royaume-Uni : la seule promesse tenable partout est une DATE NUE.
+check('l’échéance s’affiche sans la moindre heure', () => {
+  for (const locale of config.LOCALES) {
+    const out = template.renderNewsletterEmail({ ...BASE, emailNo: 3, locale })
+    assert.ok(
+      !/\d{1,2}\s?[:h]\s?\d{2}/.test(out.text),
+      `${locale} : une heure s’est glissée dans l’e-mail`
+    )
+  }
 })
 
 check('les montants et dates sont formatés par langue', () => {
@@ -295,6 +521,40 @@ check('les montants et dates sont formatés par langue', () => {
   assert.notStrictEqual(fr.subject, de.subject, 'les objets doivent différer par langue')
   // Format allemand : « 15 € » et non « €15 ».
   assert.ok(/15/.test(de.html))
+})
+
+// ⛔ Le montant affiché est celui PROMIS dans la devise du visiteur, jamais le montant en euros
+// posé sur le code. Un Américain à qui l'encart a promis 15 $ doit lire « 15 $ » dans ses trois
+// e-mails — pas « 13,26 € », pas « 15 € », et surtout pas un montant recalculé six jours plus
+// tard à un autre taux.
+check('chaque devise affiche sa cible ronde, dans les trois e-mails', () => {
+  const attendus = [
+    ['EUR', 15, 80, '15 €', '80 €'],
+    ['USD', 15, 90, '15 $', '90 $'],
+    ['CAD', 20, 130, '20 $ CA', '130 $ CA'],
+    ['CHF', 14, 75, '14 CHF', '75 CHF'],
+    ['GBP', 13, 70, '13 £', '70 £'],
+  ]
+  for (const [currency, amount, threshold, labelAmount, labelThreshold] of attendus) {
+    for (const emailNo of [1, 2, 3]) {
+      const out = template.renderNewsletterEmail({
+        ...BASE,
+        emailNo,
+        locale: 'fr',
+        currency,
+        amount,
+        threshold,
+      })
+      assert.ok(
+        out.html.includes(labelAmount),
+        `${currency}/${emailNo} : « ${labelAmount} » absent du HTML`
+      )
+      assert.ok(
+        out.html.includes(labelThreshold),
+        `${currency}/${emailNo} : seuil « ${labelThreshold} » absent du HTML`
+      )
+    }
+  }
 })
 
 check('le texte injecté est échappé (pas d’injection HTML par le code)', () => {

@@ -204,16 +204,51 @@ volume, Google Postmaster Tools restera vide.
 
 **Inscription** (`POST /api/newsletter/subscribe`) — validation, pot de miel, liste repoussoir,
 **lecture du consentement Shopify AVANT toute écriture**, preuve horodatée, code nominatif,
-`customerSet` + consentement, réponse avec le code, E1 armé.
+`customerSet` + consentement + étiquette `promo-popup` (par `tagsAdd`, jamais par `customerSet`),
+réponse avec le code, E1 armé.
 
-**Le code** — `MERCI-` + 6 caractères sans ambiguïté (ni I, ni O, ni 0, ni 1), 15 € dès 80 €,
-`usageLimit: 1`, `combinesWith` tout à `false`, 14 jours. Relu après création. **Son usage est
-le signal de conversion**, même pour un achat en invité sous une autre adresse.
+Le thème transmet **trois axes indépendants** : `locale` (langue des e-mails), `currency`
+(montant du bon) et `country` (repli si la devise manque). ⚠️ La devise ne se déduit **pas** de
+la langue : un Allemand lit en allemand et paie en euros, un Suisse peut lire en français et
+payer en francs.
 
-**La séquence** — E1 immédiat, E2 à J+3, E3 à J+7, cron toutes les 15 min. Six règles avant
+**Le code** — `MERCI-` + 6 caractères sans ambiguïté (ni I, ni O, ni 0, ni 1), `usageLimit: 1`,
+`combinesWith` tout à `false`, **7 jours**. Relu après création. **Son usage est le signal de
+conversion**, même pour un achat en invité sous une autre adresse.
+
+**Le montant est rond dans chaque devise.** Un code à montant fixe est toujours libellé dans la
+devise de la boutique (`DiscountAmountInput` n'a pas de champ de devise) : on pose donc un
+montant **en euros** calibré, au taux BCE du jour et avec 2 % de marge, pour tomber sur la cible
+ronde du visiteur. Le code est **restreint aux marchés de sa devise** (`context.markets`).
+
+| Devise | Promis | Seuil | Marchés |
+|---|---|---|---|
+| EUR | 15 € | 80 € | France · europ · Allemagne · Espagne |
+| USD | 15 $ | 90 $ | USA |
+| CAD | 20 $ CA | 130 $ CA | Canada |
+| CHF | 14 CHF | 75 CHF | Suisse |
+| GBP | 13 £ | 70 £ | angleterre |
+
+La marge de 2 % arrondit **vers le haut** sur le montant et **vers le bas** sur le seuil : le
+client reçoit toujours au moins ce qui lui a été promis, et n'est jamais refusé sur un seuil
+qu'il croyait atteint. La liste des marchés est construite **dynamiquement** depuis l'API — une
+liste codée en dur ferait sortir du dispositif, en silence, tout marché créé plus tard.
+
+**Les dates.** La **date annoncée** est J+7 en Europe/Paris, et c'est la seule que le client
+lit — sans heure, jamais. Le code, lui, s'arrête à **11:59:59 UTC le lendemain** : une
+expiration calée sur 23 h 59 heure de Paris tuerait le bon à 14 h 59 pour un client de Los
+Angeles, alors qu'on lui annonce « jusqu'au 13 août inclus ». 11:59:59 UTC, c'est la fin de la
+journée annoncée dans le dernier fuseau habité.
+
+**La séquence** — E1 immédiat, E2 à J+3, E3 à J+6, cron toutes les 15 min. Six règles avant
 chaque envoi, un plancher absolu de 24 h entre deux e-mails, et des échéances **réancrées sur
 l'envoi réel** (c'est ce qui empêche un rattrapage d'après-panne d'expédier les trois e-mails
 en trois quarts d'heure).
+
+⚠️ **E3 à J+6 et la validité de 7 jours sont LIÉS** : à J+7, E3 annoncerait « vos 15 € s'arrêtent
+demain » le jour même de l'expiration. Si l'une des deux valeurs bouge, l'autre doit bouger — et
+la garde d'expiration de E3 (`MIN_HOURS_BEFORE_EXPIRY[2]`) avec elles. Un test doré verrouille
+ce triangle.
 
 **Le désabonnement** — `GET /u/:jeton` affiche, **n'agit pas** (les antispams récupèrent les URL
 des en-têtes automatiquement) ; `POST /u/:jeton` désabonne, idempotent. Blocage **local d'abord**,
@@ -233,6 +268,9 @@ Shopify ne sont pas souscriptibles pour une app créée depuis l'admin.
 | Envoyer aux ~750 abonnés dormants | Base non sollicitée depuis des mois → rebonds à deux chiffres sur un domaine neuf. Ils n'ont pas de ligne `purpose='bon15'`, ils sont hors d'atteinte : ne pas contourner. |
 | Relancer un envoi resté en `unknown` | Ce statut signifie précisément « on ne sait pas si le message est parti ». Un doublon coûte une plainte ; un e-mail manquant ne coûte rien. |
 | Toucher au compte Resend ou à `send.myselfmonart.com` | C'est le canal du studio. Il reste isolé — et c'est par lui que passent les **alertes** de ce dispositif, pour qu'elles survivent à une panne de SES. |
+| Rétrograder `DISCOUNT_API_VERSION` sous **2026-07** (`app/Services/Shopify/Discount.ts`) | `context.markets` n'existe qu'à partir de 2026-07, et un code déjà ciblé devient **invisible en lecture** sur une version antérieure. Vérifié le 2026-08-06 : le même code relu en 2025-10 renvoie `null`. Conséquence : la relecture d'après-création échouerait sur **chaque** bon, aucun code ne serait remis au client, et les journaux ne diraient que « introuvable après création ». |
+| Mettre `tags` dans `customerSet` | Le champ **remplace** la liste au lieu de l'enrichir : la segmentation d'un client déjà existant serait effacée. L'étiquette `promo-popup` se pose par une seconde mutation `tagsAdd`. |
+| Utiliser `context.customers` sur un bon | Les types d'éligibilité **s'excluent mutuellement** : rattacher le code à une fiche client rendrait le ciblage par marché impossible. Le caractère nominatif vient de la chaîne aléatoire et de `usageLimit: 1`, jamais d'un rattachement client. |
 
 
 ---

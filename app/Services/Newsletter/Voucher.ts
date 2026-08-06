@@ -2,14 +2,27 @@ import Logger from '@ioc:Adonis/Core/Logger'
 import { DateTime } from 'luxon'
 import Shopify from 'App/Services/Shopify'
 import { generateVoucherCode } from './identity'
-import { VOUCHER_AMOUNT, VOUCHER_MIN_SUBTOTAL, VOUCHER_VALIDITY_DAYS } from './config'
+import { voucherWindow } from './expiry'
+import { eurAmountsFor, offerFor } from './currency'
+import NewsletterMarkets from './Markets'
+import NewsletterRates from './Rates'
+import type { VoucherCurrency } from './currency'
 
 export interface IssuedVoucher {
   code: string
   discountGid: string
-  /** Instant de fin, en secondes epoch — jamais un TIMESTAMP (cf. `promo_rotations`). */
+  /** Instant de fin RÉEL posé chez Shopify, en secondes epoch — c'est lui qui décide. */
   expiresTs: number
   expiresAt: DateTime
+  /** Date ANNONCÉE au client (`YYYY-MM-DD`) — la seule qu'il lira. */
+  announcedDate: string
+  /** Devise du bon, et ce que le client voit promis dans cette devise. */
+  currency: VoucherCurrency
+  amount: number
+  threshold: number
+  /** Ce qui a réellement été posé sur le code, en euros. Pour l'audit et le journal. */
+  amountEur: number
+  thresholdEur: number
 }
 
 /** Nombre de tirages avant d'abandonner. Une collision est déjà improbable ; cinq, jamais. */
@@ -40,14 +53,34 @@ const MAX_ATTEMPTS = 5
  */
 export default class NewsletterVoucher {
   private shopify = new Shopify()
+  private rates = new NewsletterRates()
+  private markets = new NewsletterMarkets()
 
   /**
    * Crée le bon d'un inscrit. Lève si la remise n'a pas pu être CONFIRMÉE par relecture —
    * l'appelant ne doit jamais annoncer un code qu'il n'a pas vu exister.
+   *
+   * Le montant posé est EN EUROS (devise de la boutique, seule que `DiscountAmountInput` sache
+   * exprimer), mais CALIBRÉ pour tomber sur la cible ronde de la devise du visiteur, et le code
+   * est RESTREINT aux marchés de cette devise. Les deux vont ensemble : un montant calibré sans
+   * restriction serait utilisable depuis n'importe quel marché.
    */
-  public async issue(subscriberRef: string): Promise<IssuedVoucher> {
-    const startsAt = DateTime.now()
-    const endsAt = startsAt.plus({ days: VOUCHER_VALIDITY_DAYS })
+  public async issue(
+    subscriberRef: string,
+    currency: VoucherCurrency,
+    signupAt: DateTime = DateTime.now()
+  ): Promise<IssuedVoucher> {
+    const window = voucherWindow(signupAt)
+    const offer = offerFor(currency)
+
+    // Le taux ne fait JAMAIS échouer une inscription : `rateFor` retombe sur le dernier taux
+    // connu, puis sur la table à froid (cf. `Rates.ts`).
+    const rate = await this.rates.rateFor(currency)
+    const eur = eurAmountsFor(currency, rate)
+
+    // Le ciblage, lui, est bloquant : mieux vaut ne pas émettre de bon que d'en émettre un
+    // utilisable depuis un marché pour lequel il n'est pas calibré.
+    const marketIds = await this.markets.idsFor(currency)
 
     let lastError = ''
 
@@ -63,15 +96,21 @@ export default class NewsletterVoucher {
       }
 
       const created = await this.shopify.discount.createBasicCodeDiscount({
-        title: `BON15-${subscriberRef}`,
+        title: `BON15-${subscriberRef}-${currency}`,
         code,
-        startsAt: startsAt.toISO({ suppressMilliseconds: true })!,
-        endsAt: endsAt.toISO({ suppressMilliseconds: true })!,
-        amount: VOUCHER_AMOUNT,
-        minimumSubtotal: VOUCHER_MIN_SUBTOTAL,
+        startsAt: signupAt.toISO({ suppressMilliseconds: true })!,
+        // ⛔ Fin au LENDEMAIN de la date annoncée, à 11:59:59 UTC — pas à l'heure de création,
+        // et pas 23 h 59 heure de Paris. Voir `expiry.ts` : c'est ce qui rend la promesse
+        // « valable jusqu'au 13 août » vraie de Honolulu à Helsinki.
+        endsAt: window.endsAtIso,
+        amount: eur.amount.toFixed(2),
+        minimumSubtotal: eur.threshold.toFixed(2),
         appliesOncePerCustomer: true,
         // ⛔ Le quota TOTAL, celui qui rend « une seule fois » infalsifiable.
         usageLimit: 1,
+        // ⛔ Restreint aux marchés de la devise : sans ça, le code calibré pour l'euro
+        // fonctionnerait aux États-Unis.
+        marketIds,
       })
 
       if (created.userErrors.length) {
@@ -93,15 +132,52 @@ export default class NewsletterVoucher {
         continue
       }
 
-      // La date de fin retenue est celle que SHOPIFY confirme, pas celle qu'on espérait :
-      // l'e-mail annoncera donc une échéance vraie, même si la remise a été bornée autrement.
-      const confirmedEnd = node.endsAt ? DateTime.fromISO(node.endsAt) : endsAt
+      // ⛔ ET ON VÉRIFIE QUE LE CIBLAGE A PRIS. Un code relu en `DiscountBuyerSelectionAll`
+      // alors qu'on a demandé des marchés signifie que la version d'API servie ignore
+      // `context.markets` (elle est antérieure à 2026-07) : le bon serait alors utilisable
+      // depuis n'importe quel marché, avec un montant calibré pour un seul. On refuse de le
+      // remettre au client — un bon mal calibré coûte plus cher qu'un bon absent.
+      if (node.contextType !== 'DiscountMarkets' || !node.marketIds.length) {
+        lastError = `ciblage marché non appliqué (context relu = ${node.contextType ?? 'absent'})`
+        Logger.error(
+          'newsletter voucher %s: ⛔ %s — vérifier que l’API servie est bien ≥ 2026-07',
+          code,
+          lastError
+        )
+        // Le code EXISTE et il est actif : abandonné tel quel, il resterait une remise vivante
+        // sans propriétaire, utilisable depuis n'importe quel marché. On le désactive avant de
+        // renoncer. Un échec ici ne change rien à la décision — on ne le remet pas au client.
+        try {
+          await this.shopify.discount.deactivateCodeDiscount(node.id)
+        } catch (error) {
+          Logger.error(
+            'newsletter voucher %s: désactivation du code abandonné en échec — %s',
+            code,
+            (error as any)?.message ?? error
+          )
+        }
+        break
+      }
+
+      // La date de fin retenue est celle que SHOPIFY confirme, pas celle qu'on espérait : les
+      // gardes d'avant-envoi raisonneront donc sur une échéance vraie, même si la remise a été
+      // bornée autrement.
+      const confirmedEnd = node.endsAt
+        ? DateTime.fromISO(node.endsAt, { zone: 'utc' })
+        : DateTime.fromISO(window.endsAtIso, { zone: 'utc' })
 
       Logger.info(
-        'newsletter voucher: %s créé pour %s, valide jusqu’au %s',
+        'newsletter voucher: %s créé pour %s — %s %s (posé %s €, seuil %s €, taux %s), annoncé jusqu’au %s, fin réelle %s, %s marché(s)',
         code,
         subscriberRef,
-        confirmedEnd.toISO()
+        offer.amount,
+        currency,
+        eur.amount.toFixed(2),
+        eur.threshold.toFixed(2),
+        rate,
+        window.announcedDate,
+        confirmedEnd.toISO(),
+        node.marketIds.length
       )
 
       return {
@@ -109,6 +185,12 @@ export default class NewsletterVoucher {
         discountGid: node.id,
         expiresTs: Math.floor(confirmedEnd.toSeconds()),
         expiresAt: confirmedEnd,
+        announcedDate: window.announcedDate,
+        currency,
+        amount: offer.amount,
+        threshold: offer.threshold,
+        amountEur: eur.amount,
+        thresholdEur: eur.threshold,
       }
     }
 

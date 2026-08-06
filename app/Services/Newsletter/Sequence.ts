@@ -9,10 +9,12 @@ import NewsletterSubscriber from 'App/Models/NewsletterSubscriber'
 import { NewsletterMailer, senderAddress, unsubscribeHeaders } from './mail'
 import { renderNewsletterEmail } from './emails/template'
 import NewsletterVoucher from './Voucher'
+import { announcedDateFromEnd } from './expiry'
+import { offerFor, resolveCurrency } from './currency'
 import {
   MAX_SENDS_PER_TICK,
   MAX_STALENESS_DAYS,
-  MIN_HOURS_BEFORE_EXPIRY,
+  minHoursBeforeExpiry,
   MIN_HOURS_BETWEEN_EMAILS,
   PURPOSE,
   SEQUENCE_GAP_DAYS,
@@ -179,16 +181,22 @@ export default class NewsletterSequence {
       return { action: 'skip', reason: 'échéance périmée' }
     }
 
-    // --- 4. Garde des 72 heures ------------------------------------------------------
+    // --- 4. Marge minimale d'utilisation, PROPRE À CHAQUE E-MAIL ----------------------
+    // ⛔ Le seuil dépend de l'e-mail, et ce n'est pas un raffinement : avec un bon de 7 jours,
+    // il ne reste que 38 à 62 h de validité quand E3 part (J+6). Un seuil unique à 72 h le
+    // classerait SYSTÉMATIQUEMENT en « bon proche de l'expiration » et fermerait la séquence —
+    // le dernier rappel ne partirait jamais, sans que rien ne ressemble à une panne.
+    const required = minHoursBeforeExpiry(emailNo)
     const hoursLeft = (subscriber.discountExpiresTs - nowTs) / 3600
-    if (hoursLeft < MIN_HOURS_BEFORE_EXPIRY) {
+    if (hoursLeft < required) {
       // E1 est une exception : il PORTE le bon, et le lien de désabonnement. Ne pas
       // l'envoyer laisserait quelqu'un qui vient de donner son adresse sans rien du tout.
       if (emailNo === 1 && hoursLeft > 0) return { action: 'send' }
       Logger.warn(
-        'newsletter #%s: bon à moins de %s h de l’expiration, e-mail %s non envoyé',
+        'newsletter #%s: bon à moins de %s h de l’expiration (%s h restantes), e-mail %s non envoyé',
         subscriber.id,
-        MIN_HOURS_BEFORE_EXPIRY,
+        required,
+        hoursLeft.toFixed(1),
         emailNo
       )
       return { action: 'skip', reason: 'bon proche de l’expiration', stopSequence: true }
@@ -304,14 +312,23 @@ export default class NewsletterSequence {
       throw error
     }
 
+    // Devise et offre telles qu'ANNONCÉES à l'inscription, jamais recalculées : E3 part six
+    // jours plus tard, à un autre taux de change. Les lignes créées avant la correction
+    // multidevise n'ont rien de stocké — repli sur l'offre en euros, qui est la leur.
+    const currency = resolveCurrency(subscriber.currency)
+    const offer = offerFor(currency)
     const rendered = renderNewsletterEmail({
       emailNo: emailNo as 1 | 2 | 3,
       locale: subscriber.locale as NewsletterLocale,
       code: subscriber.discountCode!,
-      expiresTs: subscriber.discountExpiresTs!,
+      // La DATE ANNONCÉE, pas l'instant de fin du code : celui-ci court un jour de plus, pour
+      // que la promesse tienne dans tous les fuseaux ouverts à la vente (cf. `expiry.ts`).
+      announcedDate:
+        subscriber.discountAnnouncedDate ?? announcedDateFromEnd(subscriber.discountExpiresTs!),
       signupTs: subscriber.sequenceStartedTs,
-      amountEur: 15,
-      minSubtotalEur: 80,
+      amount: subscriber.voucherAmount ?? offer.amount,
+      threshold: subscriber.voucherThreshold ?? offer.threshold,
+      currency,
       storeUrl: Env.get('STOREFRONT_URL') || 'https://www.myselfmonart.com',
       unsubscribeUrl: this.unsubscribeUrl(subscriber),
       contactEmail: Env.get('NEWSLETTER_MAIL_REPLY_TO') || 'contact@myselfmonart.com',

@@ -24,15 +24,51 @@ export const DEFAULT_LOCALE: NewsletterLocale = 'fr'
 
 // --- Le bon ------------------------------------------------------------------------------
 
-export const VOUCHER_AMOUNT = '15.0'
-export const VOUCHER_MIN_SUBTOTAL = '80.0'
 /**
- * 14 jours, et pas 21. Le passage à 21 n'avait de sens qu'avec un e-mail portant le code
- * PUBLIC hebdomadaire, dont la rotation coupait la séquence en deux. Avec un code nominatif,
- * la validité court à partir de l'inscription de chaque personne : les trois e-mails (J0, J+3,
- * J+7) tiennent largement dans la fenêtre, avec une semaine de marge.
+ * 7 jours d'affichage, comptés en DATE et non en instant.
+ *
+ * ⚠️ CETTE VALEUR ET `SEQUENCE_GAP_DAYS` SONT LIÉES, et le lien n'est pas cosmétique. E3 dit
+ * « vos 15 € s'arrêtent demain » : il doit donc partir la veille de la date annoncée. À J+7,
+ * E3 tomberait le jour même de l'expiration et annoncerait une échéance FAUSSE — exactement ce
+ * qui fait cliquer sur « signaler comme spam », et une plainte à ce volume représente dix fois
+ * le seuil contractuel de SES. Si l'une bouge, l'autre bouge.
  */
-export const VOUCHER_VALIDITY_DAYS = 14
+export const VOUCHER_VALIDITY_DAYS = 7
+
+/**
+ * Fuseau de référence pour calculer la DATE ANNONCÉE au client.
+ *
+ * ⛔ La date annoncée se calcule en Europe/Paris, jamais en « UTC+2 » figé : entre le dernier
+ * dimanche d'octobre et celui de mars, la France est à UTC+1. Un décalage codé en dur ferait
+ * dériver la date annoncée d'un jour pendant tout l'hiver, sur les inscriptions du soir.
+ */
+export const VOUCHER_TIMEZONE = 'Europe/Paris'
+
+/**
+ * Heure UTC de fin du bon, posée sur le LENDEMAIN de la date annoncée (cf. `expiry.ts`).
+ *
+ * ⛔ NE PAS « CORRIGER » CE DÉCALAGE EN LE SUPPRIMANT. Le bon est ouvert aux États-Unis, au
+ * Canada, à la Suisse et au Royaume-Uni. Une expiration calée sur 23 h 59 heure de Paris
+ * tuerait le code à 14 h 59 l'après-midi pour un client de Los Angeles, alors que l'e-mail lui
+ * annonce « valable jusqu'au 13 août inclus ». 11:59:59 UTC correspond à la fin de la journée
+ * annoncée dans le dernier fuseau habité de la planète (UTC−12) : la promesse devient vraie de
+ * Honolulu à Helsinki. En Europe le bon vit quelques heures de plus que strictement annoncé —
+ * une sur-promesse inoffensive, jamais l'inverse.
+ */
+export const VOUCHER_END_HOUR_UTC = 11
+export const VOUCHER_END_MINUTE_UTC = 59
+export const VOUCHER_END_SECOND_UTC = 59
+
+/**
+ * Étiquette posée sur la fiche client Shopify, pour que le marchand puisse filtrer ses
+ * inscrits par source dans son admin.
+ *
+ * ⛔ Elle se pose par une SECONDE mutation (`tagsAdd`), jamais via `tags` dans `customerSet` :
+ * sur les champs listes, « all existing entries not included will be deleted » — la transmettre
+ * à `customerSet` effacerait la segmentation d'un client déjà existant. `tagsAdd` ajoute sans
+ * écraser.
+ */
+export const CUSTOMER_TAG = 'promo-popup'
 
 /**
  * Alphabet sans ambiguïté : ni `I`, ni `O`, ni `0`, ni `1`. Le code sera lu à voix haute et
@@ -48,8 +84,12 @@ export const CODE_LENGTH = 6
 export const SEQUENCE_LENGTH = 3
 
 /**
- * Délai entre l'envoi RÉEL d'un e-mail et l'échéance du suivant : 3 jours après E1, 4 jours
- * après E2. Une séquence à l'heure tombe donc exactement à J+3 et J+7, comme prévu.
+ * Délai entre l'envoi RÉEL d'un e-mail et l'échéance du suivant : 3 jours après E1, 3 jours
+ * après E2. Une séquence à l'heure tombe donc exactement à J+3 et J+6.
+ *
+ * ⚠️ E3 EST À J+6 PARCE QUE LE BON VIT 7 JOURS — les deux valeurs sont liées (cf.
+ * `VOUCHER_VALIDITY_DAYS`). À J+7 le code expirerait le jour même de l'envoi, alors que
+ * l'e-mail annonce « vos 15 € s'arrêtent demain ». À J+6, l'échéance annoncée est exacte.
  *
  * ⛔ Ce sont des écarts, PAS des décalages depuis l'inscription — et c'est la différence
  * entre un rattrapage propre et une salve. Après une panne de quatre jours, des décalages
@@ -58,7 +98,7 @@ export const SEQUENCE_LENGTH = 3
  *
  * Index 0 = écart après E1, index 1 = écart après E2.
  */
-export const SEQUENCE_GAP_DAYS = [3, 4] as const
+export const SEQUENCE_GAP_DAYS = [3, 3] as const
 
 /**
  * ⛔ PLANCHER ABSOLU entre deux e-mails à une même personne. Dernière ligne de défense : même
@@ -84,11 +124,30 @@ export const MAX_STALENESS_DAYS = 7
 export const MAX_SENDS_PER_TICK = 20
 
 /**
- * Garde-fou du brief §7 : on refuse d'envoyer si le bon de l'inscrit expire dans moins de
- * 72 heures. Un e-mail qui vante un bon périmé avant que la personne ait eu le temps de
- * choisir une œuvre est pire que pas d'e-mail du tout.
+ * Marge minimale d'utilisation exigée AVANT d'envoyer, e-mail par e-mail. Un message qui vante
+ * un bon périmé avant que la personne ait eu le temps de choisir une œuvre est pire que pas de
+ * message du tout.
+ *
+ * ⛔ CE SEUIL EST PAR E-MAIL, ET IL DOIT LE RESTER — un seuil unique à 72 h TUERAIT E3.
+ * Faisons le calcul, parce que c'est exactement le genre de régression qui ne se voit pas :
+ * avec un bon de 7 jours, il reste entre 38 h et 62 h de validité au moment où E3 part (J+6).
+ * Un plancher unique à 72 h classerait donc SYSTÉMATIQUEMENT E3 en « bon proche de
+ * l'expiration » et fermerait la séquence — le dernier rappel, celui qui convertit, ne
+ * partirait jamais, et rien dans les compteurs ne ressemblerait à une panne.
+ *
+ *   index 0 — E1 : porte le bon ET le lien de désabonnement. Traité à part dans la porte
+ *                  (envoyé tant qu'il reste la moindre validité) : ne pas l'envoyer laisserait
+ *                  quelqu'un qui vient de donner son adresse sans rien du tout.
+ *   index 1 — E2 (J+3) : il reste alors 110 à 134 h. 72 h passe largement.
+ *   index 2 — E3 (J+6) : « dernière chance, il s'arrête demain » — c'est vrai entre 24 et 48 h.
+ *                  En dessous de 24 h le message n'a plus d'objet et on saute.
  */
-export const MIN_HOURS_BEFORE_EXPIRY = 72
+export const MIN_HOURS_BEFORE_EXPIRY = [0, 72, 24] as const
+
+/** Marge exigée pour l'e-mail `emailNo` (1|2|3). Repli sur la plus stricte si hors bornes. */
+export function minHoursBeforeExpiry(emailNo: number): number {
+  return MIN_HOURS_BEFORE_EXPIRY[emailNo - 1] ?? 72
+}
 
 /**
  * Délai de grâce avant de classer une ligne `sending` orpheline (plantage entre la

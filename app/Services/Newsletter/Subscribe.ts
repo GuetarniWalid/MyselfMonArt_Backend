@@ -8,6 +8,8 @@ import NewsletterConsent from './Consent'
 import NewsletterVoucher from './Voucher'
 import { emailHash, normalizeEmail, normalizeLocale, unsubToken } from './identity'
 import { newsletterSecret } from './secret'
+import { announcedDateFromEnd, announcedIso } from './expiry'
+import { resolveCurrency } from './currency'
 import {
   MAX_SUBSCRIBES_PER_EMAIL_PER_DAY,
   PURPOSE,
@@ -18,7 +20,18 @@ import type { NewsletterLocale } from './config'
 
 export interface SubscribeInput {
   email: string
+  /** LANGUE des e-mails : fr | en | de | es | nl. */
   locale?: string
+  /**
+   * DEVISE du bon : EUR | USD | CAD | CHF | GBP.
+   *
+   * ⚠️ Ni déduite de `locale`, ni déductible : un Allemand lit en allemand et paie en euros, un
+   * Suisse peut lire en français et payer en francs. Absente ou inconnue → déduite de `country`,
+   * puis EUR en dernier recours.
+   */
+  currency?: string
+  /** Pays ISO 3166-1 alpha-2 — repli quand la devise manque ou n'est pas reconnue. */
+  country?: string
   sourceUrl?: string
   consent: boolean
   consentLabel?: string
@@ -27,6 +40,23 @@ export interface SubscribeInput {
 }
 
 export type SubscribeState = 'subscribed' | 'already' | 'refused'
+
+/**
+ * Date annoncée d'un inscrit, en ISO 8601, pour la réponse à l'encart.
+ *
+ * ⛔ C'est la DATE ANNONCÉE qui sort d'ici, jamais l'instant de fin du code : le code court
+ * jusqu'au lendemain 11:59:59 UTC, et renvoyer cet instant ferait afficher au thème une date
+ * postérieure d'un jour à celle des e-mails. Deux dates différentes pour un même bon, c'est un
+ * e-mail au service client à chaque inscription.
+ *
+ * Les lignes créées avant cette correction n'ont pas de date annoncée : on la reconstruit
+ * depuis l'instant de fin plutôt que de renvoyer un champ vide.
+ */
+export function announcedFor(subscriber: NewsletterSubscriber): string | undefined {
+  if (subscriber.discountAnnouncedDate) return announcedIso(subscriber.discountAnnouncedDate)
+  if (subscriber.discountExpiresTs === null) return undefined
+  return announcedIso(announcedDateFromEnd(subscriber.discountExpiresTs))
+}
 
 export interface SubscribeOutcome {
   ok: boolean
@@ -73,6 +103,13 @@ export default class NewsletterSubscribe {
   public async handle(input: SubscribeInput): Promise<SubscribeOutcome> {
     const email = normalizeEmail(input.email)
     const locale = normalizeLocale(input.locale)
+    // La devise choisit le MONTANT du bon, la langue choisit celle des e-mails. Deux axes
+    // indépendants : ni l'un ne se déduit de l'autre.
+    const currency = resolveCurrency(input.currency, input.country)
+    const country = String(input.country ?? '')
+      .trim()
+      .toUpperCase()
+      .slice(0, 2)
     const secret = newsletterSecret()
     const hash = emailHash(email, secret)
 
@@ -151,6 +188,8 @@ export default class NewsletterSubscribe {
         email,
         emailHash: hash,
         locale,
+        currency,
+        country: country || null,
         purpose: PURPOSE,
         status: 'active',
         sequenceStartedTs: nowTs,
@@ -196,10 +235,19 @@ export default class NewsletterSubscribe {
     // l'encart affiche le code sur cette réponse. Annoncer un bon qu'on n'a pas créé serait
     // pire que ne rien annoncer.
     try {
-      const issued = await this.voucher.issue(String(subscriber.id))
+      const issued = await this.voucher.issue(String(subscriber.id), currency, now)
       subscriber.discountCode = issued.code
       subscriber.discountGid = issued.discountGid
       subscriber.discountExpiresTs = issued.expiresTs
+      // La date ANNONCÉE est figée ici, pas déduite de l'instant de fin : le code court un jour
+      // de plus, pour que la promesse tienne dans tous les fuseaux (cf. `expiry.ts`).
+      subscriber.discountAnnouncedDate = issued.announcedDate
+      // L'offre annoncée est figée elle aussi : E2 et E3 partent jusqu'à six jours plus tard,
+      // et la recalculer au taux du moment ferait annoncer un autre montant que celui affiché.
+      subscriber.voucherAmount = issued.amount
+      subscriber.voucherThreshold = issued.threshold
+      subscriber.voucherAmountEur = issued.amountEur
+      subscriber.voucherThresholdEur = issued.thresholdEur
       await subscriber.save()
     } catch (error) {
       Logger.error(
@@ -226,7 +274,7 @@ export default class NewsletterSubscribe {
       ok: true,
       state: 'subscribed',
       code: subscriber.discountCode!,
-      expiresAt: DateTime.fromSeconds(subscriber.discountExpiresTs!).toISO()!,
+      expiresAt: announcedFor(subscriber),
     }
   }
 
@@ -265,6 +313,22 @@ export default class NewsletterSubscribe {
       await subscriber.save()
     }
 
+    // La DEVISE, non — et c'est volontaire. Le code déjà émis est calibré pour une devise et
+    // verrouillé sur ses marchés : la réécrire ici ferait annoncer dans E2 et E3 un montant que
+    // le code ne donnera pas. Cas rare (même adresse, deux marchés, moins de sept jours) mais
+    // silencieux, d'où le journal : c'est le seul endroit où il devient diagnosticable.
+    const resubmitted = resolveCurrency(input.currency, input.country)
+    if (subscriber.currency && subscriber.currency !== resubmitted) {
+      Logger.warn(
+        'newsletter subscribe: ré-soumission de #%s depuis %s alors que son bon est en %s — ' +
+          'le code reste calibré pour %s',
+        subscriber.id,
+        resubmitted,
+        subscriber.currency,
+        subscriber.currency
+      )
+    }
+
     await this.consent.recordProof({
       subscriberId: subscriber.id,
       email: subscriber.email,
@@ -288,7 +352,7 @@ export default class NewsletterSubscribe {
         ok: true,
         state: 'already',
         code: subscriber.discountCode!,
-        expiresAt: DateTime.fromSeconds(subscriber.discountExpiresTs!).toISO()!,
+        expiresAt: announcedFor(subscriber),
       }
     }
 

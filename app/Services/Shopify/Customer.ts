@@ -68,6 +68,37 @@ export default class Customer extends Authentication {
   }
 
   /**
+   * Ajoute des étiquettes à une fiche client — SANS écraser celles qui existent.
+   *
+   * ⛔ C'EST LA SEULE FAÇON CORRECTE DE POSER UNE ÉTIQUETTE ICI, et la raison tient en une
+   * phrase : `customerSet` REMPLACE la liste `tags` au lieu de l'enrichir (« all existing
+   * entries not included will be deleted »). Sur un client déjà connu — et la moitié des
+   * inscrits le sont — passer `tags: ["promo-popup"]` à `customerSet` effacerait toute sa
+   * segmentation existante. `tagsAdd` ajoute, et il est idempotent : réappliquer une étiquette
+   * déjà posée ne fait rien.
+   *
+   * Ne lève pas : perdre une étiquette de segmentation ne doit pas coûter une inscription.
+   */
+  public async addTags(
+    customerId: string,
+    tags: string[]
+  ): Promise<{ ok: boolean; userErrors: string[] }> {
+    const mutation = `mutation NewsletterCustomerTagsAdd($id: ID!, $tags: [String!]!) {
+      tagsAdd(id: $id, tags: $tags) {
+        node { id }
+        userErrors { field message }
+      }
+    }`
+
+    const data = await this.fetchGraphQL(mutation, { id: customerId, tags })
+    const userErrors = (data.tagsAdd?.userErrors ?? []).map(
+      (e: { field?: string[]; message: string }) => e.message
+    )
+
+    return { ok: !!data.tagsAdd?.node?.id && userErrors.length === 0, userErrors }
+  }
+
+  /**
    * Écrit l'état de consentement marketing.
    *
    * ⛔ `consentUpdatedAt` n'est JAMAIS transmis. Le champ existe dans l'input, et le fournir

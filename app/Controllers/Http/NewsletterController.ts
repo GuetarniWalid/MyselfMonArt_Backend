@@ -59,6 +59,13 @@ export default class NewsletterController {
       const outcome = await new NewsletterSubscribe().handle({
         email,
         locale: body.locale,
+        // ⚠️ `locale` et `currency` sont deux choses différentes et ne se déduisent PAS l'une
+        // de l'autre : un Allemand lit en allemand et paie en euros, un Suisse peut lire en
+        // français et payer en francs. `country` sert de repli quand la devise manque — un
+        // inscrit allemand ou espagnol paie en euros mais n'est pas sur le marché France, et un
+        // code verrouillé sur la France lui serait inutilisable.
+        currency: typeof body.currency === 'string' ? body.currency : undefined,
+        country: typeof body.country === 'string' ? body.country : undefined,
         sourceUrl: typeof body.source_url === 'string' ? body.source_url : undefined,
         consent: true,
         consentLabel: typeof body.consent_label === 'string' ? body.consent_label : undefined,
@@ -232,6 +239,54 @@ export default class NewsletterController {
         selected: new NewsletterMailer().transport()?.name ?? null,
         forced: Env.get('NEWSLETTER_MAIL_TRANSPORT') || null,
       },
+      voucher: await this.voucherStatus(),
     })
+  }
+
+  /**
+   * Ce que vaut le bon aujourd'hui, dans chaque devise — visible sans ouvrir l'admin ni la base.
+   *
+   * C'est la seule façon de vérifier le calibrage multidevise SANS créer d'inscription, donc
+   * sans polluer la liste. On y lit d'un coup d'œil : le taux utilisé et sa date, le montant
+   * réellement posé sur le code, ce que le client verra une fois reconverti, et les marchés
+   * auxquels le code sera restreint. Un taux qui date de trois semaines ou un marché neuf absent
+   * de la table s'y voient immédiatement.
+   *
+   * Ne lève jamais : une sonde qui tombe ne doit pas emporter la page de santé.
+   */
+  private async voucherStatus() {
+    try {
+      const { default: NewsletterRates } = await import('App/Services/Newsletter/Rates')
+      const { default: NewsletterMarkets } = await import('App/Services/Newsletter/Markets')
+      const { VOUCHER_CURRENCIES, eurAmountsFor, offerFor } = await import(
+        'App/Services/Newsletter/currency'
+      )
+
+      const rates = await new NewsletterRates().current()
+      const markets = await new NewsletterMarkets().byCurrency().catch(() => ({}))
+
+      return {
+        ratesDate: rates.date,
+        offers: VOUCHER_CURRENCIES.map((currency) => {
+          const rate = currency === 'EUR' ? 1 : Number(rates.rates?.[currency] ?? 0)
+          const offer = offerFor(currency)
+          const posted = eurAmountsFor(currency, rate)
+          return {
+            currency,
+            promised: offer.amount,
+            threshold: offer.threshold,
+            rate,
+            postedEur: posted.amount,
+            postedThresholdEur: posted.threshold,
+            // Ce que le client verra vraiment, reconverti : doit toujours être ≥ `promised`.
+            seenByCustomer: Number((posted.amount * rate).toFixed(2)),
+            seenThreshold: Number((posted.threshold * rate).toFixed(2)),
+            markets: (markets as Record<string, string[]>)[currency]?.length ?? 0,
+          }
+        }),
+      }
+    } catch (error) {
+      return { error: String((error as any)?.message ?? error).slice(0, 200) }
+    }
   }
 }

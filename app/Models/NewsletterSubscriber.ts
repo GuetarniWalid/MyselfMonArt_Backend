@@ -41,6 +41,40 @@ export default class NewsletterSubscriber extends BaseModel {
   public locale: string
 
   /**
+   * Devise du bon — celle dans laquelle le client a vu le montant promis.
+   *
+   * ⚠️ INDÉPENDANTE DE `locale`, et ne s'en déduit jamais : un Allemand lit en allemand et paie
+   * en euros, un Suisse peut lire en français et payer en francs, un Américain lit en anglais
+   * et paie en dollars.
+   */
+  @column()
+  public currency: string
+
+  /** Pays ISO 3166-1 alpha-2 transmis par le thème — repli de devise, et trace d'audit. */
+  @column()
+  public country: string | null
+
+  /**
+   * L'offre ANNONCÉE, dans la devise du client (15, 20, 14…). Figée à l'émission : E2 et E3
+   * partent jusqu'à six jours plus tard, et la recalculer au taux du moment ferait annoncer un
+   * montant différent de celui affiché à l'inscription.
+   */
+  @column({ consume: asNumber })
+  public voucherAmount: number | null
+
+  /** Le seuil ANNONCÉ, dans la devise du client (80, 90, 130…). Figé pour la même raison. */
+  @column({ consume: asNumber })
+  public voucherThreshold: number | null
+
+  /** Montant réellement posé sur le code, en euros — seule trace du taux du jour d'émission. */
+  @column({ consume: asNumber })
+  public voucherAmountEur: number | null
+
+  /** Seuil réellement posé sur le code, en euros. */
+  @column({ consume: asNumber })
+  public voucherThresholdEur: number | null
+
+  /**
    * ⛔ Marqueur de FINALITÉ. Les ~750 abonnés dormants de la boutique n'ont pas de ligne ici :
    * ils sont structurellement hors d'atteinte, et non protégés par un filtre qu'on oublierait.
    */
@@ -59,8 +93,22 @@ export default class NewsletterSubscriber extends BaseModel {
   @column()
   public discountGid: string | null
 
+  /**
+   * Instant de fin RÉEL du code chez Shopify. C'est lui qui décide (gardes d'avant-envoi,
+   * ré-inscription) — jamais la date annoncée, qui tombe un jour plus tôt.
+   */
   @column({ consume: asNumber })
   public discountExpiresTs: number | null
+
+  /**
+   * Date ANNONCÉE au client, `YYYY-MM-DD` en Europe/Paris. La seule qu'il lira.
+   *
+   * ⛔ Ce n'est PAS `discountExpiresTs` mis en forme : le code s'arrête à 11:59:59 UTC le
+   * LENDEMAIN, pour que la promesse « jusqu'au 13 août » tienne dans tous les fuseaux ouverts
+   * à la vente. `null` sur les lignes créées avant cette correction.
+   */
+  @column()
+  public discountAnnouncedDate: string | null
 
   /** Renseigné dès que Shopify signale le code consommé — LE signal de conversion. */
   @column({ consume: asNumber })

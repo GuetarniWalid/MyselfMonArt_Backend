@@ -82,7 +82,12 @@ const fr: Pack = {
       closing: 'À bientôt,\nL’atelier MyselfMonArt',
     },
     {
-      subject: 'Dernier jour pour votre bon de {amount}',
+      // ⛔ Pas « dernier jour » : E3 part à J+6, la VEILLE de la date annoncée. Une échéance
+      // fausse dans un objet d'e-mail est exactement ce qui fait cliquer sur « signaler comme
+      // spam », et le seuil de plainte de SES entraîne la suspension du compte. « Dernière
+      // chance » reste vrai quel que soit le jour où le cron parvient à envoyer — un objet qui
+      // compte les jours dériverait au premier rattrapage. La date exacte est juste en dessous.
+      subject: 'Dernière chance pour votre bon de {amount}',
       preheader: 'Après le {date}, le code {code} ne fonctionnera plus.',
       eyebrow: 'Dernier rappel',
       title: 'C’est le moment ou jamais',
@@ -152,7 +157,7 @@ const en: Pack = {
       closing: 'Talk soon,\nThe MyselfMonArt studio',
     },
     {
-      subject: 'Last day for your {amount} voucher',
+      subject: 'Last chance for your {amount} voucher',
       preheader: 'After {date}, code {code} will stop working.',
       eyebrow: 'Final reminder',
       title: 'It is now or never',
@@ -222,7 +227,7 @@ const de: Pack = {
       closing: 'Bis bald,\nDas MyselfMonArt-Atelier',
     },
     {
-      subject: 'Letzter Tag für Ihren {amount}-Gutschein',
+      subject: 'Letzte Chance für Ihren {amount}-Gutschein',
       preheader: 'Nach dem {date} funktioniert der Code {code} nicht mehr.',
       eyebrow: 'Letzte Erinnerung',
       title: 'Jetzt oder nie',
@@ -291,7 +296,7 @@ const es: Pack = {
       closing: 'Hasta pronto,\nEl taller MyselfMonArt',
     },
     {
-      subject: 'Último día para su vale de {amount}',
+      subject: 'Última oportunidad para su vale de {amount}',
       preheader: 'Después del {date}, el código {code} dejará de funcionar.',
       eyebrow: 'Último recordatorio',
       title: 'Ahora o nunca',
@@ -361,7 +366,7 @@ const nl: Pack = {
       closing: 'Tot snel,\nHet MyselfMonArt-atelier',
     },
     {
-      subject: 'Laatste dag voor uw waardebon van {amount}',
+      subject: 'Laatste kans voor uw waardebon van {amount}',
       preheader: 'Na {date} werkt code {code} niet meer.',
       eyebrow: 'Laatste herinnering',
       title: 'Nu of nooit',

@@ -1,5 +1,26 @@
 import Authentication from './Authentication'
 
+/**
+ * ⛔ VERSION D'API ÉPINGLÉE — 2026-07 MINIMUM, ET CE N'EST PAS NÉGOCIABLE.
+ *
+ * `context.markets` (l'éligibilité par marché d'un code de remise) n'existe QU'À PARTIR de
+ * 2026-07. Vérifié par introspection sur cette boutique le 2026-08-06 :
+ *
+ *     2025-10 → DiscountContextInput { all, customers, customerSegments }
+ *     2026-07 → DiscountContextInput { all, customers, customerSegments, markets }   ✅
+ *
+ * En dessous, non seulement la mutation ignorerait le ciblage, mais les codes portant une
+ * éligibilité marché deviennent INVISIBLES en lecture : on ne pourrait plus ni les vérifier ni
+ * les supprimer.
+ *
+ * ⚠️ On épingle ICI plutôt que de faire glisser `SHOPIFY_API_VERSION` : cette variable sert à
+ * tout le back-end (publication produit, traductions, webhooks, métachamps), et la déplacer
+ * pour ce seul besoin exposerait l'ensemble à des changements de rupture qu'aucun test ne
+ * couvre. La variable d'environnement, elle, vaut encore `admin/api/2025-07` — une version que
+ * Shopify ne sert même plus (elle est silencieusement servie en 2025-10).
+ */
+const DISCOUNT_API_VERSION = 'admin/api/2026-07'
+
 export interface CodeDiscountSummary {
   /** GID du DiscountCodeNode. */
   id: string
@@ -17,6 +38,26 @@ export interface CodeDiscountSummary {
   asyncUsageCount: number
   /** Quota total du code. `null` = illimité (cas du code public hebdomadaire). */
   usageLimit: number | null
+  /**
+   * Type d'éligibilité effectivement enregistré par Shopify : `DiscountMarkets` quand le code
+   * est restreint à des marchés, `DiscountBuyerSelectionAll` quand il est ouvert à tous.
+   *
+   * C'est le TÉMOIN du ciblage : si un code censé être restreint se relit en
+   * `DiscountBuyerSelectionAll`, le ciblage n'a pas pris et le bon est mal calibré.
+   */
+  contextType: string | null
+  /** Identifiants des marchés éligibles, vide quand le code est ouvert à tous. */
+  marketIds: string[]
+}
+
+/** Un marché de la boutique, réduit à ce dont le ciblage a besoin. */
+export interface MarketSummary {
+  id: string
+  name: string
+  /** ACTIVE | DRAFT — seuls les marchés actifs sont ciblables utilement. */
+  status: string
+  /** Devise de base du marché : c'est elle qui regroupe. */
+  currencyCode: string | null
 }
 
 export interface BasicCodeDiscountInput {
@@ -40,9 +81,26 @@ export interface BasicCodeDiscountInput {
    * avec une deuxième adresse.
    */
   usageLimit?: number
+  /**
+   * Marchés auxquels le code est RESTREINT. Absent ou vide = ouvert à tous (`{ all: ALL }`),
+   * ce que veut le code public hebdomadaire.
+   *
+   * ⛔ Indispensable dès qu'un code porte un montant fixe calibré pour une devise : sans
+   * restriction, un Américain pourrait utiliser le code calibré pour l'euro.
+   *
+   * ⛔ ET N'UTILISE JAMAIS `context.customers` EN MÊME TEMPS. Les types d'éligibilité
+   * s'excluent mutuellement chez Shopify : rattacher le code à une fiche client rendrait le
+   * ciblage par marché impossible. Le caractère « nominatif » d'un bon vient de sa chaîne
+   * aléatoire et de `usageLimit: 1`, jamais d'un rattachement client.
+   */
+  marketIds?: string[]
 }
 
 export default class Discount extends Authentication {
+  constructor() {
+    super(DISCOUNT_API_VERSION)
+  }
+
   public async getDiscounts() {
     const { query } = this.getDiscountsQuery()
     const discountsData = await this.fetchGraphQL(query)
@@ -64,7 +122,13 @@ export default class Discount extends Authentication {
         id
         codeDiscount {
           __typename
-          ... on DiscountCodeBasic { title status startsAt endsAt asyncUsageCount usageLimit }
+          ... on DiscountCodeBasic {
+            title status startsAt endsAt asyncUsageCount usageLimit
+            context {
+              __typename
+              ... on DiscountMarkets { markets(first: 20) { nodes { id } } }
+            }
+          }
         }
       }
     }`
@@ -73,6 +137,7 @@ export default class Discount extends Authentication {
     const node = data.codeDiscountNodeByCode
     if (!node?.codeDiscount) return null
 
+    const context = node.codeDiscount.context
     return {
       id: node.id,
       title: node.codeDiscount.title ?? '',
@@ -81,7 +146,39 @@ export default class Discount extends Authentication {
       endsAt: node.codeDiscount.endsAt ?? null,
       asyncUsageCount: node.codeDiscount.asyncUsageCount ?? 0,
       usageLimit: node.codeDiscount.usageLimit ?? null,
+      contextType: context?.__typename ?? null,
+      marketIds: (context?.markets?.nodes ?? [])
+        .map((m: { id?: string }) => m?.id)
+        .filter((id: unknown): id is string => typeof id === 'string'),
     }
+  }
+
+  /**
+   * Marchés de la boutique — c'est la source du ciblage par devise.
+   *
+   * ⛔ À interroger, jamais à coder en dur : une liste figée ferait sortir du dispositif, EN
+   * SILENCE, tout marché créé plus tard. Le marché ouvert le lendemain recevrait des bons
+   * inutilisables sans qu'aucun journal ne signale quoi que ce soit.
+   */
+  public async getActiveMarkets(): Promise<MarketSummary[]> {
+    const query = `query NewsletterMarkets {
+      markets(first: 100) {
+        nodes {
+          id
+          name
+          status
+          currencySettings { baseCurrency { currencyCode } }
+        }
+      }
+    }`
+
+    const data = await this.fetchGraphQL(query)
+    return (data.markets?.nodes ?? []).map((node: any) => ({
+      id: node?.id ?? '',
+      name: node?.name ?? '',
+      status: node?.status ?? '',
+      currencyCode: node?.currencySettings?.baseCurrency?.currencyCode ?? null,
+    }))
   }
 
   /**
@@ -104,6 +201,9 @@ export default class Discount extends Authentication {
    * (Admin API 2025-07). Le champ n'est pas optionnel malgré ce que laisse croire le schéma :
    * l'omettre fait échouer la mutation sur « BLANK Context can't be blank ». `{ all: ALL }`
    * est la traduction exacte de l'ancien `customerSelection: { all: true }`.
+   *
+   * `context` accepte AU PLUS UNE forme d'éligibilité : `{ markets: { add: [...] } }` quand le
+   * code est restreint, `{ all: ALL }` sinon. Les deux ensemble sont refusés.
    */
   public async createBasicCodeDiscount(
     input: BasicCodeDiscountInput
@@ -123,8 +223,9 @@ export default class Discount extends Authentication {
         endsAt: input.endsAt,
         appliesOncePerCustomer: input.appliesOncePerCustomer,
         ...(input.usageLimit === undefined ? {} : { usageLimit: input.usageLimit }),
-        // Tous les acheteurs (ex-`customerSelection: { all: true }`) — obligatoire.
-        context: { all: 'ALL' },
+        // Éligibilité — obligatoire, et exactement UNE forme à la fois : restreinte aux
+        // marchés de la devise du bon, ou ouverte à tous (ex-`customerSelection: { all: true }`).
+        context: input.marketIds?.length ? { markets: { add: input.marketIds } } : { all: 'ALL' },
         customerGets: {
           items: { all: true },
           value: { discountAmount: { amount: input.amount, appliesOnEachItem: false } },

@@ -1,4 +1,7 @@
 import { pack } from './strings'
+import { formatAnnouncedDate, intlTag } from '../expiry'
+import { moneyLabel } from '../currency'
+import type { VoucherCurrency } from '../currency'
 import type { NewsletterLocale } from '../config'
 
 /**
@@ -30,12 +33,27 @@ export interface RenderInput {
   emailNo: 1 | 2 | 3
   locale: NewsletterLocale
   code: string
-  /** Instant d'expiration du bon, en secondes epoch. */
-  expiresTs: number
+  /**
+   * Date ANNONCÉE du bon, `YYYY-MM-DD`.
+   *
+   * ⛔ Une DATE, jamais un instant, et affichée SANS HEURE. « 23 h 59 » ne serait vrai qu'à
+   * Paris : le bon est ouvert aux États-Unis, au Canada, à la Suisse et au Royaume-Uni. Le code
+   * s'arrête d'ailleurs plus tard que cette date (le lendemain 11:59:59 UTC) précisément pour
+   * que la promesse tienne partout — cf. `expiry.ts`.
+   */
+  announcedDate: string
   /** Instant de l'inscription, en secondes epoch — pour le rappel du contexte de collecte. */
   signupTs: number
-  amountEur: number
-  minSubtotalEur: number
+  /**
+   * Ce que le client a vu promis, DANS SA DEVISE : 15 € / 15 $ / 20 $ CA / 14 CHF / 13 £.
+   *
+   * ⛔ Ce n'est PAS le montant posé sur le code (celui-là est en euros, calibré au taux du jour
+   * pour tomber sur cette cible ronde). L'e-mail annonce ce qui a été promis à l'inscription,
+   * jamais un montant recalculé : E3 part six jours plus tard, à un autre taux.
+   */
+  amount: number
+  threshold: number
+  currency: VoucherCurrency
   storeUrl: string
   unsubscribeUrl: string
   contactEmail: string
@@ -85,35 +103,19 @@ export function localePath(locale: NewsletterLocale): string {
   return locale === 'fr' ? '' : `/${locale}`
 }
 
-/** Étiquette BCP 47 pour la mise en forme des nombres et des dates. */
-function intlTag(locale: NewsletterLocale): string {
-  return { fr: 'fr-FR', en: 'en-GB', de: 'de-DE', es: 'es-ES', nl: 'nl-NL' }[locale] ?? 'fr-FR'
-}
-
-function money(amount: number, locale: NewsletterLocale): string {
-  try {
-    return new Intl.NumberFormat(intlTag(locale), {
-      style: 'currency',
-      currency: 'EUR',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount)
-  } catch {
-    return `${amount} €`
-  }
-}
-
-function longDate(ts: number, locale: NewsletterLocale): string {
-  try {
-    return new Intl.DateTimeFormat(intlTag(locale), {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      timeZone: 'Europe/Paris',
-    }).format(new Date(ts * 1000))
-  } catch {
-    return new Date(ts * 1000).toISOString().slice(0, 10)
-  }
+/**
+ * Lien du bouton d'action : le code est APPLIQUÉ au panier par Shopify avant l'atterrissage.
+ *
+ * `/discount/<CODE>?redirect=<chemin>` est la route native de Shopify — elle pose le code dans
+ * la session puis renvoie sur le chemin demandé. Sans elle, le lecteur doit recopier son code
+ * à la main au paiement, six jours après l'avoir reçu : c'est là que le bon se perd.
+ *
+ * ⛔ Le CHEMIN DE RETOUR porte le préfixe de langue. Sans lui, un Néerlandais qui clique sur
+ * « Mijn kunstwerk kiezen » atterrit sur une page en français, avec son code bien appliqué.
+ */
+export function applyUrl(storeUrl: string, code: string, locale: NewsletterLocale): string {
+  const base = String(storeUrl ?? '').replace(/\/+$/, '')
+  return `${base}/discount/${encodeURIComponent(code)}?redirect=${localePath(locale)}/collections/all`
 }
 
 function shortDate(ts: number, locale: NewsletterLocale): string {
@@ -146,9 +148,11 @@ export function renderNewsletterEmail(input: RenderInput): RenderedEmail {
 
   const values = {
     code: input.code,
-    date: longDate(input.expiresTs, input.locale),
-    amount: money(input.amountEur, input.locale),
-    min: money(input.minSubtotalEur, input.locale),
+    // La date ANNONCÉE, en toutes lettres et SANS HEURE.
+    date: formatAnnouncedDate(input.announcedDate, input.locale),
+    // Le montant PROMIS, dans la devise du client — pas le montant posé sur le code.
+    amount: moneyLabel(input.amount, input.currency, input.locale),
+    min: moneyLabel(input.threshold, input.currency, input.locale),
     signupDate: shortDate(input.signupTs, input.locale),
     contact: input.contactEmail,
   }
@@ -161,7 +165,8 @@ export function renderNewsletterEmail(input: RenderInput): RenderedEmail {
   const context = fill(strings.footer.context, values)
   const contact = fill(strings.footer.contact, values)
 
-  const shopUrl = `${input.storeUrl}${localePath(input.locale)}/collections/all`
+  // Le bouton APPLIQUE le code puis renvoie sur la boutique, dans la bonne langue.
+  const shopUrl = applyUrl(input.storeUrl, input.code, input.locale)
 
   const reassure = copy.reassure
     .map(
