@@ -126,6 +126,37 @@ check('le corps entre dans la signature (un octet modifié la change)', () => {
   assert.notStrictEqual(other.headers.Authorization, signed.headers.Authorization)
 })
 
+// --- 3 bis. Chemin de ressource (SQS) ----------------------------------------------------
+// SQS adresse chaque file par son CHEMIN. Si `path` cessait d'entrer dans la signature, tous
+// les appels SQS échoueraient en « SignatureDoesNotMatch » — c'est-à-dire que les rebonds et
+// les plaintes ne remonteraient plus, en silence, jusqu'à la suspension du compte d'envoi.
+check('le chemin de ressource entre dans la signature', () => {
+  const base = {
+    host: 'sqs.eu-west-1.amazonaws.com',
+    region: 'eu-west-1',
+    service: 'sqs',
+    accessKeyId: 'AKIAIOSFODNN7EXAMPLE',
+    secretAccessKey: 'wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY',
+    body: 'Action=ReceiveMessage&Version=2012-11-05',
+    amzDate: '20260806T101500Z',
+  }
+  const racine = signFormPost(base)
+  const file = signFormPost({ ...base, path: '/691667571330/ma-file' })
+
+  assert.notStrictEqual(
+    file.headers.Authorization,
+    racine.headers.Authorization,
+    'deux chemins différents doivent produire deux signatures différentes'
+  )
+  assert.strictEqual(file.url, 'https://sqs.eu-west-1.amazonaws.com/691667571330/ma-file')
+  // Rétro-compatibilité : sans `path`, le comportement historique (« / ») ne bouge pas.
+  assert.strictEqual(racine.url, 'https://sqs.eu-west-1.amazonaws.com/')
+  assert.strictEqual(
+    signFormPost({ ...base, path: '/' }).headers.Authorization,
+    racine.headers.Authorization
+  )
+})
+
 check('le jeton de session STS est signé quand il est présent', () => {
   const withToken = signFormPost({
     host: 'email.eu-west-1.amazonaws.com',

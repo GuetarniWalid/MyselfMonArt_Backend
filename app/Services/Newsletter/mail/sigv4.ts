@@ -64,6 +64,12 @@ export function signFormPost(input: {
   sessionToken?: string
   body: string
   amzDate?: string
+  /**
+   * Chemin canonique de la ressource. `/` pour les API « query » classiques (SES, SNS, IAM) ;
+   * SQS, lui, adresse chaque file par son chemin (`/<compte>/<file>`), et signer `/` ferait
+   * échouer la signature.
+   */
+  path?: string
 }): SignedRequest {
   const amzDate = input.amzDate ?? new Date().toISOString().replace(/[:-]|\.\d{3}/g, '')
   const dateStamp = amzDate.slice(0, 8)
@@ -83,9 +89,11 @@ export function signFormPost(input: {
   const canonicalHeaders = headerPairs.map(([k, v]) => `${k}:${v}\n`).join('')
   const signedHeaders = headerPairs.map(([k]) => k).join(';')
 
+  const path = input.path || '/'
+
   const canonicalRequest = [
     'POST',
-    '/',
+    path,
     '', // pas de chaîne de requête : tout est dans le corps
     canonicalHeaders,
     signedHeaders,
@@ -109,5 +117,5 @@ export function signFormPost(input: {
   }
   if (input.sessionToken) headers['X-Amz-Security-Token'] = input.sessionToken
 
-  return { url: `https://${input.host}/`, headers, body: input.body }
+  return { url: `https://${input.host}${path}`, headers, body: input.body }
 }

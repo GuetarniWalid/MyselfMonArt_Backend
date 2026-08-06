@@ -187,6 +187,11 @@ export default Env.rules({
   // lui qui fait publier les événements vers SNS. Le dispositif écrirait alors à des adresses
   // mortes jusqu'à la suspension du compte, sans qu'aucun écran ne montre rien d'anormal.
   SES_CONFIGURATION_SET: Env.schema.string.optional(),
+  // ⛔ CHEMIN PRINCIPAL des rebonds et plaintes : la file SQS, lue en SORTIE par le cron.
+  // Cloudflare bloque le trafic ENTRANT venant des IP d'AWS (constaté le 2026-08-06 :
+  // abonnement HTTPS bloqué en PendingConfirmation, aucune trace dans nginx). Le webhook
+  // ci-dessous reste fonctionnel comme second chemin, mais c'est celui-ci qui marche.
+  SES_SQS_QUEUE_URL: Env.schema.string.optional(),
   // Jeton partagé attendu dans ?token= de POST /webhooks/ses. Vide = endpoint FERMÉ.
   SES_WEBHOOK_TOKEN: Env.schema.string.optional(),
   // Liste blanche des TopicArn SNS acceptés (séparateur virgule). C'est ce qui arrête un
