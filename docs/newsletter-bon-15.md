@@ -54,50 +54,52 @@ pour que brancher Shield un jour ne tue pas silencieusement le désabonnement un
 
 ---
 
-## 1. ⛔ À FAIRE DANS LA CONSOLE AWS — sinon le dispositif se suicide lentement
+## 1. ✅ AWS — DÉJÀ FAIT (le 2026-08-06), et par un autre chemin que prévu
 
-**C'est le point le plus important de ce document.** Sans boucle de retour, les adresses mortes
-ne sont jamais écartées, on leur réexpédie E2 et E3 pendant des années, le taux de rebond
-franchit les 5 % tolérés par SES, et le compte est suspendu. Le tout sans qu'aucun écran ne
-montre jamais rien d'anormal : **une boucle de retour cassée se manifeste par une ABSENCE
-d'événements, ce qui ressemble exactement à « tout va bien »**.
+### Ce qui a été posé, par API
+| | |
+|---|---|
+| Rubrique SNS | `myselfmonart-newsletter-feedback` |
+| **File SQS** | `myselfmonart-newsletter-feedback` — rétention **14 jours**, politique n'autorisant QUE cette rubrique à écrire |
+| Abonnement | SNS → SQS (confirmé d'office) |
+| Jeu de configuration SES | `myselfmonart-newsletter` → événements `send, reject, bounce, complaint, delivery` |
+| Notifications d'identité | `Bounce` + `Complaint` de `mail.myselfmonart.com` → même rubrique (ceinture n°2) |
+| IAM | l'utilisateur d'envoi avait déjà `ses:SendRawEmail` via le groupe `AWSSESSendingGroupDoNotRename` ; ajout du droit de LIRE la file |
+| Bac à sable | **déjà sorti** — quota 50 000/jour |
 
-### 1.1 Créer le jeu de configuration et sa destination SNS
-1. SES → **Configuration sets** → créer `myselfmonart-newsletter`.
-2. Dans ce jeu, **Event destinations** → nouvelle destination **SNS**, en cochant au minimum
-   `Bounce`, `Complaint`, `Delivery`, `Reject`, `DeliveryDelay`.
-3. Noter l'**ARN du topic SNS** créé.
+### ⛔ Pourquoi SQS et pas le webhook HTTPS prévu au brief
 
-### 1.2 Abonner le back-end au topic
-Dans SNS → le topic → **Create subscription**, protocole **HTTPS**, endpoint :
+**Cloudflare bloque le trafic entrant venant des plages d'adresses d'AWS.** Constaté le
+2026-08-06 : l'abonnement HTTPS de SNS est resté indéfiniment en `PendingConfirmation`, et les
+journaux nginx ne montraient **aucune** requête — alors que des requêtes identiques (même URL,
+même user-agent, même corps) émises depuis une IP résidentielle ET depuis le droplet passaient
+toutes les deux. La confirmation n'atteignait jamais le serveur.
+
+On a donc inversé le sens : **le back-end va CHERCHER les messages dans la file**, en sortie
+sur le port 443 — le seul chemin dont on ait la preuve qu'il est joignable. C'était déjà la
+solution recommandée par la revue de conception, pour des raisons qui valent toujours :
+
+- **aucune surface entrante** : rien à authentifier, rien à re-confirmer, aucune signature SNS
+  à valider, aucune exception CSRF à maintenir ;
+- **rétention 14 jours** : une panne du back-end de plusieurs heures ne perd plus un rebond ;
+- le seul réglage réseau qui puisse le casser est **sortant**, donc sous notre contrôle.
+
+`POST /webhooks/ses` reste en place et fonctionnel comme second chemin : les deux alimentent le
+même traitement, qui est idempotent. Si Cloudflare est un jour assoupli, rien à changer.
+
+### ✅ Test de bout en bout — PASSÉ le 2026-08-06
+Envoi vers `bounce@simulator.amazonses.com` et `complaint@simulator.amazonses.com` (adresses de
+simulation d'AWS : sans effet sur la réputation). 7 événements arrivés dans la file, consommés
+au passage de cron suivant, et en base :
 
 ```
-https://backend.myselfmonart.com/webhooks/ses?token=<SES_WEBHOOK_TOKEN>
+reason        n   retention
+complaint     1   definitive     <- une plainte n'expire JAMAIS
+hard_bounce   1   3 ans
 ```
 
-Le back-end confirme l'abonnement automatiquement (il suit le `SubscribeURL`, après avoir
-vérifié que l'hôte correspond exactement à `sns.<région>.amazonaws.com`).
-
-**Vérifier ensuite que l'abonnement est passé à `Confirmed`.** Tant qu'il est en
-`PendingConfirmation`, rien n'arrive — et rien ne le signale.
-
-### 1.3 Ceinture n°2, indépendante du code
-SES → l'identité `mail.myselfmonart.com` → **Notifications** → poser aussi le topic SNS pour
-`Bounce` et `Complaint`. Ainsi le retour survit à un futur chemin d'envoi qui oublierait le jeu
-de configuration.
-
-### 1.4 Sortie du bac à sable
-Tant qu'elle n'est pas accordée, SES n'accepte d'envoyer qu'à des adresses vérifiées une par
-une. À contrôler dans **Account dashboard** avant le premier envoi réel.
-
-### 1.5 Les identifiants
-⚠️ L'API HTTPS a besoin des identifiants **IAM** (`SES_ACCESS_KEY_ID` +
-`SES_SECRET_ACCESS_KEY`), **pas** des identifiants SMTP : le « mot de passe SMTP » de SES est
-une signature dérivée de la clé secrète, et la dérivation ne s'inverse pas.
-
-**Si seuls les identifiants SMTP sont disponibles**, poser à la place
-`NEWSLETTER_MAIL_TRANSPORT=smtp` avec `NEWSLETTER_SMTP_HOST=email-smtp.eu-west-1.amazonaws.com`,
-`NEWSLETTER_SMTP_PORT=2587`, et les identifiants SMTP. Ça marche aussi — c'est le même MIME.
+La chaîne complète est donc prouvée : **SES → jeu de configuration → SNS → SQS → lecteur →
+liste repoussoir.**
 
 ---
 
@@ -129,7 +131,8 @@ réserve même pas de ligne d'envoi). Rien ne casse au démarrage.
 | `SES_ACCESS_KEY_ID` / `SES_SECRET_ACCESS_KEY` | identifiants **IAM** |
 | `SES_REGION` | `eu-west-1` |
 | `SES_CONFIGURATION_SET` | ⛔ sans lui, **aucun rebond ni plainte ne remonte** |
-| `SES_WEBHOOK_TOKEN` | 32 octets aléatoires. Vide = endpoint **fermé** |
+| `SES_SQS_QUEUE_URL` | ⛔ **le chemin réel des retours** — sans elle, aucun rebond ni plainte |
+| `SES_WEBHOOK_TOKEN` | second chemin (`POST /webhooks/ses`). Vide = endpoint **fermé** |
 | `SES_SNS_TOPIC_ARN` | liste blanche des topics acceptés |
 | `NEWSLETTER_SMTP_*` | secours. Port **2587**, pas 587 |
 
@@ -146,9 +149,10 @@ curl https://backend.myselfmonart.com/api/newsletter/status
 
 # 3. Boucle de retour SES, de bout en bout, SANS abîmer la réputation :
 #    les adresses de simulation d'AWS ne comptent ni dans les rebonds ni dans les plaintes.
-#    -> après envoi, une ligne doit apparaître dans newsletter_suppressions sous 15 min.
-#       bounce@simulator.amazonses.com
-#       complaint@simulator.amazonses.com
+#    -> après envoi, une ligne doit apparaître dans newsletter_suppressions au passage de
+#       cron suivant (15 min max).
+#       bounce@simulator.amazonses.com     -> hard_bounce, rétention 3 ans
+#       complaint@simulator.amazonses.com  -> complaint, rétention DÉFINITIVE
 ```
 
 Envoi témoin à l'œil vers **Gmail, Orange et Outlook** : c'est la seule mesure disponible à ce
