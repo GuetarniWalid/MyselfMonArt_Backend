@@ -103,11 +103,51 @@ liste repoussoir.**
 
 ---
 
-## 2. À FAIRE DANS SHOPIFY
+## 2. Shopify — automatisations : INVENTAIRE VÉRIFIÉ le 2026-08-06
 
-- **Vérifier qu'aucune automatisation « Customer subscribed to email marketing » n'est active**
-  (Shopify Messaging / Flow). Une telle règle enverrait un second e-mail de bienvenue et une
-  seconde offre à chaque inscrit.
+⚠️ Les workflows Flow **ne sont pas interrogeables par l'API Admin** : introspection du schéma
+faite, les types `Flow`, `FlowWorkflow`, `Automation`, `MarketingAutomation` n'existent pas.
+Ce n'est pas une question de scope — la surface n'existe pas. Seul l'écran d'admin les montre.
+Les deux pages à regarder (`/apps/flow` et `/marketing/automations`) affichent **la même
+liste** : les automatisations Shopify Email tournent sur le moteur Flow.
+
+État constaté le 2026-08-06 :
+
+| Automatisation | Statut | Déclencheur | E-mail client |
+|---|---|---|---|
+| Accueil des nouveaux abonnés | **DÉSACTIVÉ** ✅ | Customer subscribed to email marketing | oui |
+| Panier abandonné | ACTIF | Customer left online store without making a purchase | oui |
+| Recherche de produit abandonné | DÉSACTIVÉ | Customer left online store without making a purchase | oui |
+| Avis Photo | ACTIF | Order created | oui |
+| Remerciement après achat | ACTIF | Order created | oui |
+
+### ⛔ NE JAMAIS RÉACTIVER « Accueil des nouveaux abonnés »
+Son déclencheur est exactement celui que produit une inscription à la séquence du bon. Les
+deux enverraient le même message, au même moment, à la même personne — un doublon, donc une
+plainte, donc dix fois le seuil contractuel de SES.
+
+### Rien n'est déclenché par « Customer created »
+Point vérifié explicitement, car l'inscription CRÉE un client Shopify (`customerSet`). Un
+workflow sur ce déclencheur partirait donc aussi. Il n'y en a pas — à revérifier si un
+workflow est ajouté un jour.
+
+### Les deux actifs sur « Order created » sont inoffensifs
+La séquence s'arrête dès la conversion (code consommé ou commande payée) : ils ne se croisent
+jamais avec nos e-mails.
+
+### Effet de bord connu : « Panier abandonné »
+Shopify ne relance que les clients ayant accepté le marketing. Les nouveaux inscrits viennent
+de l'accepter : ils deviennent donc éligibles à cette relance, ce qu'ils n'étaient pas avant.
+Quelqu'un qui clique le CTA de E1, regarde et n'achète pas peut recevoir une relance panier
+puis notre E2 — soit 4 à 5 e-mails sur la semaine au lieu de 3.
+
+Ce ne sont pas des doublons, et le plancher de 24 h du dispositif **ne couvre que NOS envois** :
+personne ne contrôle la cadence combinée. Aucune action recommandée aujourd'hui (couper une
+relance qui fonctionne pour un risque théorique serait une mauvaise affaire), mais c'est le
+**premier levier à regarder** si des désabonnements anormaux apparaissent dans les premières
+semaines.
+
+### Autres règles Shopify
 - Ne **jamais** désinstaller ni recréer l'app « Product Creator » : la création d'apps depuis
   l'admin est fermée depuis le 2026-01-01, et c'est ce jeton qui porte l'accès aux données
   client. Le sauvegarder hors du serveur.
