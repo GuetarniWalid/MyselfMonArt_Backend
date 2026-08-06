@@ -20,6 +20,15 @@ import type { VoucherCurrency } from './currency'
  * La liste est mise en cache et rafraîchie par l'entretien quotidien : un marché change deux
  * fois par an, pas deux fois par heure, et le chemin d'inscription n'a pas à payer cette
  * lecture.
+ *
+ * ⚠️ LE CAS QUI INQUIÈTE À RAISON, ET POURQUOI IL SE RÉSOUT TOUT SEUL. La boutique LIVRE dans
+ * 31 pays mais n'a de marchés explicites que pour 13 : un acheteur autrichien, portugais ou
+ * irlandais peut payer sans appartenir à aucune des huit régions listées. Shopify le rattache
+ * alors au MARCHÉ PRIMAIRE — France, en euros (vérifié le 2026-08-06). Or le marché primaire
+ * est un marché comme un autre : il figure dans cette liste et se retrouve donc groupé sous SA
+ * devise. L'acheteur non listé voit les prix en euros, le thème annonce `EUR`, le bon est
+ * calibré en euros et restreint aux marchés euro — dont le marché primaire. La boucle est
+ * cohérente PAR CONSTRUCTION, et le resterait si le marchand changeait de marché primaire.
  */
 
 const STATE_MARKETS = 'markets_by_currency'

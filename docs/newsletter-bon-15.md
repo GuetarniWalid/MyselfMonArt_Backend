@@ -234,6 +234,13 @@ client reçoit toujours au moins ce qui lui a été promis, et n'est jamais refu
 qu'il croyait atteint. La liste des marchés est construite **dynamiquement** depuis l'API — une
 liste codée en dur ferait sortir du dispositif, en silence, tout marché créé plus tard.
 
+⚠️ **Les pays livrés sans marché explicite.** La boutique livre dans **31 pays** mais n'a de
+marchés que pour **13** : un acheteur autrichien, portugais ou irlandais peut payer sans
+appartenir à aucune des huit régions. Shopify le rattache au **marché primaire** — France, en
+euros. Comme le marché primaire figure lui aussi dans la table groupée par devise, cet acheteur
+voit des prix en euros, reçoit un bon en euros, restreint aux marchés euro dont la France :
+cohérent **par construction**, et le resterait si le marché primaire changeait.
+
 **Les dates.** La **date annoncée** est J+7 en Europe/Paris, et c'est la seule que le client
 lit — sans heure, jamais. Le code, lui, s'arrête à **11:59:59 UTC le lendemain** : une
 expiration calée sur 23 h 59 heure de Paris tuerait le bon à 14 h 59 pour un client de Los
