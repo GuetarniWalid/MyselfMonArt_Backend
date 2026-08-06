@@ -57,6 +57,24 @@ export interface RenderInput {
   storeUrl: string
   unsubscribeUrl: string
   contactEmail: string
+  /**
+   * Note et nombre d'avis Trustpilot. ⛔ Valeurs RÉELLES du thème, jamais majorées : une note
+   * gonflée est une pratique commerciale trompeuse, et le lecteur vérifie en trois secondes.
+   */
+  trustpilotScore?: number
+  trustpilotCount?: number
+  /**
+   * L'œuvre regardée au moment de l'inscription, déduite de `source_url`. Bloc OPTIONNEL :
+   * `undefined` quand l'inscription ne vient pas d'une fiche produit, ou quand la fiche n'est
+   * plus publiée — le bloc disparaît alors ENTIÈREMENT. Jamais de moitié de bloc.
+   */
+  product?: {
+    title: string
+    imageUrl: string
+    /** Déjà mis en forme dans la devise de l'acheteur — le prix RÉEL de son marché. */
+    price: string
+    url: string
+  }
   /** Mention postale complète de l'expéditeur (obligation légale). */
   /**
    * Mention postale de l'expéditeur, en pied d'e-mail. VIDE = la ligne n'apparaît pas.

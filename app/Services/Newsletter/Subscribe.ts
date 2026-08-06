@@ -190,6 +190,9 @@ export default class NewsletterSubscribe {
         locale,
         currency,
         country: country || null,
+        // Conservée sur l'inscrit, et pas seulement dans le journal de preuve : E2 et E3
+        // partent des jours plus tard et doivent pouvoir rappeler l'œuvre regardée.
+        sourceUrl: input.sourceUrl ? input.sourceUrl.slice(0, 512) : null,
         purpose: PURPOSE,
         status: 'active',
         sequenceStartedTs: nowTs,

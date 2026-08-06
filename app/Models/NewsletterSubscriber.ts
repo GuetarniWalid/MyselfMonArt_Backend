@@ -55,6 +55,16 @@ export default class NewsletterSubscriber extends BaseModel {
   public country: string | null
 
   /**
+   * Page d'où vient l'inscription — l'encart s'affiche sur une fiche produit, donc elle dit
+   * quelle œuvre la personne regardait. Sert au bloc produit des e-mails.
+   *
+   * ⚠️ À ne pas confondre avec la `source_url` de `newsletter_consent_events` : celle-là est
+   * une PREUVE, purgée à trois ans. Celle-ci est une donnée de travail.
+   */
+  @column()
+  public sourceUrl: string | null
+
+  /**
    * L'offre ANNONCÉE, dans la devise du client (15, 20, 14…). Figée à l'émission : E2 et E3
    * partent jusqu'à six jours plus tard, et la recalculer au taux du moment ferait annoncer un
    * montant différent de celui affiché à l'inscription.

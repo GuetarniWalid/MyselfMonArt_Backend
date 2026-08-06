@@ -23,6 +23,62 @@ export default class Product extends Authentication {
     this.tapestryCopier = new TapestryCopier()
   }
 
+  /**
+   * Fiche produit réduite à ce qu'un e-mail affiche : titre TRADUIT, image, prix DANS LA DEVISE
+   * DE L'ACHETEUR. `null` si la fiche n'existe pas ou n'est plus publiée.
+   *
+   * ⛔ LE PRIX VIENT DE `contextualPricing`, JAMAIS D'UNE CONVERSION FAITE ICI. Vérifié sur
+   * cette boutique : une œuvre à 59,50 € est vendue **74,00 $** aux États-Unis, là où une
+   * conversion au taux du jour donnerait 68,67 $. L'écart vient de l'ajustement en pourcentage
+   * de la liste de prix du marché (+26,6 %), appliqué APRÈS la conversion. Afficher le prix
+   * converti soi-même serait une annonce trompeuse.
+   *
+   * ⚠️ Et le titre passe par `translations` : l'Admin API renvoie toujours la langue SOURCE
+   * (français). Sans ça, un e-mail allemand afficherait un titre français sous une image.
+   */
+  public async getForNewsletter(input: {
+    handle: string
+    /** ISO 3166-1 alpha-2 — décide du prix contextuel. */
+    country: string
+    /** Langue du destinataire. `fr` est la source : aucune traduction à chercher. */
+    locale: string
+  }): Promise<{ title: string; imageUrl: string; amount: string; currencyCode: string } | null> {
+    const query = `query NewsletterProduct($handle: String!, $country: CountryCode!, $locale: String!, $translate: Boolean!) {
+      productByIdentifier(identifier: { handle: $handle }) {
+        title
+        status
+        translations(locale: $locale) @include(if: $translate) { key value }
+        featuredMedia { preview { image { url(transform: { maxWidth: 600 }) } } }
+        contextualPricing(context: { country: $country }) {
+          priceRange { minVariantPrice { amount currencyCode } }
+        }
+      }
+    }`
+
+    const data = await this.fetchGraphQL(query, {
+      handle: input.handle,
+      country: input.country,
+      locale: input.locale,
+      translate: input.locale !== 'fr',
+    })
+
+    const node = data?.productByIdentifier
+    // Brouillon ou archivée : le lien mènerait à un 404, mieux vaut omettre le bloc.
+    if (!node || node.status !== 'ACTIVE') return null
+
+    const translated = (node.translations ?? []).find(
+      (t: { key?: string; value?: string }) => t?.key === 'title'
+    )?.value
+    const money = node.contextualPricing?.priceRange?.minVariantPrice
+
+    return {
+      title: String(translated || node.title || ''),
+      imageUrl: node.featuredMedia?.preview?.image?.url ?? '',
+      amount: money?.amount ?? '',
+      currencyCode: money?.currencyCode ?? '',
+    }
+  }
+
   public async create(product: CreateProduct) {
     const { query, variables } = this.getCreateQuery(product)
     const response = await this.fetchGraphQL(query, variables)

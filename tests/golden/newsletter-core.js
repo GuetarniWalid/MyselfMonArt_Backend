@@ -385,6 +385,46 @@ check('chaque devise servie a une offre, et les cibles sont bien rondes', () => 
   }
 })
 
+// --- Bloc produit : extraction du handle depuis source_url ----------------------------
+//
+// ⛔ `source_url` est SOUMISE PAR LE NAVIGATEUR. C'est une entrée non fiable qui finit en
+// image et en titre dans un e-mail : sans filtre de domaine, un tiers ferait afficher le
+// visuel de son choix dans un message signé MyselfMonArt.
+check('handle produit : accepte les vraies fiches, avec ou sans préfixe de langue', () => {
+  const p = load('app/Services/Newsletter/sourceUrl.ts')
+  const H = 'cadre-design-cocktail-festif'
+  for (const url of [
+    `https://www.myselfmonart.com/products/${H}`,
+    `https://www.myselfmonart.com/de/products/${H}`,
+    `https://www.myselfmonart.com/products/${H}?variant=123&utm_source=x`,
+    `https://myselfmonart.com/products/${H}#avis`,
+    `https://www.myselfmonart.com/collections/tout/products/${H}`,
+  ]) {
+    assert.strictEqual(p.extractHandle(url), H, `devrait extraire le handle de ${url}`)
+  }
+})
+
+check('handle produit : rejette tout ce qui n’est pas une fiche de la boutique', () => {
+  const p = load('app/Services/Newsletter/sourceUrl.ts')
+  for (const url of [
+    null,
+    undefined,
+    '',
+    'pas-une-url',
+    // ⛔ Domaine étranger : la porte principale. Sans elle, l'e-mail afficherait l'image et le
+    // titre choisis par celui qui a posté le formulaire.
+    'https://evil.example.com/products/piege',
+    'https://myselfmonart.com.evil.example/products/piege',
+    'https://www.myselfmonart.com/collections/tout',
+    'https://www.myselfmonart.com/pages/contact',
+    // Handle syntaxiquement impossible chez Shopify.
+    'https://www.myselfmonart.com/products/' + encodeURIComponent('<script>'),
+    'https://www.myselfmonart.com/products/' + 'a'.repeat(300),
+  ]) {
+    assert.strictEqual(p.extractHandle(url), null, `devrait refuser ${url}`)
+  }
+})
+
 // --- Traductions --------------------------------------------------------------------
 check('les cinq langues ont bien les trois e-mails, tous champs remplis', () => {
   for (const locale of config.LOCALES) {

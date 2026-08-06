@@ -210,14 +210,32 @@ export const MAX_SUBSCRIBES_PER_IP_PER_HOUR = 10
 export const TERMS_VERSION = '2026-08'
 
 /**
- * Mention postale du pied d'e-mail — VIDE PAR DÉFAUT, décision du marchand.
+ * Mention postale du pied d'e-mail — DÉSORMAIS OBLIGATOIRE, et plus une option du marchand.
  *
- * Ce n'est pas une obligation légale en Europe : l'art. L34-5 du CPCE exige que l'expéditeur
- * soit identifiable et qu'un moyen de s'opposer existe, ce qu'assurent déjà le nom
- * d'expéditeur, l'adresse de contact et le lien de désabonnement.
+ * L'ancien commentaire disait vrai pour une diffusion purement européenne : l'art. L34-5 du
+ * CPCE se contente d'un expéditeur identifiable et d'un moyen de s'opposer, tous deux déjà
+ * assurés. Mais le dispositif sert maintenant les **États-Unis** et le **Canada** :
  *
- * ⚠️ Le CAN-SPAM Act américain, lui, EXIGE une adresse postale physique dès qu'un
- * destinataire est aux États-Unis. Renseigner `NEWSLETTER_POSTAL_ADDRESS` si la séquence
- * s'ouvre un jour à ce marché.
+ *   • CAN-SPAM (US) exige une adresse postale physique valide dans CHAQUE message commercial ;
+ *   • CASL (Canada) exige l'adresse postale de l'expéditeur, également dans chaque message.
+ *
+ * Ce n'est donc plus un arbitrage de goût. La valeur est ici, en dur, et non plus seulement
+ * dans `NEWSLETTER_POSTAL_ADDRESS` : une obligation légale ne doit pas dépendre d'une variable
+ * d'environnement qu'un redéploiement peut oublier — elle était d'ailleurs VIDE en production.
+ * La variable reste prioritaire si elle est renseignée, pour pouvoir corriger sans livrer.
  */
-export const POSTAL_SENDER = ''
+export const POSTAL_SENDER = 'SAS KINDOPIA, 60 rue François 1er, 75008 Paris'
+
+// --- Réassurance affichée dans les e-mails -----------------------------------------------
+
+/**
+ * Note et nombre d'avis Trustpilot, repris du thème.
+ *
+ * ⛔ VALEURS RÉELLES, JAMAIS MAJORÉES. Une note gonflée dans un e-mail commercial est une
+ * pratique commerciale trompeuse (dir. 2005/29/CE, art. 6) — et le lecteur qui clique vérifie
+ * en trois secondes.
+ *
+ * ⚠️ Elles ne se rafraîchissent pas toutes seules : à revoir quand le thème change les siennes.
+ */
+export const TRUSTPILOT_SCORE = 4.2
+export const TRUSTPILOT_COUNT = 81

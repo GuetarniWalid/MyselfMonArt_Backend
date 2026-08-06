@@ -11,15 +11,19 @@ import { renderNewsletterEmail } from './emails/template'
 import NewsletterVoucher from './Voucher'
 import { announcedDateFromEnd } from './expiry'
 import { offerFor, resolveCurrency } from './currency'
+import NewsletterProductLookup from './Product'
 import {
   MAX_SENDS_PER_TICK,
   MAX_STALENESS_DAYS,
   minHoursBeforeExpiry,
   MIN_HOURS_BETWEEN_EMAILS,
+  POSTAL_SENDER,
   PURPOSE,
   SEQUENCE_GAP_DAYS,
   SEQUENCE_LENGTH,
   STUCK_SEND_GRACE_MINUTES,
+  TRUSTPILOT_COUNT,
+  TRUSTPILOT_SCORE,
 } from './config'
 import type { NewsletterLocale } from './config'
 
@@ -317,9 +321,22 @@ export default class NewsletterSequence {
     // multidevise n'ont rien de stocké — repli sur l'offre en euros, qui est la leur.
     const currency = resolveCurrency(subscriber.currency)
     const offer = offerFor(currency)
+    const locale = subscriber.locale as NewsletterLocale
+
+    // L'œuvre regardée à l'inscription — bloc OPTIONNEL. Résolu au moment de l'envoi et non
+    // figé à l'inscription : le prix et la disponibilité ont pu changer en six jours, et une
+    // fiche dépubliée doit faire disparaître le bloc plutôt que mener à un 404.
+    // Ne lève jamais : `null` = pas de bloc, l'e-mail part quand même.
+    const product = await new NewsletterProductLookup().fromSourceUrl(
+      subscriber.sourceUrl,
+      locale,
+      currency,
+      subscriber.country
+    )
+
     const rendered = renderNewsletterEmail({
       emailNo: emailNo as 1 | 2 | 3,
-      locale: subscriber.locale as NewsletterLocale,
+      locale,
       code: subscriber.discountCode!,
       // La DATE ANNONCÉE, pas l'instant de fin du code : celui-ci court un jour de plus, pour
       // que la promesse tienne dans tous les fuseaux ouverts à la vente (cf. `expiry.ts`).
@@ -332,10 +349,14 @@ export default class NewsletterSequence {
       storeUrl: Env.get('STOREFRONT_URL') || 'https://www.myselfmonart.com',
       unsubscribeUrl: this.unsubscribeUrl(subscriber),
       contactEmail: Env.get('NEWSLETTER_MAIL_REPLY_TO') || 'contact@myselfmonart.com',
-      // Vide = pas de ligne d'adresse en pied. Décision du marchand, et légalement tenable en
-      // Europe : l'identification de l'expéditeur est assurée par le nom d'expéditeur,
-      // l'adresse de contact et le lien de désabonnement (cf. RenderInput.postalAddress).
-      postalAddress: (Env.get('NEWSLETTER_POSTAL_ADDRESS') as string | undefined) || '',
+      // ⛔ OBLIGATOIRE depuis l'ouverture aux États-Unis (CAN-SPAM) et au Canada (CASL) : une
+      // adresse postale physique dans chaque message. La constante fait foi si la variable
+      // d'environnement est absente — elle l'était en production, et une obligation légale ne
+      // doit pas dépendre d'un réglage qu'un redéploiement peut oublier.
+      postalAddress: (Env.get('NEWSLETTER_POSTAL_ADDRESS') as string | undefined) || POSTAL_SENDER,
+      trustpilotScore: TRUSTPILOT_SCORE,
+      trustpilotCount: TRUSTPILOT_COUNT,
+      ...(product ? { product } : {}),
     })
 
     const sender = senderAddress()
