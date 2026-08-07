@@ -12,6 +12,7 @@ import NewsletterVoucher from './Voucher'
 import { announcedDateFromEnd } from './expiry'
 import { offerFor, resolveCurrency } from './currency'
 import NewsletterProductLookup from './Product'
+import NewsletterBetterDeal from './BetterDeal'
 import {
   MAX_SENDS_PER_TICK,
   MAX_STALENESS_DAYS,
@@ -322,17 +323,33 @@ export default class NewsletterSequence {
     const currency = resolveCurrency(subscriber.currency)
     const offer = offerFor(currency)
     const locale = subscriber.locale as NewsletterLocale
+    const amount = subscriber.voucherAmount ?? offer.amount
+    const threshold = subscriber.voucherThreshold ?? offer.threshold
+
+    const lookup = new NewsletterProductLookup()
 
     // L'œuvre regardée à l'inscription — bloc OPTIONNEL. Résolu au moment de l'envoi et non
     // figé à l'inscription : le prix et la disponibilité ont pu changer en six jours, et une
     // fiche dépubliée doit faire disparaître le bloc plutôt que mener à un 404.
     // Ne lève jamais : `null` = pas de bloc, l'e-mail part quand même.
-    const product = await new NewsletterProductLookup().fromSourceUrl(
+    const product = await lookup.fromSourceUrl(
       subscriber.sourceUrl,
       locale,
       currency,
+      amount,
       subscriber.country
     )
+
+    // Le 2ᵉ e-mail montre les plus vendues ; les deux autres n'en ont pas besoin, et une
+    // lecture inutile coûte du quota Shopify à chaque envoi.
+    const bestSellers =
+      emailNo === 2 ? await lookup.bestSellers(locale, currency, amount, subscriber.country) : []
+
+    // Le 3ᵉ e-mail porte le « point d'honnêteté ». Le seuil se CALCULE depuis la promotion
+    // automatique réellement active (montant du bon ÷ taux), dans la devise du lecteur.
+    // `null` = pas de promotion en cours, le paragraphe disparaît.
+    const betterDealAmount =
+      emailNo === 3 ? await new NewsletterBetterDeal().thresholdFor(amount) : null
 
     const rendered = renderNewsletterEmail({
       emailNo: emailNo as 1 | 2 | 3,
@@ -343,8 +360,8 @@ export default class NewsletterSequence {
       announcedDate:
         subscriber.discountAnnouncedDate ?? announcedDateFromEnd(subscriber.discountExpiresTs!),
       signupTs: subscriber.sequenceStartedTs,
-      amount: subscriber.voucherAmount ?? offer.amount,
-      threshold: subscriber.voucherThreshold ?? offer.threshold,
+      amount,
+      threshold,
       currency,
       storeUrl: Env.get('STOREFRONT_URL') || 'https://www.myselfmonart.com',
       unsubscribeUrl: this.unsubscribeUrl(subscriber),
@@ -357,6 +374,8 @@ export default class NewsletterSequence {
       trustpilotScore: TRUSTPILOT_SCORE,
       trustpilotCount: TRUSTPILOT_COUNT,
       ...(product ? { product } : {}),
+      ...(bestSellers.length ? { bestSellers } : {}),
+      betterDealAmount,
     })
 
     const sender = senderAddress()

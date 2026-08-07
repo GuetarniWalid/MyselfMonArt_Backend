@@ -427,32 +427,78 @@ check('handle produit : rejette tout ce qui n’est pas une fiche de la boutique
 
 // --- Traductions --------------------------------------------------------------------
 check('les cinq langues ont bien les trois e-mails, tous champs remplis', () => {
+  const filled = (value, label) => assert.ok(value && String(value).trim(), `${label} vide`)
+
   for (const locale of config.LOCALES) {
     const p = strings.pack(locale)
-    assert.strictEqual(p.emails.length, 3, `${locale} : il faut 3 e-mails`)
-    p.emails.forEach((mail, i) => {
-      for (const key of [
-        'subject',
-        'preheader',
-        'title',
-        'intro',
-        'codeLabel',
-        'validity',
-        'cta',
-        'closing',
-      ]) {
-        assert.ok(mail[key] && mail[key].trim(), `${locale} e-mail ${i + 1} : ${key} vide`)
-      }
-      assert.ok(mail.reassure.length >= 2, `${locale} e-mail ${i + 1} : réassurance trop courte`)
+
+    filled(p.common.productPrice, `${locale} : common.productPrice`)
+
+    for (const key of [
+      'subject',
+      'docTitle',
+      'preheader',
+      'heroH2',
+      'heroSub',
+      'codeValidity',
+      'cta',
+      'ctaFine',
+      'productEyebrow',
+      'productLink',
+      'materials',
+    ]) {
+      filled(p.mail1[key], `${locale} mail 1 : ${key}`)
+    }
+    assert.strictEqual(p.mail1.cond.length, 3, `${locale} mail 1 : il faut 3 conditions`)
+    p.mail1.cond.forEach((c, i) => {
+      filled(c.strong, `${locale} mail 1 : condition ${i + 1} (gras)`)
+      filled(c.rest, `${locale} mail 1 : condition ${i + 1} (suite)`)
     })
-    for (const key of ['context', 'unsubscribe', 'contact']) {
-      assert.ok(p.footer[key] && p.footer[key].trim(), `${locale} : pied de page ${key} vide`)
+
+    for (const key of [
+      'subject',
+      'docTitle',
+      'preheader',
+      'band',
+      'h1',
+      'intro',
+      'bestEyebrow',
+      'cta',
+      'ctaFine',
+      'trustpilot',
+    ]) {
+      filled(p.mail2[key], `${locale} mail 2 : ${key}`)
+    }
+    assert.strictEqual(p.mail2.questions.length, 3, `${locale} mail 2 : il faut 3 questions`)
+    p.mail2.questions.forEach((q, i) => {
+      filled(q.title, `${locale} mail 2 : question ${i + 1} (titre)`)
+      filled(q.body, `${locale} mail 2 : question ${i + 1} (corps)`)
+    })
+
+    for (const key of [
+      'subject',
+      'docTitle',
+      'preheader',
+      'eyebrow',
+      'h1',
+      'intro',
+      'codeValidity',
+      'cta',
+      'ctaFine',
+      'productEyebrow',
+      'productLink',
+      'lastWord',
+    ]) {
+      filled(p.mail3[key], `${locale} mail 3 : ${key}`)
+    }
+    filled(p.mail3.honesty.strong, `${locale} mail 3 : point d’honnêteté (gras)`)
+    filled(p.mail3.honesty.rest, `${locale} mail 3 : point d’honnêteté (suite)`)
+
+    for (const key of ['context', 'privacy', 'unsubscribe', 'tagline', 'legal', 'reply']) {
+      filled(p.footer[key], `${locale} : pied de page ${key}`)
     }
     for (const key of ['title', 'body', 'button', 'done', 'doneBody']) {
-      assert.ok(
-        p.unsubscribePage[key] && p.unsubscribePage[key].trim(),
-        `${locale} : page de désabonnement ${key} vide`
-      )
+      filled(p.unsubscribePage[key], `${locale} : page de désabonnement ${key}`)
     }
   }
 })
@@ -483,6 +529,211 @@ const BASE = {
   unsubscribeUrl: 'https://backend.myselfmonart.com/u/JETON',
   contactEmail: 'contact@myselfmonart.com',
 }
+
+/**
+ * ⛔ « heure de Paris » ne doit JAMAIS revenir dans un e-mail.
+ *
+ * Le gabarit du designer la portait (« jusqu'au 13 août inclus (heure de Paris) », et
+ * « (Pariser Zeit) » dans la démonstration allemande). Elle contredit la raison d'être de
+ * l'échéance à 11:59:59 UTC : le bon vaut la journée annoncée entière PARTOUT. Annoncée à un
+ * lecteur de Los Angeles, cette mention lui fait croire que son bon meurt à 14 h 59 chez lui —
+ * et il n'a aucun moyen de savoir que c'est faux.
+ */
+check('aucun e-mail ne rattache l’échéance à un fuseau horaire', () => {
+  const interdits = [
+    /heure de Paris/i,
+    /Pariser Zeit/i,
+    /Paris time/i,
+    /hora de París/i,
+    /Parijse tijd/i,
+    // Et aucune heure d'horloge, sous aucune forme.
+    /\b\d{1,2}\s?h\s?\d{2}\b/,
+    /\b\d{1,2}:\d{2}\b/,
+  ]
+  for (const locale of config.LOCALES) {
+    for (const emailNo of [1, 2, 3]) {
+      const out = template.renderNewsletterEmail({ ...BASE, emailNo, locale })
+      for (const motif of interdits) {
+        assert.ok(!motif.test(out.text), `${locale}/${emailNo} : ${motif} dans la version texte`)
+      }
+    }
+  }
+})
+
+/**
+ * ⛔ AUCUN PIXEL DE SUIVI D'OUVERTURE.
+ *
+ * La seule image autorisée est l'œuvre d'un bloc produit. Un pixel se reconnaît à ce qu'il
+ * fait : une image sans dimension utile, sans texte alternatif, qu'on ajoute « pour voir » et
+ * qu'on ne retire jamais.
+ */
+check('aucun pixel de suivi : les seules images sont les œuvres', () => {
+  const produit = {
+    title: 'Sakura au crépuscule',
+    imageUrl: 'https://cdn.shopify.com/oeuvre.jpg',
+    price: '129,00 €',
+    priceWithVoucher: '114,00 €',
+    priceAmount: 129,
+    url: 'https://www.myselfmonart.com/products/sakura',
+  }
+  for (const emailNo of [1, 2, 3]) {
+    for (const product of [undefined, produit]) {
+      const out = template.renderNewsletterEmail({ ...BASE, emailNo, product })
+      const images = out.html.match(/<img\b[^>]*>/gi) || []
+      const attendu = product && emailNo !== 2 ? 1 : 0
+      assert.strictEqual(
+        images.length,
+        attendu,
+        `e-mail ${emailNo} : ${images.length} image(s) au lieu de ${attendu}`
+      )
+      images.forEach((img) => {
+        assert.ok(/alt="[^"]+"/.test(img), `e-mail ${emailNo} : image sans texte alternatif`)
+        assert.ok(img.includes(produit.imageUrl), `e-mail ${emailNo} : image étrangère à l’œuvre`)
+      })
+    }
+  }
+})
+
+/**
+ * L'adresse postale est OBLIGATOIRE (CAN-SPAM aux États-Unis, CASL au Canada) et doit
+ * apparaître EXACTEMENT une fois. Deux adresses dans un même message donnent l'air d'un
+ * assemblage mal réglé — pire que zéro pour la confiance, et sans bénéfice légal.
+ */
+check('l’adresse postale apparaît une fois et une seule', () => {
+  const postalAddress = 'SAS KINDOPIA, 60 rue François 1er, 75008 Paris'
+  for (const locale of config.LOCALES) {
+    for (const emailNo of [1, 2, 3]) {
+      const out = template.renderNewsletterEmail({ ...BASE, emailNo, locale, postalAddress })
+      const html = out.html.split('SAS KINDOPIA').length - 1
+      const texte = out.text.split('SAS KINDOPIA').length - 1
+      assert.strictEqual(html, 1, `${locale}/${emailNo} : ${html} adresse(s) dans le HTML`)
+      assert.strictEqual(texte, 1, `${locale}/${emailNo} : ${texte} adresse(s) dans le texte`)
+    }
+  }
+})
+
+/**
+ * ⛔ Les valeurs d'exemple du designer ne doivent JAMAIS partir.
+ *
+ * Les gabarits portaient « 129 € — soit 114 € », « Sakura au crépuscule », « 89 € », « 95 € »
+ * et « au-delà de 150 € ». Ce sont des maquettes. Un client facturé en dollars qui lit un
+ * montant en euros reçoit une annonce fausse — et c'est le seul défaut de ce dispositif qui se
+ * voit depuis la boîte de réception du client avant de se voir depuis le serveur.
+ */
+check('aucune valeur d’exemple du gabarit ne survit au rendu', () => {
+  const exemples = [
+    '129 €',
+    '114 €',
+    '89 €',
+    '95 €',
+    '74 €',
+    '80 € avec',
+    '150 €',
+    'Sakura au crépuscule',
+    'Vagues de Kanagawa',
+    'Botanique ancienne',
+    'IMAGE DE L',
+    'IMAGE ŒUVRE',
+    'BILD DES KUNSTWERKS',
+    '538 × 380',
+    '538 × 340',
+  ]
+  for (const locale of config.LOCALES) {
+    for (const emailNo of [1, 2, 3]) {
+      for (const currency of ['EUR', 'USD', 'CAD']) {
+        const out = template.renderNewsletterEmail({ ...BASE, emailNo, locale, currency })
+        for (const exemple of exemples) {
+          assert.ok(
+            !out.html.includes(exemple),
+            `${locale}/${emailNo}/${currency} : « ${exemple} » a survécu`
+          )
+        }
+      }
+    }
+  }
+})
+
+/**
+ * Le point d'honnêteté du mail 3 dépend d'une promotion RÉELLEMENT active. Sans promotion, le
+ * paragraphe disparaît — plutôt que de décrire une offre qui n'existe plus. La promotion du
+ * moment expire le 2026-08-30 ; ce test est ce qui garantit qu'on ne continuera pas à
+ * l'annoncer ensuite.
+ */
+check('le point d’honnêteté disparaît quand aucune promotion n’est active', () => {
+  const sans = template.renderNewsletterEmail({ ...BASE, emailNo: 3, betterDealAmount: null })
+  assert.ok(!sans.html.includes('honnêteté'), 'sans promotion : le paragraphe doit disparaître')
+  assert.ok(!/\bau-delà de\b/.test(sans.text), 'sans promotion : rien dans la version texte')
+
+  // 15 € de bon ÷ 10 % de promotion = 150 € de panier. Le seuil se CALCULE dans la devise du
+  // lecteur ; il ne se convertit pas (un Américain croise à 150 $, pas à 173 $).
+  const avec = template.renderNewsletterEmail({ ...BASE, emailNo: 3, betterDealAmount: 150 })
+  assert.ok(avec.html.includes('honnêteté'), 'avec promotion : le paragraphe doit apparaître')
+  assert.ok(avec.html.includes('150 €'), 'avec promotion : le seuil doit être affiché')
+
+  const us = template.renderNewsletterEmail({
+    ...BASE,
+    emailNo: 3,
+    locale: 'en',
+    currency: 'USD',
+    amount: 15,
+    betterDealAmount: 150,
+  })
+  assert.ok(us.html.includes('150 $'), 'USD : le seuil s’écrit dans la devise du lecteur')
+  assert.ok(!us.html.includes('173'), 'USD : le seuil ne se convertit pas depuis l’euro')
+})
+
+/**
+ * Le bloc « les plus choisies » du mail 2 montre DEUX œuvres ou aucune. Une seule
+ * déséquilibrerait la mise en page du designer ; zéro ne se remarque pas.
+ */
+check('les plus choisies : deux œuvres, ou le bloc entier disparaît', () => {
+  const oeuvre = (n) => ({
+    title: `Œuvre ${n}`,
+    imageUrl: `https://cdn.shopify.com/oeuvre-${n}.jpg`,
+    price: '129,00 €',
+    priceWithVoucher: '114,00 €',
+    priceAmount: 129,
+    url: `https://www.myselfmonart.com/products/oeuvre-${n}`,
+  })
+  const eyebrow = strings.pack('fr').mail2.bestEyebrow
+
+  for (const bestSellers of [undefined, [], [oeuvre(1)]]) {
+    const out = template.renderNewsletterEmail({ ...BASE, emailNo: 2, bestSellers })
+    assert.ok(!out.html.includes(eyebrow), 'moins de deux œuvres : le titre du bloc doit partir')
+    assert.ok(!out.html.includes('Œuvre 1'), 'moins de deux œuvres : aucune œuvre affichée')
+  }
+
+  const out = template.renderNewsletterEmail({
+    ...BASE,
+    emailNo: 2,
+    bestSellers: [oeuvre(1), oeuvre(2)],
+  })
+  assert.ok(out.html.includes(eyebrow), 'deux œuvres : le bloc doit apparaître')
+  assert.ok(out.html.includes('Œuvre 1') && out.html.includes('Œuvre 2'), 'les deux œuvres')
+})
+
+/**
+ * Règle du designer : la ligne de prix ne s'affiche que si l'œuvre atteint le seuil du bon.
+ * En dessous, le bon ne s'applique pas au format montré et l'e-mail affirmerait le contraire.
+ */
+check('sous le seuil du bon, la ligne de prix disparaît', () => {
+  const bonMarche = {
+    title: 'Petite œuvre',
+    imageUrl: 'https://cdn.shopify.com/petite.jpg',
+    price: '62,50 €',
+    priceWithVoucher: '47,50 €',
+    priceAmount: 62.5,
+    url: 'https://www.myselfmonart.com/products/petite',
+  }
+  // Seuil à 80 € : 62,50 € est en dessous.
+  const out = template.renderNewsletterEmail({ ...BASE, emailNo: 1, product: bonMarche })
+  assert.ok(out.html.includes('Petite œuvre'), 'l’œuvre reste affichée')
+  assert.ok(!out.html.includes('47,50'), 'le prix remisé ne doit pas être annoncé sous le seuil')
+
+  const cher = { ...bonMarche, price: '129,00 €', priceWithVoucher: '114,00 €', priceAmount: 129 }
+  const out2 = template.renderNewsletterEmail({ ...BASE, emailNo: 1, product: cher })
+  assert.ok(out2.html.includes('114,00'), 'au-dessus du seuil, le prix remisé s’affiche')
+})
 
 check('chaque e-mail, dans chaque langue, porte le code et le désabonnement', () => {
   for (const locale of config.LOCALES) {
@@ -537,8 +788,10 @@ check('chaque e-mail, dans chaque langue, porte le code et le désabonnement', (
 
 check('le contexte de collecte rappelle la date d’inscription', () => {
   const out = template.renderNewsletterEmail({ ...BASE, emailNo: 1, locale: 'fr' })
-  // 1784800000 -> 23/07 en Europe/Paris
-  assert.ok(out.html.includes('23/07'), 'la date d’inscription doit figurer au pied de page')
+  // 1784800000 -> 23 juillet en Europe/Paris. Forme LONGUE depuis les gabarits du designer
+  // (« le 6 août », « am 6. August ») : le format numérique 23/07 se lit à l'envers aux
+  // États-Unis, où le dispositif envoie désormais.
+  assert.ok(out.html.includes('23 juillet'), 'la date d’inscription doit figurer au pied de page')
   // Et l'échéance ANNONCÉE, en toutes lettres, dans le corps.
   assert.ok(out.html.includes('6 août 2026'), 'la date annoncée doit être lisible')
 })

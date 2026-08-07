@@ -239,3 +239,15 @@ export const POSTAL_SENDER = 'SAS KINDOPIA, 60 rue François 1er, 75008 Paris'
  */
 export const TRUSTPILOT_SCORE = 4.2
 export const TRUSTPILOT_COUNT = 81
+
+/**
+ * Collection d'où viennent les œuvres du bloc « les plus choisies » du 2ᵉ e-mail.
+ *
+ * ⚠️ Une COLLECTION, et pas un tri de produits : `ProductSortKeys` de l'Admin API n'a pas de
+ * `BEST_SELLING` (vérifié par introspection — il n'existe que côté Storefront), alors que
+ * `ProductCollectionSortKeys` l'a. Celle-ci est entretenue par le marchand, contient 30 œuvres
+ * et est déjà triée sur les ventes.
+ *
+ * Si elle disparaît, le bloc disparaît avec elle : c'est le comportement voulu, pas une panne.
+ */
+export const BEST_SELLERS_COLLECTION = 'bestsellers-1'

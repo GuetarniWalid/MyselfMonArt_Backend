@@ -60,6 +60,17 @@ export interface MarketSummary {
   currencyCode: string | null
 }
 
+/** Une promotion automatique en pourcentage, telle que Shopify la déclare. */
+export interface AutomaticPercentageSummary {
+  title: string
+  /** ACTIVE | SCHEDULED | EXPIRED. */
+  status: string
+  /** Échéance ISO 8601, ou `null` quand la promotion n'en a pas. */
+  endsAt: string | null
+  /** Part de remise en FRACTION : 0,1 pour −10 %. */
+  percentage: number
+}
+
 export interface BasicCodeDiscountInput {
   title: string
   code: string
@@ -106,6 +117,48 @@ export default class Discount extends Authentication {
     const discountsData = await this.fetchGraphQL(query)
     const discountsDetails = discountsData.automaticDiscountNodes.nodes
     return discountsDetails
+  }
+
+  /**
+   * Les promotions AUTOMATIQUES en pourcentage actuellement actives.
+   *
+   * Sert au « point d'honnêteté » du 3ᵉ e-mail, qui annonce à partir de quel panier la
+   * promotion en cours devient plus avantageuse que le bon. Ce seuil se calcule
+   * (montant du bon ÷ taux) et ne peut donc pas être écrit en dur : la promotion du moment a
+   * une date de fin, et un seuil figé continuerait d'annoncer une offre disparue.
+   *
+   * Seul le POURCENTAGE est remonté : une remise automatique à montant fixe n'a pas de point de
+   * croisement — elle bat le bon partout ou nulle part.
+   */
+  public async getActiveAutomaticPercentages(): Promise<AutomaticPercentageSummary[]> {
+    const query = `query NewsletterActiveAutomatic {
+      automaticDiscountNodes(first: 25, query: "status:active") {
+        nodes {
+          automaticDiscount {
+            __typename
+            ... on DiscountAutomaticBasic {
+              title
+              status
+              endsAt
+              customerGets { value { ... on DiscountPercentage { percentage } } }
+            }
+          }
+        }
+      }
+    }`
+
+    const data = await this.fetchGraphQL(query)
+    const nodes = data?.automaticDiscountNodes?.nodes ?? []
+
+    return nodes
+      .map((node: any) => node?.automaticDiscount)
+      .filter((promo: any) => promo && typeof promo.customerGets?.value?.percentage === 'number')
+      .map((promo: any) => ({
+        title: String(promo.title ?? ''),
+        status: String(promo.status ?? ''),
+        endsAt: promo.endsAt ?? null,
+        percentage: Number(promo.customerGets.value.percentage),
+      }))
   }
 
   /**

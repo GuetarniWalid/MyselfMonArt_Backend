@@ -79,6 +79,70 @@ export default class Product extends Authentication {
     }
   }
 
+  /**
+   * Les œuvres LES PLUS VENDUES, pour le bloc « les plus choisies » du 2ᵉ e-mail.
+   *
+   * ⚠️ Passe par une COLLECTION, et pas par `products(sortKey:)` — c'est une contrainte de
+   * l'API, vérifiée par introspection : `ProductSortKeys` de l'Admin API n'a pas de
+   * `BEST_SELLING` (il n'existe que côté Storefront), alors que
+   * `ProductCollectionSortKeys` l'a. La collection `bestsellers-1` (« Tableau best-seller »)
+   * est déjà entretenue par le marchand et déjà triée sur ce critère.
+   *
+   * Mêmes garanties que `getForNewsletter` : titre TRADUIT et prix RÉEL du marché du
+   * destinataire (`contextualPricing`), jamais une conversion maison.
+   */
+  public async getBestSellersForNewsletter(input: {
+    handle: string
+    country: string
+    locale: string
+    first: number
+  }): Promise<
+    Array<{ handle: string; title: string; imageUrl: string; amount: string; currencyCode: string }>
+  > {
+    const query = `query NewsletterBestSellers($handle: String!, $country: CountryCode!, $locale: String!, $translate: Boolean!, $first: Int!) {
+      collectionByIdentifier(identifier: { handle: $handle }) {
+        products(first: $first, sortKey: BEST_SELLING) {
+          nodes {
+            handle
+            title
+            status
+            translations(locale: $locale) @include(if: $translate) { key value }
+            featuredMedia { preview { image { url(transform: { maxWidth: 600 }) } } }
+            contextualPricing(context: { country: $country }) {
+              priceRange { minVariantPrice { amount currencyCode } }
+            }
+          }
+        }
+      }
+    }`
+
+    const data = await this.fetchGraphQL(query, {
+      handle: input.handle,
+      country: input.country,
+      locale: input.locale,
+      translate: input.locale !== 'fr',
+      first: input.first,
+    })
+
+    const nodes = data?.collectionByIdentifier?.products?.nodes ?? []
+
+    return nodes
+      .filter((node: any) => node?.status === 'ACTIVE')
+      .map((node: any) => {
+        const translated = (node.translations ?? []).find(
+          (t: { key?: string; value?: string }) => t?.key === 'title'
+        )?.value
+        const money = node.contextualPricing?.priceRange?.minVariantPrice
+        return {
+          handle: String(node.handle ?? ''),
+          title: String(translated || node.title || ''),
+          imageUrl: node.featuredMedia?.preview?.image?.url ?? '',
+          amount: money?.amount ?? '',
+          currencyCode: money?.currencyCode ?? '',
+        }
+      })
+  }
+
   public async create(product: CreateProduct) {
     const { query, variables } = this.getCreateQuery(product)
     const response = await this.fetchGraphQL(query, variables)

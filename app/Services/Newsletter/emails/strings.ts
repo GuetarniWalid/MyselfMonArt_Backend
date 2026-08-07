@@ -3,32 +3,98 @@ import type { NewsletterLocale } from '../config'
 /**
  * Les textes des trois e-mails, dans les cinq langues.
  *
- * UN SEUL GABARIT (voir `template.ts`), cinq jeux de chaînes. Jamais quinze gabarits : à la
- * première correction de mise en page, quatorze copies dérivent, et la quinzième part quand
- * même.
+ * UN SEUL GABARIT PAR E-MAIL (voir `template.ts`), cinq jeux de chaînes. Jamais quinze
+ * gabarits : à la première correction de mise en page, quatorze copies dérivent, et la
+ * quinzième part quand même.
  *
- * `{code}`, `{date}`, `{amount}`, `{min}` sont remplacés à l'envoi.
+ * ⚠️ PROVENANCE DES TEXTES, à savoir avant de les relire :
+ *   • `fr` est le texte du DESIGNER, recopié verbatim depuis `emails/mail-*.html`.
+ *   • `de` du mail 1 vient de sa démonstration `mail-1-demo-de.html`, également verbatim.
+ *   • Tout le reste (en, es, nl, et de des mails 2 et 3) est une TRADUCTION, faite ici pour que
+ *     les quatre autres langues ne régressent pas vers un e-mail français. Le fond, les
+ *     promesses et les mentions légales sont identiques ; la plume mérite une relecture.
+ *
+ * ⛔ UNE SEULE CORRECTION DE FOND sur le texte du designer : la mention « (heure de Paris) » de
+ * la 2ᵉ condition du mail 1 — « (Pariser Zeit) » dans la démonstration allemande — est retirée.
+ * Elle contredisait la raison d'être de l'échéance à 11:59:59 UTC : le bon est valable la
+ * journée annoncée ENTIÈRE partout dans le monde. Annoncer « heure de Paris » à un lecteur de
+ * Los Angeles lui fait croire que son bon meurt à 14 h 59 chez lui.
+ *
+ * Marques de remplacement : `{code}` `{date}` `{amount}` `{min}` `{signupDate}` `{contact}`
+ * `{betterDeal}` `{price}` `{priceWithVoucher}` `{score}` `{count}`.
  */
 
-export interface EmailStrings {
+/** Une condition en puce : la partie en gras, puis la suite. Pas de balisage dans les textes. */
+export interface Bullet {
+  strong: string
+  rest: string
+}
+
+export interface Mail1Strings {
   subject: string
+  docTitle: string
+  preheader: string
+  /** Suit immédiatement le montant géant : « 15 € » + « offerts sur votre première œuvre ». */
+  heroH2: string
+  heroSub: string
+  codeValidity: string
+  cta: string
+  ctaFine: string
+  productEyebrow: string
+  productLink: string
+  cond: [Bullet, Bullet, Bullet]
+  materials: string
+}
+
+export interface Question {
+  title: string
+  body: string
+  /** Lien de fin de bloc. Absent = pas de lien. */
+  link?: string
+}
+
+export interface Mail2Strings {
+  subject: string
+  docTitle: string
+  preheader: string
+  band: string
+  h1: string
+  intro: string
+  questions: [Question, Question, Question]
+  bestEyebrow: string
+  cta: string
+  ctaFine: string
+  trustpilot: string
+}
+
+export interface Mail3Strings {
+  subject: string
+  docTitle: string
   preheader: string
   eyebrow: string
-  title: string
+  h1: string
   intro: string
-  codeLabel: string
-  validity: string
+  codeValidity: string
   cta: string
-  reassure: string[]
-  closing: string
+  ctaFine: string
+  productEyebrow: string
+  productLink: string
+  honesty: Bullet
+  lastWord: string
+}
+
+export interface CommonStrings {
+  /** « 129 € — soit 114 € avec votre bon » */
+  productPrice: string
 }
 
 export interface FooterStrings {
-  /** « vous avez demandé votre bon de 15 € sur myselfmonart.com le JJ/MM » */
   context: string
+  privacy: string
   unsubscribe: string
-  unsubscribeAction: string
-  contact: string
+  tagline: string
+  legal: string
+  reply: string
 }
 
 export interface UnsubscribePageStrings {
@@ -40,76 +106,99 @@ export interface UnsubscribePageStrings {
 }
 
 type Pack = {
-  emails: [EmailStrings, EmailStrings, EmailStrings]
+  common: CommonStrings
+  mail1: Mail1Strings
+  mail2: Mail2Strings
+  mail3: Mail3Strings
   footer: FooterStrings
   unsubscribePage: UnsubscribePageStrings
 }
 
+// --- Français — texte du designer, verbatim ------------------------------------------------
+
 const fr: Pack = {
-  emails: [
-    {
-      subject: 'Votre bon de {amount} vous attend',
-      preheader: 'Votre code personnel, valable jusqu’au {date}.',
-      eyebrow: 'Merci',
-      title: 'Voici votre bon de {amount}',
-      intro:
-        'Merci d’avoir demandé votre bon. Il est à vous, à votre nom, et il ne fonctionne qu’une fois.',
-      codeLabel: 'Votre code personnel',
-      validity: 'Valable jusqu’au {date}, dès {min} d’achat.',
-      cta: 'Choisir mon œuvre',
-      reassure: [
-        'Impression sur toile ou papier d’art, tendue et prête à accrocher.',
-        'Fabriqué en Europe, expédié sous 3 à 5 jours.',
-        'Un doute sur une taille ? Répondez à cet e-mail, on regarde ensemble.',
-      ],
-      closing: 'À très vite,\nL’atelier MyselfMonArt',
+  common: { productPrice: '{price} — soit {priceWithVoucher} avec votre bon' },
+  mail1: {
+    subject: 'Votre bon de {amount} — code {code}',
+    docTitle: 'Votre bon de {amount}',
+    preheader: 'Votre code {code}, valable jusqu’au {date}, dès {min} d’achat.',
+    heroH2: 'offerts sur votre première œuvre',
+    heroSub: 'Merci. Votre code est juste en dessous — un clic suffit à l’appliquer.',
+    codeValidity: 'Valable jusqu’au {date} inclus',
+    cta: 'Utiliser mon bon de {amount}',
+    ctaFine:
+      'Le code est normalement déjà inscrit à la caisse. S’il n’y est pas, saisissez-le : il est juste au-dessus.',
+    productEyebrow: 'Vous regardiez',
+    productLink: 'Revoir cette œuvre',
+    cond: [
+      { strong: 'Dès {min} d’achat', rest: ', hors frais de livraison' },
+      // ⛔ « (heure de Paris) » retiré — voir l'en-tête de ce fichier.
+      { strong: 'Utilisable une seule fois', rest: ' — jusqu’au {date} inclus' },
+      { strong: 'Non cumulable', rest: ' : la remise la plus avantageuse s’applique' },
+    ],
+    materials: 'Toile 285 g · Encres archival 75 ans · Cadre bois massif',
+  },
+  mail2: {
+    subject: 'Le plus dur, ce n’est pas le prix',
+    docTitle: 'Le plus dur, ce n’est pas le prix',
+    preheader: 'Poster ou toile, quel cadre, et l’aperçu 3D pour voir avant de commander.',
+    band: 'VOTRE BON DE {amount} EST TOUJOURS ACTIF',
+    h1: 'Le plus dur, ce n’est pas le prix.',
+    intro:
+      'C’est de savoir ce qui ira sur ce mur-là. Trois questions reviennent tout le temps — voici nos réponses, en trois minutes.',
+    questions: [
+      {
+        title: 'Poster ou toile ?',
+        body: 'Le poster est un tirage photo encadré sous verre : net, graphique, parfait en petit et moyen format. La toile est tendue sur châssis, 285 g, sans reflet — c’est elle qui tient les grands murs.',
+        link: 'Comparer les deux',
+      },
+      {
+        title: 'Quel cadre ?',
+        body: 'Toile : caisse américaine blanc, noir mat, argent ancien, chêne clair ou noyer — ou sans cadre. Poster : blanc, noir mat, chêne clair ou noyer, sous verre — ou sans cadre. En cas d’hésitation : le chêne clair s’accorde à presque tout. L’option contour blanc ajoute une marge autour de l’image, comme un accrochage de galerie.',
+      },
+      {
+        title: 'Et sur mon mur, ça donne quoi ?',
+        body: 'Chaque œuvre a un aperçu 3D : vous la faites pivoter, vous voyez le cadre en perspective et le reflet du verre. C’est le plus proche du réel avant de commander.',
+        link: 'Essayer l’aperçu 3D',
+      },
+    ],
+    // « cette semaine » chez le designer. Le tri de Shopify (BEST_SELLING) ne porte pas sur une
+    // semaine : annoncer une période qu'on ne mesure pas est le genre de petite fausseté que ce
+    // dispositif s'interdit partout ailleurs.
+    bestEyebrow: 'Les plus choisies en ce moment',
+    cta: 'Choisir mon œuvre',
+    ctaFine:
+      'Votre bon reste valable jusqu’au {date} inclus. Dès {min} d’achat, utilisable une seule fois.',
+    trustpilot: '{score} / 5 — {count} retours vérifiés sur Trustpilot',
+  },
+  mail3: {
+    subject: 'Vos {amount} s’arrêtent le {date}',
+    docTitle: 'Vos {amount} s’arrêtent le {date}',
+    preheader: 'Le code {code} expire le {date}. Il n’est pas reconduit.',
+    eyebrow: 'Dernier rappel',
+    h1: 'Vos {amount} s’arrêtent le {date}.',
+    intro:
+      'Passé cette date-là, le code cesse de fonctionner. C’est un bon nominatif, utilisable une seule fois, et il n’est pas reconduit.',
+    codeValidity: 'Dernier jour : {date}',
+    cta: 'Utiliser mes {amount} maintenant',
+    ctaFine: 'Dès {min} d’achat, hors livraison. Utilisable une seule fois.',
+    productEyebrow: 'L’œuvre que vous regardiez',
+    productLink: 'Revoir cette œuvre',
+    honesty: {
+      strong: 'Un point d’honnêteté :',
+      rest: ' au-delà de {betterDeal} de panier, la promotion en cours est plus avantageuse que le bon. Dans ce cas, gardez votre argent plutôt que votre code — c’est la meilleure remise qui s’applique.',
     },
-    {
-      subject: 'Votre bon de {amount} expire bientôt',
-      preheader: 'Votre code {code} est encore actif jusqu’au {date}.',
-      eyebrow: 'Rappel',
-      title: 'Votre bon est toujours valable',
-      intro:
-        'Votre code vous attend encore. Si une œuvre vous a plu, c’est le bon moment — il expire le {date}.',
-      codeLabel: 'Votre code personnel',
-      validity: 'Valable jusqu’au {date}, dès {min} d’achat.',
-      cta: 'Revoir les œuvres',
-      reassure: [
-        'Chaque tirage est produit à la commande, jamais stocké.',
-        'Livraison suivie, emballage rigide.',
-        'Échange gratuit si la taille ne convient pas.',
-      ],
-      closing: 'À bientôt,\nL’atelier MyselfMonArt',
-    },
-    {
-      // ⛔ Pas « dernier jour » : E3 part à J+6, la VEILLE de la date annoncée. Une échéance
-      // fausse dans un objet d'e-mail est exactement ce qui fait cliquer sur « signaler comme
-      // spam », et le seuil de plainte de SES entraîne la suspension du compte. « Dernière
-      // chance » reste vrai quel que soit le jour où le cron parvient à envoyer — un objet qui
-      // compte les jours dériverait au premier rattrapage. La date exacte est juste en dessous.
-      subject: 'Dernière chance pour votre bon de {amount}',
-      preheader: 'Après le {date}, le code {code} ne fonctionnera plus.',
-      eyebrow: 'Dernier rappel',
-      title: 'C’est le moment ou jamais',
-      intro:
-        'C’est le dernier e-mail que nous vous envoyons à ce sujet. Votre bon expire le {date} — après, il ne fonctionnera plus.',
-      codeLabel: 'Votre code personnel',
-      validity: 'Valable jusqu’au {date}, dès {min} d’achat.',
-      cta: 'Utiliser mon bon',
-      reassure: [
-        'Plus de 400 œuvres, du petit format au grand mur.',
-        'Paiement en 3 fois sans frais dès 100 €.',
-        'Une question ? Répondez simplement à cet e-mail.',
-      ],
-      closing: 'Merci de votre confiance,\nL’atelier MyselfMonArt',
-    },
-  ],
+    lastWord:
+      'C’est le dernier e-mail que nous vous envoyons à ce sujet. Après le {date}, le code cesse simplement de fonctionner — il n’est pas reconduit.',
+  },
   footer: {
     context:
-      'Vous recevez cet e-mail parce que vous avez demandé votre bon de {amount} sur myselfmonart.com le {signupDate}.',
-    unsubscribe: 'Ne plus recevoir ces e-mails',
-    unsubscribeAction: 'Se désabonner',
-    contact: 'Une question ? Écrivez-nous à {contact}.',
+      'Vous recevez cet e-mail parce que vous avez demandé un bon de {amount} sur myselfmonart.com le {signupDate}.',
+    privacy: 'Politique de confidentialité',
+    unsubscribe: 'Se désabonner',
+    tagline: 'MyselfMonArt — direction artistique à Paris, service client à Toulouse.',
+    legal: 'Mentions légales',
+    reply: 'Une question ? Répondez à cet e-mail : il arrive chez {contact}.',
   },
   unsubscribePage: {
     title: 'Ne plus recevoir nos e-mails',
@@ -120,66 +209,86 @@ const fr: Pack = {
   },
 }
 
+// --- Anglais -------------------------------------------------------------------------------
+
 const en: Pack = {
-  emails: [
-    {
-      subject: 'Your {amount} voucher is ready',
-      preheader: 'Your personal code, valid until {date}.',
-      eyebrow: 'Thank you',
-      title: 'Here is your {amount} voucher',
-      intro:
-        'Thanks for requesting your voucher. It is yours, in your name, and it works exactly once.',
-      codeLabel: 'Your personal code',
-      validity: 'Valid until {date}, on orders from {min}.',
-      cta: 'Choose my artwork',
-      reassure: [
-        'Printed on canvas or fine art paper, stretched and ready to hang.',
-        'Made in Europe, shipped within 3 to 5 days.',
-        'Unsure about a size? Just reply to this email and we will help.',
-      ],
-      closing: 'See you soon,\nThe MyselfMonArt studio',
+  common: { productPrice: '{price} — {priceWithVoucher} with your voucher' },
+  mail1: {
+    subject: 'Your {amount} voucher — code {code}',
+    docTitle: 'Your {amount} voucher',
+    preheader: 'Your code {code}, valid until {date}, on orders from {min}.',
+    heroH2: 'off your first artwork',
+    heroSub: 'Thank you. Your code is right below — one click applies it.',
+    codeValidity: 'Valid until {date} inclusive',
+    cta: 'Use my {amount} voucher',
+    ctaFine:
+      'The code is normally already filled in at checkout. If it is not, enter it — it is just above.',
+    productEyebrow: 'You were looking at',
+    productLink: 'See this artwork again',
+    cond: [
+      { strong: 'On orders from {min}', rest: ', excluding shipping' },
+      { strong: 'Single use', rest: ' — until {date} inclusive' },
+      { strong: 'Not combinable', rest: ' : the better discount always applies' },
+    ],
+    materials: '285 g canvas · 75-year archival inks · Solid wood frame',
+  },
+  mail2: {
+    subject: 'The hard part is not the price',
+    docTitle: 'The hard part is not the price',
+    preheader: 'Poster or canvas, which frame, and the 3D preview to see before you order.',
+    band: 'YOUR {amount} VOUCHER IS STILL ACTIVE',
+    h1: 'The hard part is not the price.',
+    intro:
+      'It is knowing what belongs on that particular wall. Three questions come up every time — here are our answers, in three minutes.',
+    questions: [
+      {
+        title: 'Poster or canvas?',
+        body: 'The poster is a photographic print framed under glass: crisp, graphic, perfect in small and medium formats. The canvas is stretched on a frame, 285 g, glare-free — it is the one that holds large walls.',
+        link: 'Compare the two',
+      },
+      {
+        title: 'Which frame?',
+        body: 'Canvas: floater frame in white, matte black, antique silver, light oak or walnut — or no frame. Poster: white, matte black, light oak or walnut, under glass — or no frame. If in doubt: light oak goes with almost everything. The white border option adds a margin around the image, like a gallery hang.',
+      },
+      {
+        title: 'And on my wall, how does it look?',
+        body: 'Every artwork has a 3D preview: you rotate it, you see the frame in perspective and the reflection on the glass. It is the closest thing to the real piece before ordering.',
+        link: 'Try the 3D preview',
+      },
+    ],
+    bestEyebrow: 'Most chosen right now',
+    cta: 'Choose my artwork',
+    ctaFine: 'Your voucher remains valid until {date} inclusive. On orders from {min}, single use.',
+    trustpilot: '{score} / 5 — {count} verified reviews on Trustpilot',
+  },
+  mail3: {
+    subject: 'Your {amount} ends on {date}',
+    docTitle: 'Your {amount} ends on {date}',
+    preheader: 'Code {code} expires on {date}. It will not be renewed.',
+    eyebrow: 'Final reminder',
+    h1: 'Your {amount} ends on {date}.',
+    intro:
+      'After that date, the code stops working. It is a personal voucher, usable once, and it will not be renewed.',
+    codeValidity: 'Last day: {date}',
+    cta: 'Use my {amount} now',
+    ctaFine: 'On orders from {min}, excluding shipping. Single use.',
+    productEyebrow: 'The artwork you were looking at',
+    productLink: 'See this artwork again',
+    honesty: {
+      strong: 'One honest note:',
+      rest: ' above {betterDeal} in your basket, the current promotion beats the voucher. In that case, keep your money rather than your code — the better discount is the one that applies.',
     },
-    {
-      subject: 'Your {amount} voucher expires soon',
-      preheader: 'Your code {code} is still active until {date}.',
-      eyebrow: 'Reminder',
-      title: 'Your voucher is still valid',
-      intro:
-        'Your code is still waiting. If a piece caught your eye, now is the moment — it expires on {date}.',
-      codeLabel: 'Your personal code',
-      validity: 'Valid until {date}, on orders from {min}.',
-      cta: 'Browse the artworks',
-      reassure: [
-        'Every print is made to order, never stocked.',
-        'Tracked delivery, rigid packaging.',
-        'Free exchange if the size is not right.',
-      ],
-      closing: 'Talk soon,\nThe MyselfMonArt studio',
-    },
-    {
-      subject: 'Last chance for your {amount} voucher',
-      preheader: 'After {date}, code {code} will stop working.',
-      eyebrow: 'Final reminder',
-      title: 'It is now or never',
-      intro:
-        'This is the last email we will send about this. Your voucher expires on {date} — after that it stops working.',
-      codeLabel: 'Your personal code',
-      validity: 'Valid until {date}, on orders from {min}.',
-      cta: 'Use my voucher',
-      reassure: [
-        'Over 400 artworks, from small formats to full walls.',
-        'Pay in 3 instalments, no fees, from €100.',
-        'A question? Simply reply to this email.',
-      ],
-      closing: 'Thank you for your trust,\nThe MyselfMonArt studio',
-    },
-  ],
+    lastWord:
+      'This is the last email we will send about this. After {date}, the code simply stops working — it will not be renewed.',
+  },
   footer: {
     context:
-      'You are receiving this email because you requested your {amount} voucher on myselfmonart.com on {signupDate}.',
-    unsubscribe: 'Stop receiving these emails',
-    unsubscribeAction: 'Unsubscribe',
-    contact: 'A question? Write to us at {contact}.',
+      'You are receiving this email because you requested a {amount} voucher on myselfmonart.com on {signupDate}.',
+    privacy: 'Privacy policy',
+    unsubscribe: 'Unsubscribe',
+    tagline: 'MyselfMonArt — art direction in Paris, customer service in Toulouse.',
+    legal: 'Legal notice',
+    reply: 'A question? Reply to this email: it reaches {contact}.',
   },
   unsubscribePage: {
     title: 'Stop receiving our emails',
@@ -190,66 +299,91 @@ const en: Pack = {
   },
 }
 
+// --- Allemand — mail 1 verbatim de la démonstration du designer -----------------------------
+
 const de: Pack = {
-  emails: [
-    {
-      subject: 'Ihr {amount}-Gutschein ist da',
-      preheader: 'Ihr persönlicher Code, gültig bis {date}.',
-      eyebrow: 'Danke',
-      title: 'Hier ist Ihr {amount}-Gutschein',
-      intro:
-        'Danke, dass Sie Ihren Gutschein angefordert haben. Er gehört Ihnen, lautet auf Ihren Namen und ist genau einmal einlösbar.',
-      codeLabel: 'Ihr persönlicher Code',
-      validity: 'Gültig bis {date}, ab einem Bestellwert von {min}.',
-      cta: 'Mein Kunstwerk wählen',
-      reassure: [
-        'Druck auf Leinwand oder Kunstdruckpapier, aufgespannt und aufhängefertig.',
-        'In Europa gefertigt, Versand in 3 bis 5 Tagen.',
-        'Unsicher bei der Größe? Antworten Sie einfach auf diese E-Mail.',
-      ],
-      closing: 'Bis bald,\nDas MyselfMonArt-Atelier',
+  common: { productPrice: '{price} — mit Ihrem Gutschein {priceWithVoucher}' },
+  mail1: {
+    subject: 'Ihr Gutschein über {amount} — Code {code}',
+    docTitle: 'Ihr Gutschein über {amount}',
+    preheader: 'Ihr Code {code}, gültig bis zum {date}, ab {min} Einkaufswert.',
+    heroH2: 'geschenkt auf Ihr erstes Kunstwerk',
+    heroSub: 'Vielen Dank. Ihr Code steht direkt darunter — ein Klick genügt, um ihn anzuwenden.',
+    codeValidity: 'Gültig bis einschließlich {date}',
+    cta: 'Meinen Gutschein über {amount} einlösen',
+    ctaFine:
+      'Der Code ist an der Kasse normalerweise schon eingetragen. Falls nicht, geben Sie ihn einfach ein — er steht direkt darüber.',
+    productEyebrow: 'Das haben Sie sich angesehen',
+    productLink: 'Dieses Kunstwerk ansehen',
+    cond: [
+      { strong: 'Ab {min} Einkaufswert', rest: ', ohne Versandkosten' },
+      // ⛔ « (Pariser Zeit) » retiré — voir l'en-tête de ce fichier.
+      { strong: 'Nur einmal verwendbar', rest: ' — bis einschließlich {date}' },
+      {
+        strong: 'Nicht mit anderen Rabatten kombinierbar',
+        rest: ' : es gilt immer der günstigste Preis',
+      },
+    ],
+    materials: 'Leinwand 285 g · Archivtinten 75 Jahre · Rahmen aus Massivholz',
+  },
+  mail2: {
+    subject: 'Das Schwierigste ist nicht der Preis',
+    docTitle: 'Das Schwierigste ist nicht der Preis',
+    preheader: 'Poster oder Leinwand, welcher Rahmen, und die 3D-Vorschau vor der Bestellung.',
+    band: 'IHR GUTSCHEIN ÜBER {amount} IST WEITERHIN AKTIV',
+    h1: 'Das Schwierigste ist nicht der Preis.',
+    intro:
+      'Sondern zu wissen, was an genau diese Wand gehört. Drei Fragen kommen immer wieder — hier sind unsere Antworten, in drei Minuten.',
+    questions: [
+      {
+        title: 'Poster oder Leinwand?',
+        body: 'Das Poster ist ein Fotodruck, gerahmt hinter Glas: klar, grafisch, ideal im kleinen und mittleren Format. Die Leinwand ist auf einen Keilrahmen gespannt, 285 g, reflexionsfrei — sie trägt die großen Wände.',
+        link: 'Beide vergleichen',
+      },
+      {
+        title: 'Welcher Rahmen?',
+        body: 'Leinwand: Schattenfugenrahmen in Weiß, Mattschwarz, Altsilber, heller Eiche oder Nussbaum — oder ohne Rahmen. Poster: Weiß, Mattschwarz, helle Eiche oder Nussbaum, hinter Glas — oder ohne Rahmen. Im Zweifel: helle Eiche passt zu fast allem. Die Option weißer Rand fügt einen Abstand um das Bild hinzu, wie bei einer Galeriehängung.',
+      },
+      {
+        title: 'Und an meiner Wand, wie wirkt das?',
+        body: 'Jedes Kunstwerk hat eine 3D-Vorschau: Sie drehen es, Sie sehen den Rahmen perspektivisch und die Spiegelung des Glases. Näher kommt man dem Original vor der Bestellung nicht.',
+        link: '3D-Vorschau ausprobieren',
+      },
+    ],
+    bestEyebrow: 'Aktuell am häufigsten gewählt',
+    cta: 'Mein Kunstwerk wählen',
+    ctaFine:
+      'Ihr Gutschein bleibt bis einschließlich {date} gültig. Ab {min} Einkaufswert, nur einmal verwendbar.',
+    trustpilot: '{score} / 5 — {count} geprüfte Bewertungen auf Trustpilot',
+  },
+  mail3: {
+    subject: 'Ihre {amount} enden am {date}',
+    docTitle: 'Ihre {amount} enden am {date}',
+    preheader: 'Der Code {code} läuft am {date} ab. Er wird nicht verlängert.',
+    eyebrow: 'Letzte Erinnerung',
+    h1: 'Ihre {amount} enden am {date}.',
+    intro:
+      'Nach diesem Datum funktioniert der Code nicht mehr. Es ist ein persönlicher Gutschein, einmal verwendbar, und er wird nicht verlängert.',
+    codeValidity: 'Letzter Tag: {date}',
+    cta: 'Meine {amount} jetzt einlösen',
+    ctaFine: 'Ab {min} Einkaufswert, ohne Versand. Nur einmal verwendbar.',
+    productEyebrow: 'Das Kunstwerk, das Sie sich angesehen haben',
+    productLink: 'Dieses Kunstwerk ansehen',
+    honesty: {
+      strong: 'Ein Wort der Ehrlichkeit:',
+      rest: ' ab {betterDeal} Warenkorbwert ist die laufende Aktion günstiger als der Gutschein. Behalten Sie dann lieber Ihr Geld als Ihren Code — es gilt immer der bessere Rabatt.',
     },
-    {
-      subject: 'Ihr {amount}-Gutschein läuft bald ab',
-      preheader: 'Ihr Code {code} ist noch bis {date} aktiv.',
-      eyebrow: 'Erinnerung',
-      title: 'Ihr Gutschein ist noch gültig',
-      intro:
-        'Ihr Code wartet noch auf Sie. Wenn Ihnen ein Werk gefallen hat, ist jetzt der Moment — er läuft am {date} ab.',
-      codeLabel: 'Ihr persönlicher Code',
-      validity: 'Gültig bis {date}, ab einem Bestellwert von {min}.',
-      cta: 'Werke ansehen',
-      reassure: [
-        'Jeder Druck entsteht auf Bestellung, nie auf Lager.',
-        'Versand mit Sendungsverfolgung, stabile Verpackung.',
-        'Kostenloser Umtausch, wenn die Größe nicht passt.',
-      ],
-      closing: 'Bis bald,\nDas MyselfMonArt-Atelier',
-    },
-    {
-      subject: 'Letzte Chance für Ihren {amount}-Gutschein',
-      preheader: 'Nach dem {date} funktioniert der Code {code} nicht mehr.',
-      eyebrow: 'Letzte Erinnerung',
-      title: 'Jetzt oder nie',
-      intro:
-        'Dies ist unsere letzte E-Mail dazu. Ihr Gutschein läuft am {date} ab — danach funktioniert er nicht mehr.',
-      codeLabel: 'Ihr persönlicher Code',
-      validity: 'Gültig bis {date}, ab einem Bestellwert von {min}.',
-      cta: 'Gutschein einlösen',
-      reassure: [
-        'Über 400 Werke, vom kleinen Format bis zur ganzen Wand.',
-        'Zahlung in 3 Raten ohne Gebühren ab 100 €.',
-        'Eine Frage? Antworten Sie einfach auf diese E-Mail.',
-      ],
-      closing: 'Danke für Ihr Vertrauen,\nDas MyselfMonArt-Atelier',
-    },
-  ],
+    lastWord:
+      'Dies ist die letzte E-Mail, die wir Ihnen dazu schicken. Nach dem {date} funktioniert der Code einfach nicht mehr — er wird nicht verlängert.',
+  },
   footer: {
     context:
-      'Sie erhalten diese E-Mail, weil Sie am {signupDate} auf myselfmonart.com Ihren {amount}-Gutschein angefordert haben.',
-    unsubscribe: 'Diese E-Mails nicht mehr erhalten',
-    unsubscribeAction: 'Abmelden',
-    contact: 'Eine Frage? Schreiben Sie uns an {contact}.',
+      'Sie erhalten diese E-Mail, weil Sie am {signupDate} auf myselfmonart.com einen Gutschein über {amount} angefordert haben.',
+    privacy: 'Datenschutzerklärung',
+    unsubscribe: 'Abmelden',
+    tagline: 'MyselfMonArt — Art Direction in Paris, Kundenservice in Toulouse.',
+    legal: 'Impressum',
+    reply: 'Fragen? Antworten Sie einfach auf diese E-Mail: sie erreicht {contact}.',
   },
   unsubscribePage: {
     title: 'Unsere E-Mails abbestellen',
@@ -260,65 +394,87 @@ const de: Pack = {
   },
 }
 
+// --- Espagnol ------------------------------------------------------------------------------
+
 const es: Pack = {
-  emails: [
-    {
-      subject: 'Su vale de {amount} le espera',
-      preheader: 'Su código personal, válido hasta el {date}.',
-      eyebrow: 'Gracias',
-      title: 'Aquí tiene su vale de {amount}',
-      intro: 'Gracias por solicitar su vale. Es suyo, a su nombre, y funciona una sola vez.',
-      codeLabel: 'Su código personal',
-      validity: 'Válido hasta el {date}, a partir de {min} de compra.',
-      cta: 'Elegir mi obra',
-      reassure: [
-        'Impresión sobre lienzo o papel de arte, tensada y lista para colgar.',
-        'Fabricado en Europa, enviado en 3 a 5 días.',
-        '¿Duda con una talla? Responda a este correo y le ayudamos.',
-      ],
-      closing: 'Hasta pronto,\nEl taller MyselfMonArt',
+  common: { productPrice: '{price} — {priceWithVoucher} con su vale' },
+  mail1: {
+    subject: 'Su vale de {amount} — código {code}',
+    docTitle: 'Su vale de {amount}',
+    preheader: 'Su código {code}, válido hasta el {date}, a partir de {min} de compra.',
+    heroH2: 'de regalo en su primera obra',
+    heroSub: 'Gracias. Su código está justo debajo — basta un clic para aplicarlo.',
+    codeValidity: 'Válido hasta el {date} incluido',
+    cta: 'Usar mi vale de {amount}',
+    ctaFine:
+      'El código normalmente ya aparece en la caja. Si no está, introdúzcalo: está justo arriba.',
+    productEyebrow: 'Estaba viendo',
+    productLink: 'Volver a ver esta obra',
+    cond: [
+      { strong: 'A partir de {min} de compra', rest: ', sin incluir los gastos de envío' },
+      { strong: 'Un solo uso', rest: ' — hasta el {date} incluido' },
+      { strong: 'No acumulable', rest: ' : se aplica siempre el mejor descuento' },
+    ],
+    materials: 'Lienzo 285 g · Tintas archival 75 años · Marco de madera maciza',
+  },
+  mail2: {
+    subject: 'Lo difícil no es el precio',
+    docTitle: 'Lo difícil no es el precio',
+    preheader: 'Póster o lienzo, qué marco, y la vista 3D para verlo antes de pedir.',
+    band: 'SU VALE DE {amount} SIGUE ACTIVO',
+    h1: 'Lo difícil no es el precio.',
+    intro:
+      'Es saber qué va en esa pared concreta. Tres preguntas se repiten siempre — aquí están nuestras respuestas, en tres minutos.',
+    questions: [
+      {
+        title: '¿Póster o lienzo?',
+        body: 'El póster es una impresión fotográfica enmarcada bajo cristal: nítida, gráfica, perfecta en formato pequeño y mediano. El lienzo va tensado sobre bastidor, 285 g, sin reflejos — es el que aguanta las paredes grandes.',
+        link: 'Comparar los dos',
+      },
+      {
+        title: '¿Qué marco?',
+        body: 'Lienzo: marco flotante en blanco, negro mate, plata envejecida, roble claro o nogal — o sin marco. Póster: blanco, negro mate, roble claro o nogal, bajo cristal — o sin marco. En caso de duda: el roble claro combina con casi todo. La opción de borde blanco añade un margen alrededor de la imagen, como en una galería.',
+      },
+      {
+        title: 'Y en mi pared, ¿cómo queda?',
+        body: 'Cada obra tiene una vista 3D: la gira, ve el marco en perspectiva y el reflejo del cristal. Es lo más parecido a la realidad antes de pedir.',
+        link: 'Probar la vista 3D',
+      },
+    ],
+    bestEyebrow: 'Las más elegidas ahora mismo',
+    cta: 'Elegir mi obra',
+    ctaFine:
+      'Su vale sigue siendo válido hasta el {date} incluido. A partir de {min} de compra, un solo uso.',
+    trustpilot: '{score} / 5 — {count} opiniones verificadas en Trustpilot',
+  },
+  mail3: {
+    subject: 'Sus {amount} terminan el {date}',
+    docTitle: 'Sus {amount} terminan el {date}',
+    preheader: 'El código {code} caduca el {date}. No se renueva.',
+    eyebrow: 'Último recordatorio',
+    h1: 'Sus {amount} terminan el {date}.',
+    intro:
+      'Pasada esa fecha, el código deja de funcionar. Es un vale nominativo, de un solo uso, y no se renueva.',
+    codeValidity: 'Último día: {date}',
+    cta: 'Usar mis {amount} ahora',
+    ctaFine: 'A partir de {min} de compra, sin incluir el envío. Un solo uso.',
+    productEyebrow: 'La obra que estaba viendo',
+    productLink: 'Volver a ver esta obra',
+    honesty: {
+      strong: 'Un apunte de honestidad:',
+      rest: ' por encima de {betterDeal} de carrito, la promoción en curso es más ventajosa que el vale. En ese caso, quédese con su dinero antes que con su código — se aplica siempre el mejor descuento.',
     },
-    {
-      subject: 'Su vale de {amount} caduca pronto',
-      preheader: 'Su código {code} sigue activo hasta el {date}.',
-      eyebrow: 'Recordatorio',
-      title: 'Su vale sigue siendo válido',
-      intro:
-        'Su código sigue esperándole. Si alguna obra le gustó, este es el momento — caduca el {date}.',
-      codeLabel: 'Su código personal',
-      validity: 'Válido hasta el {date}, a partir de {min} de compra.',
-      cta: 'Ver las obras',
-      reassure: [
-        'Cada impresión se produce bajo pedido, nunca en stock.',
-        'Envío con seguimiento, embalaje rígido.',
-        'Cambio gratuito si la talla no encaja.',
-      ],
-      closing: 'Hasta pronto,\nEl taller MyselfMonArt',
-    },
-    {
-      subject: 'Última oportunidad para su vale de {amount}',
-      preheader: 'Después del {date}, el código {code} dejará de funcionar.',
-      eyebrow: 'Último recordatorio',
-      title: 'Ahora o nunca',
-      intro:
-        'Este es el último correo que le enviamos sobre esto. Su vale caduca el {date} — después dejará de funcionar.',
-      codeLabel: 'Su código personal',
-      validity: 'Válido hasta el {date}, a partir de {min} de compra.',
-      cta: 'Usar mi vale',
-      reassure: [
-        'Más de 400 obras, del formato pequeño a la pared entera.',
-        'Pago en 3 veces sin gastos a partir de 100 €.',
-        '¿Una pregunta? Responda simplemente a este correo.',
-      ],
-      closing: 'Gracias por su confianza,\nEl taller MyselfMonArt',
-    },
-  ],
+    lastWord:
+      'Este es el último correo que le enviamos sobre esto. Después del {date}, el código simplemente deja de funcionar — no se renueva.',
+  },
   footer: {
     context:
-      'Recibe este correo porque solicitó su vale de {amount} en myselfmonart.com el {signupDate}.',
-    unsubscribe: 'Dejar de recibir estos correos',
-    unsubscribeAction: 'Darse de baja',
-    contact: '¿Una pregunta? Escríbanos a {contact}.',
+      'Recibe este correo porque solicitó un vale de {amount} en myselfmonart.com el {signupDate}.',
+    privacy: 'Política de privacidad',
+    unsubscribe: 'Darse de baja',
+    tagline: 'MyselfMonArt — dirección artística en París, atención al cliente en Toulouse.',
+    legal: 'Aviso legal',
+    reply: '¿Una pregunta? Responda a este correo: llega a {contact}.',
   },
   unsubscribePage: {
     title: 'Dejar de recibir nuestros correos',
@@ -329,66 +485,87 @@ const es: Pack = {
   },
 }
 
+// --- Néerlandais ---------------------------------------------------------------------------
+
 const nl: Pack = {
-  emails: [
-    {
-      subject: 'Uw waardebon van {amount} staat klaar',
-      preheader: 'Uw persoonlijke code, geldig tot {date}.',
-      eyebrow: 'Bedankt',
-      title: 'Hier is uw waardebon van {amount}',
-      intro:
-        'Bedankt voor uw aanvraag. De bon is van u, staat op uw naam en werkt precies één keer.',
-      codeLabel: 'Uw persoonlijke code',
-      validity: 'Geldig tot {date}, vanaf {min} aankoop.',
-      cta: 'Mijn kunstwerk kiezen',
-      reassure: [
-        'Gedrukt op canvas of kunstpapier, opgespannen en klaar om op te hangen.',
-        'Gemaakt in Europa, verzonden binnen 3 tot 5 dagen.',
-        'Twijfelt u over een maat? Beantwoord deze e-mail, we kijken mee.',
-      ],
-      closing: 'Tot snel,\nHet MyselfMonArt-atelier',
+  common: { productPrice: '{price} — {priceWithVoucher} met uw waardebon' },
+  mail1: {
+    subject: 'Uw waardebon van {amount} — code {code}',
+    docTitle: 'Uw waardebon van {amount}',
+    preheader: 'Uw code {code}, geldig tot {date}, vanaf {min} aankoop.',
+    heroH2: 'cadeau op uw eerste kunstwerk',
+    heroSub: 'Bedankt. Uw code staat er vlak onder — één klik volstaat om hem toe te passen.',
+    codeValidity: 'Geldig tot en met {date}',
+    cta: 'Mijn waardebon van {amount} gebruiken',
+    ctaFine:
+      'De code staat bij het afrekenen normaal al ingevuld. Zo niet, voer hem in: hij staat er vlak boven.',
+    productEyebrow: 'U keek naar',
+    productLink: 'Dit kunstwerk terugzien',
+    cond: [
+      { strong: 'Vanaf {min} aankoop', rest: ', exclusief verzendkosten' },
+      { strong: 'Eenmalig te gebruiken', rest: ' — tot en met {date}' },
+      { strong: 'Niet combineerbaar', rest: ' : de voordeligste korting geldt' },
+    ],
+    materials: 'Canvas 285 g · Archivalinkt 75 jaar · Lijst van massief hout',
+  },
+  mail2: {
+    subject: 'Het moeilijkste is niet de prijs',
+    docTitle: 'Het moeilijkste is niet de prijs',
+    preheader: 'Poster of canvas, welke lijst, en de 3D-weergave om het vooraf te zien.',
+    band: 'UW WAARDEBON VAN {amount} IS NOG ACTIEF',
+    h1: 'Het moeilijkste is niet de prijs.',
+    intro:
+      'Het is weten wat aan díé muur hoort. Drie vragen komen altijd terug — hier zijn onze antwoorden, in drie minuten.',
+    questions: [
+      {
+        title: 'Poster of canvas?',
+        body: 'De poster is een fotoafdruk, ingelijst achter glas: scherp, grafisch, perfect in klein en middelgroot formaat. Het canvas is gespannen op een frame, 285 g, zonder reflectie — dat is wat grote muren draagt.',
+        link: 'Beide vergelijken',
+      },
+      {
+        title: 'Welke lijst?',
+        body: 'Canvas: schaduwlijst in wit, mat zwart, oud zilver, licht eiken of noten — of zonder lijst. Poster: wit, mat zwart, licht eiken of noten, achter glas — of zonder lijst. Bij twijfel: licht eiken past bij bijna alles. De optie witte rand voegt een marge rond het beeld toe, als in een galerie.',
+      },
+      {
+        title: 'En op mijn muur, hoe oogt dat?',
+        body: 'Elk kunstwerk heeft een 3D-weergave: u draait het, u ziet de lijst in perspectief en de weerspiegeling van het glas. Dichter bij het echte werk komt u niet vóór het bestellen.',
+        link: 'De 3D-weergave proberen',
+      },
+    ],
+    bestEyebrow: 'Op dit moment het vaakst gekozen',
+    cta: 'Mijn kunstwerk kiezen',
+    ctaFine:
+      'Uw waardebon blijft geldig tot en met {date}. Vanaf {min} aankoop, eenmalig te gebruiken.',
+    trustpilot: '{score} / 5 — {count} geverifieerde beoordelingen op Trustpilot',
+  },
+  mail3: {
+    subject: 'Uw {amount} stopt op {date}',
+    docTitle: 'Uw {amount} stopt op {date}',
+    preheader: 'De code {code} verloopt op {date}. Hij wordt niet verlengd.',
+    eyebrow: 'Laatste herinnering',
+    h1: 'Uw {amount} stopt op {date}.',
+    intro:
+      'Na die datum werkt de code niet meer. Het is een persoonlijke waardebon, eenmalig te gebruiken, en hij wordt niet verlengd.',
+    codeValidity: 'Laatste dag: {date}',
+    cta: 'Mijn {amount} nu gebruiken',
+    ctaFine: 'Vanaf {min} aankoop, exclusief verzending. Eenmalig te gebruiken.',
+    productEyebrow: 'Het kunstwerk waar u naar keek',
+    productLink: 'Dit kunstwerk terugzien',
+    honesty: {
+      strong: 'Even eerlijk:',
+      rest: ' boven {betterDeal} winkelwagen is de lopende actie voordeliger dan de waardebon. Houd in dat geval uw geld in plaats van uw code — de beste korting is degene die geldt.',
     },
-    {
-      subject: 'Uw waardebon van {amount} verloopt binnenkort',
-      preheader: 'Uw code {code} is nog actief tot {date}.',
-      eyebrow: 'Herinnering',
-      title: 'Uw waardebon is nog geldig',
-      intro:
-        'Uw code wacht nog op u. Als een werk u is bijgebleven, is dit het moment — hij verloopt op {date}.',
-      codeLabel: 'Uw persoonlijke code',
-      validity: 'Geldig tot {date}, vanaf {min} aankoop.',
-      cta: 'De werken bekijken',
-      reassure: [
-        'Elke druk wordt op bestelling gemaakt, nooit op voorraad.',
-        'Verzending met tracking, stevige verpakking.',
-        'Gratis ruilen als de maat niet klopt.',
-      ],
-      closing: 'Tot snel,\nHet MyselfMonArt-atelier',
-    },
-    {
-      subject: 'Laatste kans voor uw waardebon van {amount}',
-      preheader: 'Na {date} werkt code {code} niet meer.',
-      eyebrow: 'Laatste herinnering',
-      title: 'Nu of nooit',
-      intro:
-        'Dit is de laatste e-mail die we hierover sturen. Uw waardebon verloopt op {date} — daarna werkt hij niet meer.',
-      codeLabel: 'Uw persoonlijke code',
-      validity: 'Geldig tot {date}, vanaf {min} aankoop.',
-      cta: 'Mijn bon gebruiken',
-      reassure: [
-        'Meer dan 400 werken, van klein formaat tot een hele muur.',
-        'Betaal in 3 termijnen zonder kosten vanaf € 100.',
-        'Een vraag? Beantwoord gewoon deze e-mail.',
-      ],
-      closing: 'Bedankt voor uw vertrouwen,\nHet MyselfMonArt-atelier',
-    },
-  ],
+    lastWord:
+      'Dit is de laatste e-mail die we hierover sturen. Na {date} werkt de code eenvoudigweg niet meer — hij wordt niet verlengd.',
+  },
   footer: {
     context:
-      'U ontvangt deze e-mail omdat u op {signupDate} uw waardebon van {amount} hebt aangevraagd op myselfmonart.com.',
-    unsubscribe: 'Deze e-mails niet meer ontvangen',
-    unsubscribeAction: 'Uitschrijven',
-    contact: 'Een vraag? Schrijf ons op {contact}.',
+      'U ontvangt deze e-mail omdat u op {signupDate} een waardebon van {amount} hebt aangevraagd op myselfmonart.com.',
+    privacy: 'Privacybeleid',
+    unsubscribe: 'Uitschrijven',
+    tagline: 'MyselfMonArt — artistieke leiding in Parijs, klantenservice in Toulouse.',
+    legal: 'Juridische informatie',
+    reply: 'Een vraag? Beantwoord deze e-mail: hij komt aan bij {contact}.',
   },
   unsubscribePage: {
     title: 'Onze e-mails opzeggen',
