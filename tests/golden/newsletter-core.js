@@ -939,9 +939,18 @@ const OEUVRE = {
   url: 'https://www.myselfmonart.com/products/maternite-africaine',
 }
 
+/** La même œuvre, telle que la verrait un client américain (marché USA). */
+const OEUVRE_US = {
+  ...OEUVRE,
+  price: '$149.00',
+  priceWithVoucher: '$134.00',
+  priceAmount: 149,
+  url: 'https://www.myselfmonart.com/en-us/products/maternite-africaine',
+}
+
 check('le bouton mène à la fiche regardée, dans les TROIS e-mails', () => {
-  const sourceUrl = 'https://www.myselfmonart.com/en-us/products/maternite-africaine?variant=42'
-  // ⛔ Chemin encodé, préfixe de marché conservé, chaîne de requête laissée dehors.
+  // ⛔ Le chemin est celui de `product.url`, donc la vitrine DU DESTINATAIRE — pas celle de la
+  // page où il s'était inscrit. Encodé, préfixe de marché compris.
   const attendu = `https://www.myselfmonart.com/discount/MERCI-A7F3K2?redirect=${encodeURIComponent('/en-us/products/maternite-africaine')}`
 
   for (const emailNo of [1, 2, 3]) {
@@ -949,8 +958,8 @@ check('le bouton mène à la fiche regardée, dans les TROIS e-mails', () => {
       ...BASE,
       emailNo,
       locale: 'en',
-      product: OEUVRE,
-      sourceUrl,
+      pathPrefix: '/en-us',
+      product: OEUVRE_US,
     })
     assert.ok(out.html.includes(attendu), `e-mail ${emailNo} : bouton pas sur la fiche regardée`)
     assert.ok(out.text.includes(attendu), `e-mail ${emailNo} : version texte pas sur la fiche`)
@@ -972,35 +981,199 @@ check('fiche disparue entre-temps : le bouton retombe sur le catalogue', () => {
     ...BASE,
     emailNo: 3,
     locale: 'en',
+    pathPrefix: '/en-us',
     // Pas de `product` : la fiche n'a pas répondu.
-    sourceUrl: 'https://www.myselfmonart.com/en-us/products/oeuvre-depubliee',
   })
+  // Le repli reste dans SON marché : un Américain ne part pas sur le catalogue français.
   assert.ok(
-    out.html.includes(`?redirect=${encodeURIComponent('/en/collections/all')}`),
-    'le bouton devrait revenir au catalogue'
+    out.html.includes(`?redirect=${encodeURIComponent('/en-us/collections/all')}`),
+    'le bouton devrait revenir au catalogue du marché US'
   )
-  assert.ok(!out.html.includes('oeuvre-depubliee'), 'aucun lien ne doit mener à la fiche disparue')
 })
 
-check('source_url hors domaine : le bouton ne quitte jamais la boutique', () => {
-  for (const sourceUrl of [
+/**
+ * La ceinture de sécurité du BOUTON. `product.url` est construit par `Product.ts` à partir d'un
+ * handle tiré d'une URL soumise par le navigateur : le lien de remise ne le recopie jamais sans
+ * repasser la porte du domaine.
+ *
+ * ⚠️ La portée est bien le bouton. Le lien « voir l'œuvre » du bloc, lui, affiche `product.url`
+ * tel quel — c'est l'appelant qui répond de cette valeur, et il la fabrique lui-même.
+ */
+check('url produit douteuse : le bouton ne quitte jamais la boutique', () => {
+  for (const url of [
     'https://evil.example.com/products/piege',
     'https://www.myselfmonart.com//evil.example',
     'pas-une-url',
-    null,
   ]) {
     const out = template.renderNewsletterEmail({
       ...BASE,
       emailNo: 1,
       locale: 'fr',
-      product: OEUVRE,
-      sourceUrl,
+      product: { ...OEUVRE, url },
     })
-    assert.ok(
-      out.html.includes(`?redirect=${encodeURIComponent('/collections/all')}`),
-      `${sourceUrl} : devrait retomber sur le catalogue`
+
+    const bouton = /https:\/\/www\.myselfmonart\.com\/discount\/[^"]+/.exec(out.html)
+    assert.ok(bouton, `${url} : bouton introuvable`)
+    const cible = decodeURIComponent(new URL(bouton[0]).searchParams.get('redirect') || '')
+    assert.strictEqual(cible, '/collections/all', `${url} : le bouton devrait viser le catalogue`)
+  }
+})
+
+// --- Marché du destinataire : pays + langue -> préfixe de vitrine ----------------------
+//
+// ⛔ LE PIÈGE QUE CES TESTS VERROUILLENT : `/en`, `/de`, `/es`, `/nl` ne sont PAS « les
+// versions traduites du site », ce sont les vitrines du marché FRANCE, en euros. Envoyer un
+// Américain sur `/en` lui montre des prix en euros après un e-mail libellé en dollars.
+
+/** La table réelle de la boutique, relevée chez Shopify le 2026-08-07 (8 marchés actifs). */
+const MARCHES = {
+  primaryHandle: 'fr',
+  markets: [
+    { handle: 'allemagne', countries: ['DE'], defaultLocale: 'de', prefixes: { de: '/de-de' } },
+    { handle: 'angleterre', countries: ['GB'], defaultLocale: 'en', prefixes: { en: '/en-gb' } },
+    {
+      handle: 'canada',
+      countries: ['CA'],
+      defaultLocale: 'en',
+      prefixes: { en: '/en-ca', fr: '/fr-ca' },
+    },
+    { handle: 'espagne', countries: ['ES'], defaultLocale: 'es', prefixes: { es: '/es-es' } },
+    {
+      handle: 'europ',
+      countries: ['BE', 'LU', 'ES', 'IT', 'DK', 'FI', 'NL'],
+      defaultLocale: 'fr',
+      prefixes: { fr: '/fr-eu', en: '/en-eu', nl: '/nl-eu' },
+    },
+    {
+      handle: 'fr',
+      countries: ['FR'],
+      defaultLocale: 'fr',
+      prefixes: { fr: '', de: '/de', en: '/en', es: '/es', nl: '/nl' },
+    },
+    {
+      handle: 'suisse',
+      countries: ['CH'],
+      defaultLocale: 'de',
+      prefixes: { de: '/de-ch', fr: '/fr-ch' },
+    },
+    { handle: 'usa', countries: ['US'], defaultLocale: 'en', prefixes: { en: '/en-us' } },
+  ],
+}
+
+check('préfixe : chaque pays servi reçoit la vitrine de SON marché', () => {
+  const mp = load('app/Services/Newsletter/marketPath.ts')
+  const cas = [
+    // ⛔ LE CAS QUI MOTIVE TOUT : un Américain lit `/en-us`, jamais `/en` (marché France, euros).
+    ['US', 'en', '/en-us'],
+    ['GB', 'en', '/en-gb'],
+    ['CA', 'en', '/en-ca'],
+    ['CA', 'fr', '/fr-ca'],
+    ['CH', 'de', '/de-ch'],
+    ['CH', 'fr', '/fr-ch'],
+    ['DE', 'de', '/de-de'],
+    ['BE', 'nl', '/nl-eu'],
+    ['BE', 'fr', '/fr-eu'],
+    // Le marché primaire dans sa langue source : la RACINE, donc la chaîne vide.
+    ['FR', 'fr', ''],
+    ['FR', 'en', '/en'],
+    ['FR', 'nl', '/nl'],
+  ]
+  for (const [pays, langue, attendu] of cas) {
+    assert.strictEqual(
+      mp.resolvePathPrefix(MARCHES, pays, langue),
+      attendu,
+      `${pays}/${langue} : mauvaise vitrine`
     )
-    assert.ok(!out.html.includes('evil.example'), `${sourceUrl} : hôte étranger dans l’e-mail`)
+  }
+})
+
+/**
+ * ⛔ `/{langue}-{pays}` EST UN PIÈGE, PAS UNE RÈGLE. `/de-us`, `/es-eu` et `/nl-ca` sont
+ * plausibles et n'existent pas : les inventer donnerait un 404 que personne ne voit avant le
+ * client. Quand la langue manque dans le marché, c'est le MARCHÉ qui gagne — les prix de
+ * l'e-mail viennent de lui, et une page en euros sous un e-mail en dollars ment plus fort
+ * qu'une page en anglais.
+ */
+check('préfixe : langue absente du marché -> langue par défaut DU MÊME marché', () => {
+  const mp = load('app/Services/Newsletter/marketPath.ts')
+  assert.strictEqual(mp.resolvePathPrefix(MARCHES, 'US', 'de'), '/en-us')
+  assert.strictEqual(mp.resolvePathPrefix(MARCHES, 'US', 'fr'), '/en-us')
+  assert.strictEqual(mp.resolvePathPrefix(MARCHES, 'CA', 'nl'), '/en-ca')
+  assert.strictEqual(mp.resolvePathPrefix(MARCHES, 'BE', 'es'), '/fr-eu')
+  assert.strictEqual(mp.resolvePathPrefix(MARCHES, 'DE', 'en'), '/de-de')
+})
+
+/** L'Espagne est dans DEUX marchés (`espagne` et `europ`) : le plus spécifique doit gagner. */
+check('préfixe : à pays partagé, le marché le plus spécifique l’emporte', () => {
+  const mp = load('app/Services/Newsletter/marketPath.ts')
+  assert.strictEqual(mp.resolvePathPrefix(MARCHES, 'ES', 'es'), '/es-es')
+  // Et le résultat ne dépend pas de l'ordre de la réponse Shopify.
+  const inverse = { ...MARCHES, markets: [...MARCHES.markets].reverse() }
+  assert.strictEqual(mp.resolvePathPrefix(inverse, 'ES', 'es'), '/es-es')
+})
+
+/**
+ * La boutique livre dans 31 pays mais n'a de marchés explicites que pour 13. Shopify rattache
+ * les autres au marché PRIMAIRE — on fait pareil, sans avoir à les énumérer.
+ */
+check('préfixe : pays sans marché explicite -> marché primaire', () => {
+  const mp = load('app/Services/Newsletter/marketPath.ts')
+  for (const pays of ['AT', 'PT', 'IE', null, undefined, '', 'XX', 'zz']) {
+    assert.strictEqual(
+      mp.resolvePathPrefix(MARCHES, pays, 'fr'),
+      '',
+      `${pays} : devrait être la racine`
+    )
+    assert.strictEqual(
+      mp.resolvePathPrefix(MARCHES, pays, 'en'),
+      '/en',
+      `${pays} : devrait être /en`
+    )
+  }
+})
+
+check('préfixe : table absente ou vide -> null, et l’appelant retombe sur la langue', () => {
+  const mp = load('app/Services/Newsletter/marketPath.ts')
+  for (const table of [null, undefined, {}, { markets: [] }, { markets: 'pas-un-tableau' }]) {
+    assert.strictEqual(mp.resolvePathPrefix(table, 'US', 'en'), null)
+  }
+})
+
+/**
+ * LE TEST QUI COMPTE POUR LE LECTEUR : on balaie TOUS les liens de l'e-mail, pas seulement le
+ * bouton. Logo, bouton, œuvre, mentions légales, confidentialité, Trustpilot — un seul lien
+ * resté sur `/en` ramènerait un Américain sur le catalogue en euros.
+ */
+check('un client US n’a QUE des liens vers le marché US', () => {
+  const out = template.renderNewsletterEmail({
+    ...BASE,
+    emailNo: 2,
+    locale: 'en',
+    currency: 'USD',
+    pathPrefix: '/en-us',
+    product: OEUVRE_US,
+    bestSellers: [OEUVRE_US, OEUVRE_US],
+    trustpilotScore: 4.2,
+    trustpilotCount: 120,
+    postalAddress: '12 rue des Arts, 75000 Paris',
+  })
+
+  const liens = [...out.html.matchAll(/href="([^"]+)"/g)]
+    .map((m) => m[1].replace(/&amp;/g, '&'))
+    .filter((href) => href.startsWith('https://www.myselfmonart.com'))
+
+  assert.ok(liens.length >= 4, `trop peu de liens boutique analysés (${liens.length})`)
+
+  for (const href of liens) {
+    const u = new URL(href)
+    // Le lien de remise ne porte pas sa destination dans le chemin mais dans `?redirect=`.
+    const cible = u.pathname.startsWith('/discount/')
+      ? decodeURIComponent(u.searchParams.get('redirect') || '')
+      : u.pathname
+    assert.ok(
+      cible === '/en-us' || cible.startsWith('/en-us/'),
+      `lien hors du marché US : ${href} -> ${cible}`
+    )
   }
 })
 

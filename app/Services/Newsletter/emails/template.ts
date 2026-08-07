@@ -94,13 +94,14 @@ export interface RenderInput {
    */
   product?: RenderProduct
   /**
-   * La page d'où venait l'inscription — `location.href` transmis par le thème.
+   * Préfixe de chemin du MARCHÉ du destinataire (`/en-us`, `/fr-ca`, `''`…), résolu chez
+   * Shopify avant l'appel (cf. `marketPath.ts`). TOUS les liens de l'e-mail le portent.
    *
-   * ⛔ DONNÉE SOUMISE PAR LE NAVIGATEUR, non fiable, et le seul usage autorisé est de la
-   * passer à `redirectPathFrom` (cf. `sourceUrl.ts`), qui refuse tout ce qui ne mène pas chez
-   * nous. Elle n'est jamais écrite telle quelle dans l'e-mail.
+   * ⛔ Absent, on retombe sur le préfixe de LANGUE — qui appartient au marché primaire, donc à
+   * l'euro. C'est le comportement d'avant : acceptable en repli, faux comme cible. Un
+   * Américain envoyé sur `/en` lit des prix en euros après un e-mail libellé en dollars.
    */
-  sourceUrl?: string | null
+  pathPrefix?: string | null
   /**
    * Mail 2 : « les plus choisies cette semaine ». Il en faut DEUX — une seule déséquilibrerait
    * la mise en page du designer, zéro ne se remarque pas. Moins de deux = bloc supprimé.
@@ -147,10 +148,15 @@ function escUrl(u: string): string {
 }
 
 /**
- * Préfixe de langue de la boutique.
+ * Préfixe de LANGUE de la boutique — le REPLI, quand le marché n'a pas pu être résolu.
  *
  * ⛔ Un lien SANS préfixe renvoie un Néerlandais sur une page française. Le français est la
  * langue source du site : il n'a pas de préfixe, les quatre autres en ont un.
+ *
+ * ⚠️ CE N'EST PLUS LA CIBLE, et il faut savoir pourquoi : `/en`, `/de`, `/es`, `/nl` sont les
+ * vitrines du marché FRANCE, en euros (vérifié chez Shopify le 2026-08-07). Elles donnent la
+ * bonne langue et la mauvaise devise. La cible est `pathPrefix`, résolu par `marketPath.ts` ;
+ * on ne retombe ici que si la table des marchés manque.
  */
 export function localePath(locale: NewsletterLocale): string {
   return locale === 'fr' ? '' : `/${locale}`
@@ -321,7 +327,9 @@ function formatScore(score: number | undefined, locale: NewsletterLocale): strin
 
 export function renderNewsletterEmail(input: RenderInput): RenderedEmail {
   const strings = pack(input.locale)
-  const prefix = localePath(input.locale)
+  // ⚠️ `typeof === 'string'` et non `??` seul : le préfixe du marché primaire dans sa langue
+  // source est la CHAÎNE VIDE, qui est une réponse valide et non une absence de réponse.
+  const prefix = typeof input.pathPrefix === 'string' ? input.pathPrefix : localePath(input.locale)
   const store = String(input.storeUrl).replace(/\/+$/, '')
 
   /**
@@ -351,11 +359,19 @@ export function renderNewsletterEmail(input: RenderInput): RenderedEmail {
    * dépubliée entre-temps fait disparaître le bloc ET ramène le bouton au catalogue, d'un seul
    * geste. Jamais de bouton vers un 404 — c'est le pire endroit possible pour en trouver un.
    *
+   * ⛔ TIRÉ DE `product.url`, ET SURTOUT PAS DE `source_url`. Les deux désignent la même œuvre,
+   * mais pas la même vitrine : `source_url` est la page où la personne était — qui peut relever
+   * d'un autre marché que le sien — tandis que `product.url` porte déjà le préfixe résolu pour
+   * LUI. Repartir de `source_url` remettrait le bouton et le bloc « vous regardiez » sur deux
+   * marchés différents, à quelques centimètres l'un de l'autre. Une seule origine, donc un seul
+   * lien possible. `redirectPathFrom` reste la ceinture de sécurité : le handle vient d'une
+   * URL soumise par le navigateur, et rien ne sort d'ici sans repasser la porte du domaine.
+   *
    * Calculé UNE FOIS, ici, et non dans chacun des trois constructeurs : trois copies finissent
    * toujours par diverger, et celle qu'on oublierait de corriger serait invisible.
    */
   const ctaUrl = applyUrl(
-    (input.product ? redirectPathFrom(input.sourceUrl) : null) ?? `${prefix}/collections/all`
+    (input.product ? redirectPathFrom(input.product.url) : null) ?? `${prefix}/collections/all`
   )
 
   const values: Record<string, string> = {

@@ -13,6 +13,7 @@ import { announcedDateFromEnd } from './expiry'
 import { offerFor, resolveCurrency } from './currency'
 import NewsletterProductLookup from './Product'
 import NewsletterBetterDeal from './BetterDeal'
+import NewsletterMarkets from './Markets'
 import {
   MAX_SENDS_PER_TICK,
   MAX_STALENESS_DAYS,
@@ -326,6 +327,13 @@ export default class NewsletterSequence {
     const amount = subscriber.voucherAmount ?? offer.amount
     const threshold = subscriber.voucherThreshold ?? offer.threshold
 
+    // LE PRÉFIXE DE VITRINE DU DESTINATAIRE, résolu UNE FOIS et porté par tous les liens de
+    // l'e-mail : bouton, œuvre regardée, plus vendues, logo, mentions légales, Trustpilot.
+    // ⛔ `/en` n'est pas « la version anglaise » : c'est le marché France, en euros. Un
+    // Américain doit lire `/en-us`, sinon la page contredit les dollars annoncés dans l'e-mail.
+    // Ne lève jamais : `null` = repli sur le préfixe de langue, soit le comportement d'avant.
+    const pathPrefix = await new NewsletterMarkets().pathPrefixFor(subscriber.country, locale)
+
     const lookup = new NewsletterProductLookup()
 
     // L'œuvre regardée à l'inscription — bloc OPTIONNEL. Résolu au moment de l'envoi et non
@@ -337,13 +345,16 @@ export default class NewsletterSequence {
       locale,
       currency,
       amount,
-      subscriber.country
+      subscriber.country,
+      pathPrefix
     )
 
     // Le 2ᵉ e-mail montre les plus vendues ; les deux autres n'en ont pas besoin, et une
     // lecture inutile coûte du quota Shopify à chaque envoi.
     const bestSellers =
-      emailNo === 2 ? await lookup.bestSellers(locale, currency, amount, subscriber.country) : []
+      emailNo === 2
+        ? await lookup.bestSellers(locale, currency, amount, subscriber.country, pathPrefix)
+        : []
 
     // Le 3ᵉ e-mail porte le « point d'honnêteté ». Le seuil se CALCULE depuis la promotion
     // automatique réellement active (montant du bon ÷ taux), dans la devise du lecteur.
@@ -377,7 +388,7 @@ export default class NewsletterSequence {
       // La page d'origine, pour que le bouton mène à la fiche regardée plutôt qu'au catalogue.
       // Le gabarit ne s'en sert QUE si `product` est là — c'est-à-dire si la fiche a répondu à
       // l'instant même — et la valide avant d'en tirer quoi que ce soit.
-      sourceUrl: subscriber.sourceUrl,
+      pathPrefix,
       ...(bestSellers.length ? { bestSellers } : {}),
       betterDealAmount,
     })

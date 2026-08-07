@@ -50,14 +50,56 @@ export interface CodeDiscountSummary {
   marketIds: string[]
 }
 
-/** Un marché de la boutique, réduit à ce dont le ciblage a besoin. */
+/** Un marché de la boutique : ce qu'il faut pour cibler un bon ET pour composer ses liens. */
 export interface MarketSummary {
   id: string
   name: string
+  handle: string
   /** ACTIVE | DRAFT — seuls les marchés actifs sont ciblables utilement. */
   status: string
   /** Devise de base du marché : c'est elle qui regroupe. */
   currencyCode: string | null
+  /** Codes pays ISO explicitement rattachés. Vide = marché sans région déclarée. */
+  countries: string[]
+  /** Langue de la vitrine de ce marché quand la langue demandée n'y existe pas. */
+  defaultLocale: string | null
+  /**
+   * Langue → PRÉFIXE DE CHEMIN de la vitrine (`''` pour la racine, `/en-us`, `/fr-ca`…).
+   *
+   * ⛔ Lu chez Shopify, jamais deviné. `/{langue}-{pays}` n'est PAS une règle : au 2026-08-07
+   * `/de-us`, `/es-eu` et `/nl-ca` n'existent pas, alors que le motif les rendrait plausibles.
+   * Un préfixe inventé mène à un 404, et personne ne le voit avant le client.
+   */
+  prefixes: Record<string, string>
+}
+
+/** Les marchés, plus l'indication de celui qui recueille les pays non listés. */
+export interface MarketsSnapshot {
+  /** Handle du marché primaire — celui où Shopify range tout pays sans marché explicite. */
+  primaryHandle: string | null
+  markets: MarketSummary[]
+}
+
+/**
+ * `rootUrls` → table langue → préfixe de chemin.
+ *
+ * Shopify rend des URL absolues avec barre finale (`https://www.myselfmonart.com/en-us/`) ;
+ * ce qui sert à composer un lien est le CHEMIN, sans la barre — `''` pour la racine, qui est le
+ * marché primaire dans sa langue source.
+ */
+function rootUrlPrefixes(rootUrls: any): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const entry of Array.isArray(rootUrls) ? rootUrls : []) {
+    const locale = String(entry?.locale ?? '').trim()
+    if (!locale) continue
+    try {
+      out[locale] = new URL(String(entry?.url)).pathname.replace(/\/+$/, '')
+    } catch {
+      // URL illisible : ce marché n'aura pas de préfixe pour cette langue, et la résolution
+      // retombera sur sa langue par défaut puis sur le marché primaire. Jamais un lien inventé.
+    }
+  }
+  return out
 }
 
 /** Une promotion automatique en pourcentage, telle que Shopify la déclare. */
@@ -213,25 +255,46 @@ export default class Discount extends Authentication {
    * SILENCE, tout marché créé plus tard. Le marché ouvert le lendemain recevrait des bons
    * inutilisables sans qu'aucun journal ne signale quoi que ce soit.
    */
-  public async getActiveMarkets(): Promise<MarketSummary[]> {
+  public async getMarketsSnapshot(): Promise<MarketsSnapshot> {
     const query = `query NewsletterMarkets {
+      primaryMarket { handle }
       markets(first: 100) {
         nodes {
           id
           name
+          handle
           status
           currencySettings { baseCurrency { currencyCode } }
+          conditions {
+            regionsCondition {
+              regions(first: 250) { nodes { ... on MarketRegionCountry { code } } }
+            }
+          }
+          webPresence {
+            defaultLocale { locale }
+            rootUrls { url locale }
+          }
         }
       }
     }`
 
     const data = await this.fetchGraphQL(query)
-    return (data.markets?.nodes ?? []).map((node: any) => ({
-      id: node?.id ?? '',
-      name: node?.name ?? '',
-      status: node?.status ?? '',
-      currencyCode: node?.currencySettings?.baseCurrency?.currencyCode ?? null,
-    }))
+
+    return {
+      primaryHandle: data.primaryMarket?.handle ?? null,
+      markets: (data.markets?.nodes ?? []).map((node: any) => ({
+        id: node?.id ?? '',
+        name: node?.name ?? '',
+        handle: node?.handle ?? '',
+        status: node?.status ?? '',
+        currencyCode: node?.currencySettings?.baseCurrency?.currencyCode ?? null,
+        countries: (node?.conditions?.regionsCondition?.regions?.nodes ?? [])
+          .map((region: any) => String(region?.code ?? '').toUpperCase())
+          .filter((code: string) => /^[A-Z]{2}$/.test(code)),
+        defaultLocale: node?.webPresence?.defaultLocale?.locale ?? null,
+        prefixes: rootUrlPrefixes(node?.webPresence?.rootUrls),
+      })),
+    }
   }
 
   /**

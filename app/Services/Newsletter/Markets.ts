@@ -2,6 +2,8 @@ import Logger from '@ioc:Adonis/Core/Logger'
 import { DateTime } from 'luxon'
 import Shopify from 'App/Services/Shopify'
 import NewsletterState from 'App/Models/NewsletterState'
+import { resolvePathPrefix } from './marketPath'
+import type { MarketPathTable } from './marketPath'
 import type { VoucherCurrency } from './currency'
 
 /**
@@ -33,9 +35,25 @@ import type { VoucherCurrency } from './currency'
 
 const STATE_MARKETS = 'markets_by_currency'
 const STATE_MARKETS_TS = 'markets_fetched_ts'
+/**
+ * Table des préfixes de vitrine, écrite par le MÊME appel que `markets_by_currency`.
+ *
+ * Clé SÉPARÉE et non un remplacement : au premier déploiement la ligne n'existe pas encore, et
+ * une lecture qui échoue doit dégrader vers l'ancien comportement (préfixe de langue) plutôt
+ * que d'empêcher l'envoi.
+ */
+const STATE_PRESENCES = 'market_presences'
 
 /** Au-delà, on retente. En dessous, le cache suffit. */
 const REFRESH_AFTER_HOURS = 24
+
+/**
+ * Palier entre deux tentatives de reconstruction de la table des préfixes.
+ *
+ * Sans lui, une boutique qui refuse la lecture ferait relire Shopify à CHAQUE envoi — inutile,
+ * puisque le repli est déjà correct, et exactement le genre de boucle qui consomme un quota.
+ */
+const RETRY_AFTER_MINUTES = 60
 
 export type MarketsByCurrency = Record<string, string[]>
 
@@ -43,6 +61,9 @@ export default class NewsletterMarkets {
   private shopify = new Shopify()
 
   private static memo: { at: number; map: MarketsByCurrency } | null = null
+  private static memoTable: { at: number; table: MarketPathTable } | null = null
+  /** Dernière tentative de reconstruction, pour ne pas relire Shopify à chaque envoi. */
+  private static lastAttemptTs = 0
 
   /**
    * Identifiants des marchés à cibler pour une devise.
@@ -100,6 +121,67 @@ export default class NewsletterMarkets {
     }
   }
 
+  /**
+   * Le préfixe de chemin à mettre devant TOUS les liens d'un e-mail, pour ce pays et cette
+   * langue. `null` = indécidable, l'appelant retombe sur le préfixe de langue.
+   *
+   * ⛔ NE LÈVE JAMAIS, contrairement à `idsFor`. Un bon mal ciblé est un bon inutilisable, donc
+   * il vaut mieux ne pas l'émettre ; un préfixe manquant ne coûte qu'un lien vers le marché
+   * primaire — exactement ce que faisait le dispositif avant. Faire échouer un envoi pour ça
+   * serait un très mauvais échange.
+   */
+  public async pathPrefixFor(
+    country: string | null | undefined,
+    locale: string
+  ): Promise<string | null> {
+    try {
+      return resolvePathPrefix(await this.table(), country, locale)
+    } catch (error) {
+      Logger.info(
+        'newsletter marchés: préfixe non résolu pour %s/%s (repli sur la langue) — %s',
+        country ?? '?',
+        locale,
+        (error as any)?.message ?? error
+      )
+      return null
+    }
+  }
+
+  /** La table des vitrines, avec le même cycle de cache que la table des devises. */
+  public async table(): Promise<MarketPathTable | null> {
+    const nowTs = Math.floor(DateTime.now().toSeconds())
+
+    if (
+      NewsletterMarkets.memoTable &&
+      nowTs - NewsletterMarkets.memoTable.at < REFRESH_AFTER_HOURS * 3600
+    ) {
+      return NewsletterMarkets.memoTable.table
+    }
+
+    const stored = await this.readTable()
+    const fetchedTs = await NewsletterState.readNumber(STATE_MARKETS_TS)
+    const fresh = fetchedTs !== null && nowTs - fetchedTs < REFRESH_AFTER_HOURS * 3600
+
+    if (stored && fresh) {
+      NewsletterMarkets.memoTable = { at: nowTs, table: stored }
+      return stored
+    }
+
+    // ⛔ `refresh()` ET SURTOUT PAS `byCurrency()`. Au premier déploiement, `markets_by_currency`
+    // est déjà là et frais : `byCurrency()` rendrait donc le cache SANS jamais appeler Shopify,
+    // et la table des préfixes ne s'écrirait qu'au prochain entretien quotidien. Tous les envois
+    // de la journée seraient retombés sur le préfixe de langue sans que rien ne le signale.
+    // `refresh()` lit toujours, et ne lève jamais.
+    if (nowTs - NewsletterMarkets.lastAttemptTs < RETRY_AFTER_MINUTES * 60) return stored
+    NewsletterMarkets.lastAttemptTs = nowTs
+
+    await this.refresh()
+
+    const after = await this.readTable()
+    if (after) NewsletterMarkets.memoTable = { at: nowTs, table: after }
+    return after ?? stored
+  }
+
   /** Rafraîchissement volontaire, appelé par l'entretien quotidien. */
   public async refresh(): Promise<MarketsByCurrency | null> {
     try {
@@ -138,11 +220,31 @@ export default class NewsletterMarkets {
     }
   }
 
+  private async readTable(): Promise<MarketPathTable | null> {
+    try {
+      const row = await NewsletterState.findBy('key', STATE_PRESENCES)
+      if (!row?.value) return null
+      const parsed = JSON.parse(row.value)
+      if (!parsed || !Array.isArray(parsed.markets) || !parsed.markets.length) return null
+      return parsed as MarketPathTable
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * UN SEUL APPEL, DEUX TABLES. Le ciblage par devise et les préfixes de vitrine décrivent le
+   * même instantané des marchés : les lire séparément les ferait diverger le jour où le
+   * marchand ouvre un marché entre les deux lectures.
+   *
+   * L'écriture de la table des préfixes est DÉLIBÉRÉMENT non bloquante : le ciblage du bon est
+   * vital (§ `idsFor` lève), les liens ne le sont pas.
+   */
   private async fetchFromShopify(): Promise<MarketsByCurrency> {
-    const markets = await this.shopify.discount.getActiveMarkets()
+    const snapshot = await this.shopify.discount.getMarketsSnapshot()
 
     const map: MarketsByCurrency = {}
-    for (const market of markets) {
+    for (const market of snapshot.markets) {
       // Seuls les marchés ACTIFS : cibler un marché désactivé rendrait le code inutilisable
       // partout, ce qui ne se voit qu'au paiement.
       if (market.status !== 'ACTIVE') continue
@@ -153,6 +255,28 @@ export default class NewsletterMarkets {
     if (!Object.keys(map).length) {
       throw new Error('aucun marché actif renvoyé par Shopify')
     }
+
+    try {
+      const table: MarketPathTable = {
+        primaryHandle: snapshot.primaryHandle,
+        markets: snapshot.markets
+          .filter((m) => m.status === 'ACTIVE' && m.handle)
+          .map((m) => ({
+            handle: m.handle,
+            countries: m.countries,
+            defaultLocale: m.defaultLocale,
+            prefixes: m.prefixes,
+          })),
+      }
+      await NewsletterState.write(STATE_PRESENCES, JSON.stringify(table))
+      NewsletterMarkets.memoTable = { at: Math.floor(DateTime.now().toSeconds()), table }
+    } catch (error) {
+      Logger.warn(
+        'newsletter marchés: table des préfixes non enregistrée — les liens retombent sur la langue (%s)',
+        (error as any)?.message ?? error
+      )
+    }
+
     return map
   }
 }

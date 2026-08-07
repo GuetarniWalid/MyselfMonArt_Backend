@@ -68,7 +68,9 @@ export default class NewsletterProductLookup {
     currency: VoucherCurrency,
     /** Montant du bon DANS LA DEVISE D'AFFICHAGE, pour la ligne « soit X avec votre bon ». */
     voucherAmount: number,
-    country?: string | null
+    country?: string | null,
+    /** Préfixe du MARCHÉ du destinataire ; `null` = repli sur le préfixe de langue. */
+    pathPrefix?: string | null
   ): Promise<RenderProduct | null> {
     const handle = extractHandle(sourceUrl)
     if (!handle) return null
@@ -80,7 +82,7 @@ export default class NewsletterProductLookup {
         locale,
       })
       if (!node) return null
-      return toRenderProduct(node, handle, locale, voucherAmount)
+      return toRenderProduct(node, handle, locale, voucherAmount, pathPrefix)
     } catch (error) {
       Logger.info(
         'newsletter produit: %s non résolu (bloc omis) — %s',
@@ -99,12 +101,16 @@ export default class NewsletterProductLookup {
     locale: NewsletterLocale,
     currency: VoucherCurrency,
     voucherAmount: number,
-    country?: string | null
+    country?: string | null,
+    /** Préfixe du MARCHÉ du destinataire ; `null` = repli sur le préfixe de langue. */
+    pathPrefix?: string | null
   ): Promise<RenderProduct[]> {
     const iso = countryFor(currency, country)
     // Le montant du bon entre dans la clé : il change la ligne « soit X avec votre bon », donc
-    // deux devises ne peuvent pas partager une entrée de cache.
-    const key = `${iso}|${locale}|${voucherAmount}`
+    // deux devises ne peuvent pas partager une entrée de cache. Le préfixe aussi : il est dans
+    // l'URL de chaque œuvre, et deux marchés partageant devise et langue servirait sinon à
+    // l'un les liens de l'autre.
+    const key = `${iso}|${locale}|${voucherAmount}|${pathPrefix ?? ''}`
 
     const hit = bestSellersCache.get(key)
     if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.items
@@ -118,7 +124,7 @@ export default class NewsletterProductLookup {
       })
 
       const items = nodes
-        .map((node) => toRenderProduct(node, node.handle, locale, voucherAmount))
+        .map((node) => toRenderProduct(node, node.handle, locale, voucherAmount, pathPrefix))
         .filter((p): p is RenderProduct => p !== null)
         .slice(0, 2)
 
@@ -145,7 +151,8 @@ function toRenderProduct(
   node: { title: string; imageUrl: string; amount: string; currencyCode: string },
   handle: string,
   locale: NewsletterLocale,
-  voucherAmount: number
+  voucherAmount: number,
+  pathPrefix?: string | null
 ): RenderProduct | null {
   const priceAmount = Number(node.amount)
   if (!node.title || !node.imageUrl || !handle) return null
@@ -166,10 +173,16 @@ function toRenderProduct(
     price,
     priceWithVoucher: moneyLabel(discounted, node.currencyCode, locale),
     priceAmount,
-    // Reconstruit plutôt que repris d'`onlineStoreUrl` : il faut le préfixe de LANGUE du
-    // destinataire, pas celui de la page où il s'est inscrit. Un Néerlandais qui s'inscrit
-    // depuis la version française doit recevoir le lien néerlandais.
-    url: `https://www.myselfmonart.com${localePath(locale)}/products/${handle}`,
+    // Reconstruit plutôt que repris d'`onlineStoreUrl` : il faut la vitrine du DESTINATAIRE,
+    // pas celle de la page où il s'est inscrit.
+    //
+    // ⛔ Le préfixe est celui de son MARCHÉ, pas de sa langue. Le prix affiché juste au-dessus
+    // vient de `contextualPricing`, donc du marché : un lien vers `/en` (marché France, euros)
+    // sous un prix en dollars ferait mentir la ligne de prix au premier clic. `localePath` ne
+    // sert que si la table des marchés manque.
+    url: `https://www.myselfmonart.com${
+      typeof pathPrefix === 'string' ? pathPrefix : localePath(locale)
+    }/products/${handle}`,
   }
 }
 
