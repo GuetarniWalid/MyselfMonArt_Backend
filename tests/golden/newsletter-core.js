@@ -58,6 +58,17 @@ const expiry = load('app/Services/Newsletter/expiry.ts')
 const currency = load('app/Services/Newsletter/currency.ts')
 const { DateTime } = require('luxon')
 
+/**
+ * Ramène les espaces insécables d'ICU à des espaces ordinaires, pour que les attentes des
+ * tests restent LISIBLES.
+ *
+ * `Intl.NumberFormat` sépare le nombre de son symbole par U+00A0 (ou U+202F selon la langue) —
+ * c'est voulu et il faut le garder dans l'e-mail : sans lui, « 15 » et « € » peuvent se
+ * retrouver sur deux lignes. Mais l'écrire dans un littéral de test le rend invisible en
+ * relecture, et le premier qui retape la chaîne à la main casse le test sans comprendre.
+ */
+const plat = (s) => String(s).replace(/[  ]/g, ' ')
+
 let failures = 0
 function check(label, fn) {
   try {
@@ -367,12 +378,33 @@ check('un taux absent ou absurde ne fait jamais échouer un calcul', () => {
 })
 
 check('les montants s’écrivent avec une devise non ambiguë', () => {
-  assert.strictEqual(currency.moneyLabel(15, 'EUR', 'fr'), '15 €')
-  assert.strictEqual(currency.moneyLabel(15, 'USD', 'en'), '15 $')
-  // « 20 $ » seul laisserait un lecteur allemand deviner de quel dollar il s'agit.
-  assert.strictEqual(currency.moneyLabel(20, 'CAD', 'de'), '20 $ CA')
-  assert.strictEqual(currency.moneyLabel(14, 'CHF', 'fr'), '14 CHF')
-  assert.strictEqual(currency.moneyLabel(13, 'GBP', 'en'), '13 £')
+  assert.strictEqual(plat(currency.moneyLabel(15, 'EUR', 'fr')), '15 €')
+  // ⛔ La mise en forme suit la LANGUE, pas la devise : « 15 € » en français, « €15 » en
+  // anglais, « € 15 » en néerlandais. C'est CLDR qui le sait, pas nous.
+  assert.strictEqual(currency.moneyLabel(15, 'EUR', 'en'), '€15')
+  assert.strictEqual(plat(currency.moneyLabel(15, 'EUR', 'nl')), '€ 15')
+  assert.strictEqual(currency.moneyLabel(15, 'USD', 'en'), 'US$15')
+  assert.strictEqual(plat(currency.moneyLabel(14, 'CHF', 'fr')), '14 CHF')
+  assert.strictEqual(currency.moneyLabel(13, 'GBP', 'en'), '£13')
+
+  // ⛔ LE POINT QUI DÉCIDE DU RÉGLAGE : un montant canadien ne doit JAMAIS s'écrire comme un
+  // montant américain. Les deux marchés partagent un catalogue, et « 20 $ » lu par un
+  // Canadien ne dit pas de quel dollar il s'agit. C'est ce que `currencyDisplay: 'symbol'`
+  // garantit et que `narrowSymbol` casse — il rend « $20 » en anglais et « 20 $ » partout
+  // ailleurs, donc strictement indistinguable de l'USD.
+  for (const lang of ['fr', 'en', 'de', 'es', 'nl']) {
+    const usd = currency.moneyLabel(15, 'USD', lang)
+    const cad = currency.moneyLabel(20, 'CAD', lang)
+    const nu = (s) => s.replace(/[\d\s  ]/g, '')
+    assert.notStrictEqual(nu(usd), nu(cad), `${lang} : USD et CAD portent le même symbole`)
+  }
+  assert.strictEqual(currency.moneyLabel(20, 'CAD', 'en'), 'CA$20')
+
+  // Les décimales suivent le montant : un bon est rond, un prix d'œuvre ne l'est pas.
+  assert.strictEqual(plat(currency.moneyLabel(62.5, 'EUR', 'fr')), '62,50 €')
+
+  // Une devise inconnue d'ICU ne fait jamais échouer un e-mail.
+  assert.strictEqual(plat(currency.moneyLabel(15, 'XXXX', 'fr')), '15 XXXX')
 })
 
 check('chaque devise servie a une offre, et les cibles sont bien rondes', () => {
@@ -531,6 +563,66 @@ const BASE = {
 }
 
 /**
+ * ⛔ L'ESPACE FRANÇAISE AVANT LA PONCTUATION DOUBLE NE DOIT PAS FUIR VERS LES AUTRES LANGUES.
+ *
+ * Le français met une espace avant « : », « ; », « ! » et « ? ». Aucune des quatre autres
+ * langues ne le fait. C'est la marque la plus reconnaissable d'un texte traduit depuis le
+ * français — et elle était sur une CLAUSE du bon, c'est-à-dire la phrase que le lecteur relit.
+ *
+ * Le test balaie TOUTES les chaînes, pas seulement celle qui avait le défaut : une traduction
+ * ajoutée plus tard le réintroduirait sans que personne ne le voie.
+ */
+check('l’espace française avant « : » ne fuit pas vers les autres langues', () => {
+  const fuite = /[\s  ][:;!?]/
+  for (const locale of config.LOCALES) {
+    if (locale === 'fr') continue
+    for (const [clé, valeur] of Object.entries(plateChaines(strings.pack(locale)))) {
+      assert.ok(
+        !fuite.test(valeur),
+        `${locale}/${clé} : espace avant une ponctuation double — ${JSON.stringify(valeur)}`
+      )
+    }
+  }
+})
+
+/** Aplatit un pack en { chemin: chaîne }, pour balayer les cinq langues d'un seul geste. */
+function plateChaines(objet, préfixe = '', sortie = {}) {
+  for (const [clé, valeur] of Object.entries(objet)) {
+    const chemin = préfixe ? `${préfixe}.${clé}` : clé
+    if (typeof valeur === 'string') sortie[chemin] = valeur
+    else if (Array.isArray(valeur)) {
+      valeur.forEach((el, i) =>
+        typeof el === 'string'
+          ? (sortie[`${chemin}[${i}]`] = el)
+          : plateChaines(el, `${chemin}[${i}]`, sortie)
+      )
+    } else if (valeur && typeof valeur === 'object') plateChaines(valeur, chemin, sortie)
+  }
+  return sortie
+}
+
+/**
+ * Le titre du 3ᵉ e-mail ne se traduit PAS mot à mot. « Vos 15 € s'arrêtent » se dit en
+ * français ; « Your US$15 ends » ne se dit pas en anglais — un montant ne peut pas être le
+ * sujet de ce verbe — et « Ihre US$15 enden » se trompe en plus de genre et de nombre. Les
+ * quatre autres langues prennent donc le GUTSCHEIN / voucher / vale / waardebon pour sujet.
+ */
+check('le titre de E3 a un sujet grammatical dans chaque langue', () => {
+  const sujets = { en: 'voucher', de: 'Gutschein', es: 'vale', nl: 'waardebon' }
+  for (const [locale, sujet] of Object.entries(sujets)) {
+    const m3 = strings.pack(locale).mail3
+    for (const clé of ['subject', 'docTitle', 'h1']) {
+      assert.ok(
+        m3[clé].includes(sujet),
+        `${locale}/mail3.${clé} : « ${sujet} » doit être le sujet, pas le montant`
+      )
+    }
+  }
+  // Le français garde sa formule, qui est correcte chez lui.
+  assert.ok(strings.pack('fr').mail3.h1.startsWith('Vos {amount}'))
+})
+
+/**
  * ⛔ « heure de Paris » ne doit JAMAIS revenir dans un e-mail.
  *
  * Le gabarit du designer la portait (« jusqu'au 13 août inclus (heure de Paris) », et
@@ -668,7 +760,7 @@ check('le point d’honnêteté disparaît quand aucune promotion n’est active
   // lecteur ; il ne se convertit pas (un Américain croise à 150 $, pas à 173 $).
   const avec = template.renderNewsletterEmail({ ...BASE, emailNo: 3, betterDealAmount: 150 })
   assert.ok(avec.html.includes('honnêteté'), 'avec promotion : le paragraphe doit apparaître')
-  assert.ok(avec.html.includes('150 €'), 'avec promotion : le seuil doit être affiché')
+  assert.ok(plat(avec.html).includes('150 €'), 'avec promotion : le seuil doit être affiché')
 
   const us = template.renderNewsletterEmail({
     ...BASE,
@@ -678,7 +770,8 @@ check('le point d’honnêteté disparaît quand aucune promotion n’est active
     amount: 15,
     betterDealAmount: 150,
   })
-  assert.ok(us.html.includes('150 $'), 'USD : le seuil s’écrit dans la devise du lecteur')
+  // En anglais, ICU écrit « US$150 » : le nombre est le même, la mise en forme suit la langue.
+  assert.ok(plat(us.html).includes('US$150'), 'USD : le seuil s’écrit dans la devise du lecteur')
   assert.ok(!us.html.includes('173'), 'USD : le seuil ne se convertit pas depuis l’euro')
 })
 
@@ -821,12 +914,16 @@ check('les montants et dates sont formatés par langue', () => {
 // e-mails — pas « 13,26 € », pas « 15 € », et surtout pas un montant recalculé six jours plus
 // tard à un autre taux.
 check('chaque devise affiche sa cible ronde, dans les trois e-mails', () => {
+  // Formes attendues EN FRANÇAIS. L'espace qui précède le symbole est une ESPACE INSÉCABLE
+  // (U+00A0) posée par ICU, pas une espace ordinaire — d'où la normalisation `plat()` :
+  // écrire l'insécable dans un littéral de test la rendrait invisible en relecture, et le
+  // premier qui la retaperait à la main casserait le test sans comprendre pourquoi.
   const attendus = [
     ['EUR', 15, 80, '15 €', '80 €'],
-    ['USD', 15, 90, '15 $', '90 $'],
-    ['CAD', 20, 130, '20 $ CA', '130 $ CA'],
+    ['USD', 15, 90, '15 $US', '90 $US'],
+    ['CAD', 20, 130, '20 $CA', '130 $CA'],
     ['CHF', 14, 75, '14 CHF', '75 CHF'],
-    ['GBP', 13, 70, '13 £', '70 £'],
+    ['GBP', 13, 70, '13 £GB', '70 £GB'],
   ]
   for (const [currency, amount, threshold, labelAmount, labelThreshold] of attendus) {
     for (const emailNo of [1, 2, 3]) {
@@ -839,11 +936,11 @@ check('chaque devise affiche sa cible ronde, dans les trois e-mails', () => {
         threshold,
       })
       assert.ok(
-        out.html.includes(labelAmount),
+        plat(out.html).includes(labelAmount),
         `${currency}/${emailNo} : « ${labelAmount} » absent du HTML`
       )
       assert.ok(
-        out.html.includes(labelThreshold),
+        plat(out.html).includes(labelThreshold),
         `${currency}/${emailNo} : seuil « ${labelThreshold} » absent du HTML`
       )
     }

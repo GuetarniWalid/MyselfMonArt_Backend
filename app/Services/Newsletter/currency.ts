@@ -85,14 +85,20 @@ export const FALLBACK_RATES: Record<VoucherCurrency, number> = {
   GBP: 0.85705,
 }
 
-/** Symbole affiché après le nombre, dans toutes les langues. « 20 $ CA » lève l'ambiguïté. */
-const SYMBOLS: Record<VoucherCurrency, string> = {
-  EUR: '€',
-  USD: '$',
-  CAD: '$ CA',
-  CHF: 'CHF',
-  GBP: '£',
-}
+/**
+ * ⛔ `symbol` ET NON `narrowSymbol`, et ce n'est pas un détail de goût.
+ *
+ * `narrowSymbol` réduit USD et CAD au même « $ » en français, allemand, espagnol et
+ * néerlandais, et donne « $20 » en anglais pour un montant canadien. C'est précisément
+ * l'ambiguïté que le dispositif refuse : le bon canadien vaut 20 $ CA, pas 20 $ US, et les deux
+ * partagent un catalogue.
+ *
+ * `symbol` garde la distinction partout — « 20 $CA » en français, « CA$20 » en anglais,
+ * « 20 CA$ » en allemand. Le prix à payer est de la verbosité par endroits (« 13 £GB » en
+ * français, « 20 CAD » en espagnol) : c'est CLDR qui en décide, et un montant verbeux se lit,
+ * là où un montant ambigu se lit faux.
+ */
+const CURRENCY_DISPLAY = 'symbol' as const
 
 /** Une chaîne quelconque est-elle une devise que le dispositif sait servir ? */
 export function isVoucherCurrency(value: unknown): value is VoucherCurrency {
@@ -166,26 +172,34 @@ export function eurAmountsFor(
 }
 
 /**
- * Montant tel qu'il s'écrit dans un e-mail : « 15 € », « 15 $ », « 20 $ CA », « 14 CHF »,
- * « 13 £ ».
+ * LE SEUL ENDROIT OÙ UN MONTANT DEVIENT DU TEXTE — bon, seuil, seuil de bascule, prix produit.
  *
- * Le NOMBRE est formaté dans la langue du destinataire (séparateurs de milliers), le symbole
- * est le même partout : un lecteur allemand qui voit « 20 $ CA » comprend, là où le « $ » nu
- * d'un formatage automatique le laisserait deviner de quel dollar il s'agit.
+ * ⛔ AUCUNE RÈGLE DE FORMATAGE ÉCRITE À LA MAIN. La place du symbole, l'espace qui le sépare du
+ * nombre, le séparateur décimal et la forme du symbole lui-même changent d'une langue à
+ * l'autre : « 15 € » en français, « €15 » en anglais, « € 15 » en néerlandais. Node embarque
+ * les données CLDR, qui connaissent déjà les 25 combinaisons servies ici et qui se mettent à
+ * jour toutes seules. Une table maison de 25 cas serait fausse quelque part dès le premier
+ * jour, et le resterait pour toujours.
+ *
+ * Les DÉCIMALES suivent le montant, pas une constante : les bons sont ronds par construction
+ * (15 €, 20 $ CA) et s'écrivent sans centimes, alors qu'un prix d'œuvre à 62,50 € en a besoin.
+ * Arrondir un prix produit à l'unité afficherait un prix que le paiement contredit.
  */
-export function moneyLabel(
-  amount: number,
-  currency: VoucherCurrency,
-  locale: NewsletterLocale
-): string {
-  let number: string
+export function moneyLabel(amount: number, currency: string, locale: NewsletterLocale): string {
+  if (!Number.isFinite(amount) || !currency) return ''
   try {
-    number = new Intl.NumberFormat(intlTag(locale), {
-      minimumFractionDigits: 0,
+    return new Intl.NumberFormat(intlTag(locale), {
+      style: 'currency',
+      currency,
+      currencyDisplay: CURRENCY_DISPLAY,
+      // Les deux bornes ensemble, et à la même valeur. Avec un minimum à 0, 62,50 € s'écrivait
+      // « 62,5 € » — une forme qu'aucune boutique n'affiche, et qui fait douter du prix.
+      minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
       maximumFractionDigits: Number.isInteger(amount) ? 0 : 2,
     }).format(amount)
   } catch {
-    number = String(amount)
+    // Devise inconnue d'ICU, ou données de locale absentes : on n'échoue pas un e-mail pour
+    // une mise en forme. La forme de repli reste lisible et non ambiguë.
+    return `${amount} ${currency}`
   }
-  return `${number} ${SYMBOLS[currency] ?? currency}`
 }

@@ -1,7 +1,8 @@
 import Logger from '@ioc:Adonis/Core/Logger'
 import Shopify from 'App/Services/Shopify'
 import { localePath } from './emails/template'
-import { extractHandle, formatProductPrice } from './sourceUrl'
+import { extractHandle } from './sourceUrl'
+import { moneyLabel } from './currency'
 import { BEST_SELLERS_COLLECTION } from './config'
 import type { RenderProduct } from './emails/template'
 import type { VoucherCurrency } from './currency'
@@ -150,7 +151,9 @@ function toRenderProduct(
   if (!node.title || !node.imageUrl || !handle) return null
   if (!Number.isFinite(priceAmount) || priceAmount <= 0 || !node.currencyCode) return null
 
-  const price = formatProductPrice(node.amount, node.currencyCode)
+  // Mis en forme dans la LANGUE du destinataire, avec la devise que Shopify a facturée : on
+  // n'invente aucune devise et on ne convertit rien.
+  const price = moneyLabel(priceAmount, node.currencyCode, locale)
   if (!price) return null
 
   // Le bon ne peut pas rendre une œuvre gratuite : on borne à zéro plutôt que d'afficher un
@@ -161,7 +164,7 @@ function toRenderProduct(
     title: node.title,
     imageUrl: node.imageUrl,
     price,
-    priceWithVoucher: formatProductPrice(discounted.toFixed(2), node.currencyCode),
+    priceWithVoucher: moneyLabel(discounted, node.currencyCode, locale),
     priceAmount,
     // Reconstruit plutôt que repris d'`onlineStoreUrl` : il faut le préfixe de LANGUE du
     // destinataire, pas celui de la page où il s'est inscrit. Un Néerlandais qui s'inscrit

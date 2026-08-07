@@ -219,7 +219,7 @@ const en: Pack = {
     preheader: 'Your code {code}, valid until {date}, on orders from {min}.',
     heroH2: 'off your first artwork',
     heroSub: 'Thank you. Your code is right below — one click applies it.',
-    codeValidity: 'Valid until {date} inclusive',
+    codeValidity: 'Valid through {date}',
     cta: 'Use my {amount} voucher',
     ctaFine:
       'The code is normally already filled in at checkout. If it is not, enter it — it is just above.',
@@ -227,8 +227,8 @@ const en: Pack = {
     productLink: 'See this artwork again',
     cond: [
       { strong: 'On orders from {min}', rest: ', excluding shipping' },
-      { strong: 'Single use', rest: ' — until {date} inclusive' },
-      { strong: 'Not combinable', rest: ' : the better discount always applies' },
+      { strong: 'Single use', rest: ' — through {date}' },
+      { strong: 'Not combinable', rest: ': the better discount always applies' },
     ],
     materials: '285 g canvas · 75-year archival inks · Solid wood frame',
   },
@@ -258,15 +258,15 @@ const en: Pack = {
     ],
     bestEyebrow: 'Most chosen right now',
     cta: 'Choose my artwork',
-    ctaFine: 'Your voucher remains valid until {date} inclusive. On orders from {min}, single use.',
+    ctaFine: 'Your voucher remains valid through {date}. On orders from {min}, single use.',
     trustpilot: '{score} / 5 — {count} verified reviews on Trustpilot',
   },
   mail3: {
-    subject: 'Your {amount} ends on {date}',
-    docTitle: 'Your {amount} ends on {date}',
+    subject: 'Your {amount} voucher expires on {date}',
+    docTitle: 'Your {amount} voucher expires on {date}',
     preheader: 'Code {code} expires on {date}. It will not be renewed.',
     eyebrow: 'Final reminder',
-    h1: 'Your {amount} ends on {date}.',
+    h1: 'Your {amount} voucher expires on {date}.',
     intro:
       'After that date, the code stops working. It is a personal voucher, usable once, and it will not be renewed.',
     codeValidity: 'Last day: {date}',
@@ -321,7 +321,7 @@ const de: Pack = {
       { strong: 'Nur einmal verwendbar', rest: ' — bis einschließlich {date}' },
       {
         strong: 'Nicht mit anderen Rabatten kombinierbar',
-        rest: ' : es gilt immer der günstigste Preis',
+        rest: ': Es gilt immer der günstigste Preis',
       },
     ],
     materials: 'Leinwand 285 g · Archivtinten 75 Jahre · Rahmen aus Massivholz',
@@ -357,11 +357,11 @@ const de: Pack = {
     trustpilot: '{score} / 5 — {count} geprüfte Bewertungen auf Trustpilot',
   },
   mail3: {
-    subject: 'Ihre {amount} enden am {date}',
-    docTitle: 'Ihre {amount} enden am {date}',
+    subject: 'Ihr Gutschein über {amount} läuft am {date} ab',
+    docTitle: 'Ihr Gutschein über {amount} läuft am {date} ab',
     preheader: 'Der Code {code} läuft am {date} ab. Er wird nicht verlängert.',
     eyebrow: 'Letzte Erinnerung',
-    h1: 'Ihre {amount} enden am {date}.',
+    h1: 'Ihr Gutschein über {amount} läuft am {date} ab.',
     intro:
       'Nach diesem Datum funktioniert der Code nicht mehr. Es ist ein persönlicher Gutschein, einmal verwendbar, und er wird nicht verlängert.',
     codeValidity: 'Letzter Tag: {date}',
@@ -413,9 +413,9 @@ const es: Pack = {
     cond: [
       { strong: 'A partir de {min} de compra', rest: ', sin incluir los gastos de envío' },
       { strong: 'Un solo uso', rest: ' — hasta el {date} incluido' },
-      { strong: 'No acumulable', rest: ' : se aplica siempre el mejor descuento' },
+      { strong: 'No acumulable', rest: ': se aplica siempre el mejor descuento' },
     ],
-    materials: 'Lienzo 285 g · Tintas archival 75 años · Marco de madera maciza',
+    materials: 'Lienzo 285 g · Tintas de conservación 75 años · Marco de madera maciza',
   },
   mail2: {
     subject: 'Lo difícil no es el precio',
@@ -448,11 +448,11 @@ const es: Pack = {
     trustpilot: '{score} / 5 — {count} opiniones verificadas en Trustpilot',
   },
   mail3: {
-    subject: 'Sus {amount} terminan el {date}',
-    docTitle: 'Sus {amount} terminan el {date}',
+    subject: 'Su vale de {amount} caduca el {date}',
+    docTitle: 'Su vale de {amount} caduca el {date}',
     preheader: 'El código {code} caduca el {date}. No se renueva.',
     eyebrow: 'Último recordatorio',
-    h1: 'Sus {amount} terminan el {date}.',
+    h1: 'Su vale de {amount} caduca el {date}.',
     intro:
       'Pasada esa fecha, el código deja de funcionar. Es un vale nominativo, de un solo uso, y no se renueva.',
     codeValidity: 'Último día: {date}',
@@ -493,7 +493,7 @@ const nl: Pack = {
     subject: 'Uw waardebon van {amount} — code {code}',
     docTitle: 'Uw waardebon van {amount}',
     preheader: 'Uw code {code}, geldig tot {date}, vanaf {min} aankoop.',
-    heroH2: 'cadeau op uw eerste kunstwerk',
+    heroH2: 'korting op uw eerste kunstwerk',
     heroSub: 'Bedankt. Uw code staat er vlak onder — één klik volstaat om hem toe te passen.',
     codeValidity: 'Geldig tot en met {date}',
     cta: 'Mijn waardebon van {amount} gebruiken',
@@ -504,9 +504,9 @@ const nl: Pack = {
     cond: [
       { strong: 'Vanaf {min} aankoop', rest: ', exclusief verzendkosten' },
       { strong: 'Eenmalig te gebruiken', rest: ' — tot en met {date}' },
-      { strong: 'Niet combineerbaar', rest: ' : de voordeligste korting geldt' },
+      { strong: 'Niet combineerbaar', rest: ': de voordeligste korting geldt' },
     ],
-    materials: 'Canvas 285 g · Archivalinkt 75 jaar · Lijst van massief hout',
+    materials: 'Canvas 285 g · Archiefinkt 75 jaar · Lijst van massief hout',
   },
   mail2: {
     subject: 'Het moeilijkste is niet de prijs',
@@ -539,11 +539,11 @@ const nl: Pack = {
     trustpilot: '{score} / 5 — {count} geverifieerde beoordelingen op Trustpilot',
   },
   mail3: {
-    subject: 'Uw {amount} stopt op {date}',
-    docTitle: 'Uw {amount} stopt op {date}',
+    subject: 'Uw waardebon van {amount} verloopt op {date}',
+    docTitle: 'Uw waardebon van {amount} verloopt op {date}',
     preheader: 'De code {code} verloopt op {date}. Hij wordt niet verlengd.',
     eyebrow: 'Laatste herinnering',
-    h1: 'Uw {amount} stopt op {date}.',
+    h1: 'Uw waardebon van {amount} verloopt op {date}.',
     intro:
       'Na die datum werkt de code niet meer. Het is een persoonlijke waardebon, eenmalig te gebruiken, en hij wordt niet verlengd.',
     codeValidity: 'Laatste dag: {date}',

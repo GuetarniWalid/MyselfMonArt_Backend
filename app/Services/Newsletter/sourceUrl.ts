@@ -53,23 +53,9 @@ export function extractHandle(sourceUrl: string | null | undefined): string | nu
   return /^[a-z0-9-]{1,255}$/.test(handle) ? handle : null
 }
 
-/**
- * Met en forme un prix rendu par Shopify.
- *
- * ⛔ Le symbole vient du `currencyCode` de Shopify : on n'invente aucune devise et on ne
- * convertit rien. Le prix affiché est celui du marché de l'acheteur, tel que la boutique le
- * facture.
- */
-export function formatProductPrice(amount: string, currencyCode: string): string {
-  const value = Number(amount)
-  if (!Number.isFinite(value) || !currencyCode) return ''
-  try {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: currencyCode,
-      currencyDisplay: 'narrowSymbol',
-    }).format(value)
-  } catch {
-    return `${amount} ${currencyCode}`
-  }
-}
+// Les prix produit passent par `moneyLabel` (currency.ts), comme le bon et les seuils.
+//
+// Il y avait ici un second formateur, qui figeait `fr-FR` et `narrowSymbol` : un lecteur
+// allemand voyait donc le prix de l'œuvre mis en forme à la française, et un montant canadien
+// s'affichait « 20 $ », indistinguable d'un montant américain. Un seul formateur, un seul
+// endroit — c'est la règle, et c'est aussi ce qui empêche les deux de diverger.
