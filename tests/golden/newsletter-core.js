@@ -866,7 +866,8 @@ check('chaque e-mail, dans chaque langue, porte le code et le désabonnement', (
 
       // Le bouton APPLIQUE le code, et son chemin de retour porte le préfixe de langue :
       // sans lui, un Néerlandais atterrit sur une page française avec son code appliqué.
-      const expected = `https://www.myselfmonart.com/discount/MERCI-A7F3K2?redirect=${template.localePath(locale)}/collections/all`
+      // Sans œuvre connue, ce chemin est le catalogue — c'est le repli.
+      const expected = `https://www.myselfmonart.com/discount/MERCI-A7F3K2?redirect=${encodeURIComponent(`${template.localePath(locale)}/collections/all`)}`
       assert.ok(
         out.html.includes(expected),
         `${locale}/${emailNo} : lien d’application non localisé (${expected})`
@@ -876,6 +877,130 @@ check('chaque e-mail, dans chaque langue, porte le code et le désabonnement', (
         `${locale}/${emailNo} : lien absent de la version texte`
       )
     }
+  }
+})
+
+// --- Destination du bouton : la fiche regardée, ou le catalogue ------------------------
+//
+// Le bloc « vous regardiez » prouve qu'on sait quelle œuvre la personne avait sous les yeux.
+// Le bouton la renvoyait pourtant chercher dans tout le catalogue.
+
+check(
+  'chemin de redirection : accepte les chemins de la boutique, préfixe de marché compris',
+  () => {
+    const p = load('app/Services/Newsletter/sourceUrl.ts')
+    const cas = [
+      ['https://www.myselfmonart.com/products/x', '/products/x'],
+      // ⛔ Le préfixe porte le MARCHÉ, donc la devise. Le retirer enverrait un Américain sur le
+      // catalogue français.
+      ['https://www.myselfmonart.com/en-us/products/x', '/en-us/products/x'],
+      ['https://www.myselfmonart.com/fr-ca/products/x', '/fr-ca/products/x'],
+      ['https://www.myselfmonart.com/de-ch/products/x', '/de-ch/products/x'],
+      // La chaîne de requête et l'ancre ne sont pas du chemin : `pathname` les laisse dehors.
+      ['https://www.myselfmonart.com/products/x?variant=42#avis', '/products/x'],
+      ['https://www.myselfmonart.com/collections/tout', '/collections/tout'],
+    ]
+    for (const [url, attendu] of cas) {
+      assert.strictEqual(p.redirectPathFrom(url), attendu, `chemin faux pour ${url}`)
+    }
+  }
+)
+
+check('chemin de redirection : rejette tout ce qui n’est pas un chemin de la boutique', () => {
+  const p = load('app/Services/Newsletter/sourceUrl.ts')
+  for (const url of [
+    null,
+    undefined,
+    '',
+    'pas-une-url',
+    '/products/x', // relative : pas d'hôte, donc pas de preuve d'origine
+    'https://evil.example.com/products/x',
+    'https://www.myselfmonart.com.evil.example/products/x',
+    // Sous-domaine : toléré pour un handle (Shopify tranche derrière), refusé pour une
+    // destination recopiée telle quelle dans un lien.
+    'https://myselfmonart.com/products/x',
+    'https://preview.myselfmonart.com/products/x',
+    // ⛔ Protocol-relative : servi par notre hôte, mais suivi il quitte le domaine.
+    'https://www.myselfmonart.com//evil.example',
+    'https://www.myselfmonart.com/\\evil.example',
+    'javascript:alert(1)',
+  ]) {
+    assert.strictEqual(p.redirectPathFrom(url), null, `devrait refuser ${url}`)
+  }
+})
+
+/** Une œuvre résolue — donc une fiche qui a répondu à l'instant de l'envoi. */
+const OEUVRE = {
+  title: 'Maternité africaine',
+  imageUrl: 'https://cdn.shopify.com/x.jpg',
+  price: '129,00 €',
+  priceWithVoucher: '114,00 €',
+  priceAmount: 129,
+  url: 'https://www.myselfmonart.com/products/maternite-africaine',
+}
+
+check('le bouton mène à la fiche regardée, dans les TROIS e-mails', () => {
+  const sourceUrl = 'https://www.myselfmonart.com/en-us/products/maternite-africaine?variant=42'
+  // ⛔ Chemin encodé, préfixe de marché conservé, chaîne de requête laissée dehors.
+  const attendu = `https://www.myselfmonart.com/discount/MERCI-A7F3K2?redirect=${encodeURIComponent('/en-us/products/maternite-africaine')}`
+
+  for (const emailNo of [1, 2, 3]) {
+    const out = template.renderNewsletterEmail({
+      ...BASE,
+      emailNo,
+      locale: 'en',
+      product: OEUVRE,
+      sourceUrl,
+    })
+    assert.ok(out.html.includes(attendu), `e-mail ${emailNo} : bouton pas sur la fiche regardée`)
+    assert.ok(out.text.includes(attendu), `e-mail ${emailNo} : version texte pas sur la fiche`)
+    // Et surtout : plus aucun renvoi vers le catalogue, sinon les deux liens se contredisent.
+    assert.ok(
+      !out.html.includes('collections%2Fall'),
+      `e-mail ${emailNo} : renvoie encore au catalogue`
+    )
+  }
+})
+
+/**
+ * ⛔ LE POINT DE VIGILANCE DU 3ᵉ E-MAIL. Il part sept jours après l'inscription : la fiche a pu
+ * être dépubliée. `product` absent = la fiche n'a pas répondu à l'envoi, et le bouton doit
+ * revenir au catalogue plutôt que mener à un 404 — l'endroit le plus coûteux pour en trouver un.
+ */
+check('fiche disparue entre-temps : le bouton retombe sur le catalogue', () => {
+  const out = template.renderNewsletterEmail({
+    ...BASE,
+    emailNo: 3,
+    locale: 'en',
+    // Pas de `product` : la fiche n'a pas répondu.
+    sourceUrl: 'https://www.myselfmonart.com/en-us/products/oeuvre-depubliee',
+  })
+  assert.ok(
+    out.html.includes(`?redirect=${encodeURIComponent('/en/collections/all')}`),
+    'le bouton devrait revenir au catalogue'
+  )
+  assert.ok(!out.html.includes('oeuvre-depubliee'), 'aucun lien ne doit mener à la fiche disparue')
+})
+
+check('source_url hors domaine : le bouton ne quitte jamais la boutique', () => {
+  for (const sourceUrl of [
+    'https://evil.example.com/products/piege',
+    'https://www.myselfmonart.com//evil.example',
+    'pas-une-url',
+    null,
+  ]) {
+    const out = template.renderNewsletterEmail({
+      ...BASE,
+      emailNo: 1,
+      locale: 'fr',
+      product: OEUVRE,
+      sourceUrl,
+    })
+    assert.ok(
+      out.html.includes(`?redirect=${encodeURIComponent('/collections/all')}`),
+      `${sourceUrl} : devrait retomber sur le catalogue`
+    )
+    assert.ok(!out.html.includes('evil.example'), `${sourceUrl} : hôte étranger dans l’e-mail`)
   }
 })
 

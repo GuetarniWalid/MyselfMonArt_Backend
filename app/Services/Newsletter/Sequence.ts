@@ -374,6 +374,10 @@ export default class NewsletterSequence {
       trustpilotScore: TRUSTPILOT_SCORE,
       trustpilotCount: TRUSTPILOT_COUNT,
       ...(product ? { product } : {}),
+      // La page d'origine, pour que le bouton mène à la fiche regardée plutôt qu'au catalogue.
+      // Le gabarit ne s'en sert QUE si `product` est là — c'est-à-dire si la fiche a répondu à
+      // l'instant même — et la valide avant d'en tirer quoi que ce soit.
+      sourceUrl: subscriber.sourceUrl,
       ...(bestSellers.length ? { bestSellers } : {}),
       betterDealAmount,
     })

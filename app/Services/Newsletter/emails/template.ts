@@ -2,6 +2,7 @@ import { pack } from './strings'
 import { DARK_MODE_CSS } from './darkMode'
 import { formatAnnouncedDate, intlTag } from '../expiry'
 import { moneyLabel } from '../currency'
+import { redirectPathFrom } from '../sourceUrl'
 import type { Bullet } from './strings'
 import type { VoucherCurrency } from '../currency'
 import type { NewsletterLocale } from '../config'
@@ -86,8 +87,20 @@ export interface RenderInput {
    * L'œuvre regardée au moment de l'inscription, déduite de `source_url`. Bloc OPTIONNEL :
    * `undefined` quand l'inscription ne vient pas d'une fiche produit, ou quand la fiche n'est
    * plus publiée — le bloc disparaît alors ENTIÈREMENT. Jamais de moitié de bloc.
+   *
+   * ⛔ SA PRÉSENCE COMMANDE AUSSI LA DESTINATION DU BOUTON : il ne mène à la fiche que si le
+   * bloc est là. Résolu à l'envoi, `product` est la PREUVE que la page existe encore — c'est
+   * ce qui protège le 3ᵉ e-mail, parti sept jours après l'inscription.
    */
   product?: RenderProduct
+  /**
+   * La page d'où venait l'inscription — `location.href` transmis par le thème.
+   *
+   * ⛔ DONNÉE SOUMISE PAR LE NAVIGATEUR, non fiable, et le seul usage autorisé est de la
+   * passer à `redirectPathFrom` (cf. `sourceUrl.ts`), qui refuse tout ce qui ne mène pas chez
+   * nous. Elle n'est jamais écrite telle quelle dans l'e-mail.
+   */
+  sourceUrl?: string | null
   /**
    * Mail 2 : « les plus choisies cette semaine ». Il en faut DEUX — une seule déséquilibrerait
    * la mise en page du designer, zéro ne se remarque pas. Moins de deux = bloc supprimé.
@@ -314,17 +327,36 @@ export function renderNewsletterEmail(input: RenderInput): RenderedEmail {
   /**
    * Lien qui APPLIQUE la remise puis mène quelque part.
    *
-   * ⚠️ Le chemin de redirection porte le préfixe de langue : sans lui, un Néerlandais qui
-   * clique atterrit sur la version française du site, son bon appliqué mais la mauvaise
-   * langue — et c'est le moment précis où il referme l'e-mail.
+   * ⚠️ Le chemin de redirection porte le préfixe de langue ou de marché : sans lui, un
+   * Néerlandais qui clique atterrit sur la version française du site, son bon appliqué mais la
+   * mauvaise langue — et c'est le moment précis où il referme l'e-mail.
+   *
+   * ⛔ LES DEUX VALEURS SONT ENCODÉES. Le code finit dans un chemin d'URL, le chemin de retour
+   * dans une chaîne de requête : non encodé, un `?variant=…` resté dans le chemin couperait la
+   * valeur en deux et Shopify ne lirait qu'un morceau. Un lien de remise qui échoue est
+   * invisible depuis ici — c'est le client qui le découvre.
    */
-  // ⚠️ Le CODE est encodé (il finit dans un chemin d'URL), le CHEMIN DE RETOUR ne l'est pas.
-  // Sur un vrai code — `MERCI-` et six caractères d'un alphabet sans ambiguïté — l'encodage ne
-  // change rien ; il n'est là que pour qu'aucune valeur inattendue ne s'échappe du lien. Le
-  // chemin, lui, reste littéral : c'est la forme vérifiée contre la boutique, et un lien de
-  // remise qui échoue est invisible depuis ici — c'est le client qui le découvre.
   const applyUrl = (path: string) =>
-    `${store}/discount/${encodeURIComponent(input.code)}?redirect=${prefix}${path}`
+    `${store}/discount/${encodeURIComponent(input.code)}?redirect=${encodeURIComponent(path)}`
+
+  /**
+   * OÙ MÈNE LE BOUTON — LA MÊME DESTINATION DANS LES TROIS E-MAILS.
+   *
+   * La fiche que la personne regardait quand elle a demandé son bon, plutôt que le catalogue
+   * entier : le bloc « vous regardiez » prouve qu'on la connaît, l'envoyer chercher dans huit
+   * cents œuvres ce qu'elle avait sous les yeux est une marche pour rien.
+   *
+   * ⛔ CONDITIONNÉ À `input.product`, ET C'EST TOUT L'INTÉRÊT. `product` n'existe que si la
+   * fiche a répondu À L'INSTANT DE L'ENVOI. E3 part sept jours après l'inscription : une œuvre
+   * dépubliée entre-temps fait disparaître le bloc ET ramène le bouton au catalogue, d'un seul
+   * geste. Jamais de bouton vers un 404 — c'est le pire endroit possible pour en trouver un.
+   *
+   * Calculé UNE FOIS, ici, et non dans chacun des trois constructeurs : trois copies finissent
+   * toujours par diverger, et celle qu'on oublierait de corriger serait invisible.
+   */
+  const ctaUrl = applyUrl(
+    (input.product ? redirectPathFrom(input.sourceUrl) : null) ?? `${prefix}/collections/all`
+  )
 
   const values: Record<string, string> = {
     code: input.code,
@@ -344,7 +376,7 @@ export function renderNewsletterEmail(input: RenderInput): RenderedEmail {
   const ctx: Ctx = {
     input,
     values,
-    applyUrl,
+    ctaUrl,
     store,
     prefix,
     footerHtml: renderFooter(input, strings.footer, values, store, prefix),
@@ -360,7 +392,8 @@ export function renderNewsletterEmail(input: RenderInput): RenderedEmail {
 interface Ctx {
   input: RenderInput
   values: Record<string, string>
-  applyUrl: (path: string) => string
+  /** Le lien du bouton, déjà résolu — cf. `renderNewsletterEmail`. Les trois mails le partagent. */
+  ctaUrl: string
   store: string
   prefix: string
   footerHtml: string
@@ -415,12 +448,11 @@ function renderFooterText(
 // --- Mail 1 : livraison du bon ---------------------------------------------------------------
 
 function mail1(ctx: Ctx): RenderedEmail {
-  const { input, values, applyUrl, store, prefix } = ctx
+  const { input, values, ctaUrl, store, prefix } = ctx
   const s = pack(input.locale).mail1
   const common = pack(input.locale).common
   const subject = fill(s.subject, values)
   const cta = fill(s.cta, values)
-  const ctaUrl = applyUrl('/collections/all')
 
   const conditions = s.cond
     .map(
@@ -550,11 +582,10 @@ function productTextLines(
 // --- Mail 2 : levée d'objection ---------------------------------------------------------------
 
 function mail2(ctx: Ctx): RenderedEmail {
-  const { input, values, applyUrl, store, prefix } = ctx
+  const { input, values, ctaUrl, store, prefix } = ctx
   const s = pack(input.locale).mail2
   const common = pack(input.locale).common
   const subject = fill(s.subject, values)
-  const ctaUrl = applyUrl('/collections/all')
 
   const questions = s.questions
     .map((q, i) => {
@@ -720,12 +751,11 @@ function trustpilotBlock(
 // --- Mail 3 : fin de promotion ----------------------------------------------------------------
 
 function mail3(ctx: Ctx): RenderedEmail {
-  const { input, values, applyUrl, store, prefix } = ctx
+  const { input, values, ctaUrl, store, prefix } = ctx
   const s = pack(input.locale).mail3
   const common = pack(input.locale).common
   const subject = fill(s.subject, values)
   const cta = fill(s.cta, values)
-  const ctaUrl = applyUrl('/collections/all')
 
   const html = `${head(3, input.locale, fill(s.docTitle, values))}
 ${openBody(fill(s.preheader, values), `${store}${prefix}`)}
