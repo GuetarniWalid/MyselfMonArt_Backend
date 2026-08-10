@@ -41,8 +41,28 @@ export default class Authentication {
     if (!data.id) {
       throw new Error('GET /me did not return an Instagram user id')
     }
+    this.assertExpectedAccount(data.username)
     this.cachedInstagramUserId = data.id
     return this.cachedInstagramUserId
+  }
+
+  /**
+   * Vérifie qu'on parle bien au compte de la boutique.
+   *
+   * Le flux OAuth Instagram laisse l'utilisateur choisir le compte à connecter.
+   * Une ré-autorisation faite sur le mauvais compte — c'est arrivé le
+   * 2026-08-10, le jeton pointait sur `madebymood.app` — enverrait les œuvres de
+   * la boutique chez un tiers, sans que rien ne s'y oppose et sans retour en
+   * arrière possible une fois publié. On préfère ne rien publier.
+   */
+  private assertExpectedAccount(username?: string): void {
+    const expected = Env.get('INSTAGRAM_EXPECTED_USERNAME') as string | undefined
+    if (!expected) return
+    if (username && username.toLowerCase() === expected.toLowerCase()) return
+    throw new Error(
+      `Instagram: jeton connecté au compte « ${username ?? 'inconnu'} » alors que la boutique attend « ${expected} ». ` +
+        `Publication interrompue — ré-autoriser sur le bon compte via /login/instagram.`
+    )
   }
 
   protected async request<T>(config: any): Promise<T> {

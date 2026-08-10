@@ -63,6 +63,13 @@ export default Env.rules({
   PINTEREST_CLIENT_SECRET: Env.schema.string(),
   INSTAGRAM_APP_ID: Env.schema.string(),
   INSTAGRAM_APP_SECRET: Env.schema.string(),
+  /**
+   * Nom du compte Instagram sur lequel on a le droit de publier. Le flux OAuth
+   * laisse choisir le compte : une ré-autorisation faite sur le mauvais compte
+   * enverrait les œuvres de la boutique chez quelqu'un d'autre, sans que rien ne
+   * l'empêche. Renseigné, ce garde-fou bloque la publication en cas d'écart.
+   */
+  INSTAGRAM_EXPECTED_USERNAME: Env.schema.string.optional(),
   META_VERIFY_TOKEN: Env.schema.string(),
   META_APP_SECRET: Env.schema.string.optional(),
   FACEBOOK_PAGE_ID: Env.schema.string.optional(),
