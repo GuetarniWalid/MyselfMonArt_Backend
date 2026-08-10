@@ -426,6 +426,12 @@
           "propertyName": "yes",
           "type": "boolean",
           "description": "Supprime réellement les pins perdants. SANS RETOUR POSSIBLE."
+        },
+        {
+          "name": "include-unrecorded",
+          "propertyName": "includeUnrecorded",
+          "type": "boolean",
+          "description": "Traiter aussi les groupes contenant des pins absents du registre (pins qu'on n'a pas créés). Dangereux : à n'utiliser que pour un nettoyage historique, en connaissance de cause."
         }
       ]
     },

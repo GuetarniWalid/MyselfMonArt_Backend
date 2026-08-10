@@ -47,6 +47,12 @@ export default class PinterestDedupePins extends BaseCommand {
   })
   public yes: boolean
 
+  @flags.boolean({
+    description:
+      "Traiter aussi les groupes contenant des pins absents du registre (pins qu'on n'a pas créés). Dangereux : à n'utiliser que pour un nettoyage historique, en connaissance de cause.",
+  })
+  public includeUnrecorded: boolean
+
   public async run() {
     const pinterest = new Pinterest([])
     await pinterest.initialize()
@@ -63,10 +69,31 @@ export default class PinterestDedupePins extends BaseCommand {
       return
     }
 
+    // Les pins qu'on a nous-mêmes publiés. Tout le reste appartient à une autre
+    // source — typiquement les épingles recopiées depuis Instagram, qu'on a
+    // délibérément conservées et relinkées vers la boutique. Une fois relinkées
+    // elles portent le même identifiant produit que les nôtres : sans ce filtre,
+    // le dédoublonnage les prendrait pour des doublons et supprimerait les pins
+    // les plus vus du compte.
+    const recordedPinIds = new Set(
+      (await SocialPublication.query().where('channel', 'pinterest').select('external_id'))
+        .map((row) => row.externalId)
+        .filter((id): id is string => Boolean(id))
+    )
+
     let deleted = 0
     const failures: Array<{ id: string; reason: string }> = []
 
     for (const [productId, group] of duplicates) {
+      const unrecorded = group.filter((pin) => !recordedPinIds.has(pin.id))
+      if (unrecorded.length > 0 && !this.includeUnrecorded) {
+        this.logger.warning(
+          `\nProduit ${productId} — IGNORÉ : ${unrecorded.length}/${group.length} pin(s) hors registre ` +
+            `(${unrecorded.map((pin) => pin.id).join(', ')}). Ce ne sont pas des pins que nous avons publiés. ` +
+            `Utiliser --include-unrecorded pour les traiter quand même.`
+        )
+        continue
+      }
       // Les métriques ne figurent pas dans la liste paginée : un appel par pin.
       const scored: ScoredPin[] = []
       for (const pin of group) {
