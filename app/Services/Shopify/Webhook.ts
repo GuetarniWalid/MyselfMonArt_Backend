@@ -1,5 +1,26 @@
 import Authentication from './Authentication'
 import Env from '@ioc:Adonis/Core/Env'
+
+/**
+ * Sujets auxquels ce back-end sait s'abonner.
+ *
+ * ⛔ Ce sont des valeurs de l'énuméré `WebhookSubscriptionTopic`, relevées par introspection et
+ * non recopiées de mémoire : Shopify en expose trois qui se ressemblent
+ * (`CUSTOMERS_MARKETING_CONSENT_UPDATE`, `CUSTOMERS_WHATS_APP_...`, `CUSTOMERS_EMAIL_...`) et
+ * un nom approché fait échouer la souscription, pas la compilation.
+ *
+ * ⚠️ Tous atterrissent sur la MÊME URL (`SHOPIFY_WEBHOOK_URL`, cf. plus bas). En ajouter un
+ * suppose donc de lui ouvrir une branche dans `WebhooksController.handle` : un sujet souscrit
+ * sans oreille en face échoue, et Shopify SUPPRIME définitivement un abonnement après 8 échecs
+ * consécutifs en 4 heures.
+ */
+export type WebhookTopic =
+  | 'PRODUCTS_UPDATE'
+  | 'PRODUCTS_CREATE'
+  | 'PRODUCTS_DELETE'
+  | 'ORDERS_PAID'
+  | 'CUSTOMERS_EMAIL_MARKETING_CONSENT_UPDATE'
+
 export default class Webhook extends Authentication {
   public async getSubscriptions() {
     const { query, variables } = this.getSubscriptionsQuery()
@@ -84,10 +105,7 @@ export default class Webhook extends Authentication {
     }
   }
 
-  public async createWebhookSubscription(
-    topic: 'PRODUCTS_UPDATE' | 'PRODUCTS_CREATE' | 'PRODUCTS_DELETE' | 'ORDERS_PAID',
-    metafieldNamespaces: string[] = []
-  ) {
+  public async createWebhookSubscription(topic: WebhookTopic, metafieldNamespaces: string[] = []) {
     const { query, variables } = this.createWebhookSubscriptionQuery(topic, metafieldNamespaces)
     const response = await this.fetchGraphQL(query, variables)
     const userErrors = response.webhookSubscriptionCreate?.userErrors || []
@@ -99,10 +117,7 @@ export default class Webhook extends Authentication {
     return response.webhookSubscriptionCreate.webhookSubscription
   }
 
-  private createWebhookSubscriptionQuery(
-    topic: 'PRODUCTS_UPDATE' | 'PRODUCTS_CREATE' | 'PRODUCTS_DELETE' | 'ORDERS_PAID',
-    metafieldNamespaces: string[]
-  ) {
+  private createWebhookSubscriptionQuery(topic: WebhookTopic, metafieldNamespaces: string[]) {
     return {
       query: `
         mutation WebhookSubscriptionCreate($topic: WebhookSubscriptionTopic!, $webhookSubscription: WebhookSubscriptionInput!) {

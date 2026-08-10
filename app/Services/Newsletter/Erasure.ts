@@ -15,8 +15,10 @@ import { PII_RETENTION_YEARS } from './config'
  * ⛔ POURQUOI CE FICHIER EXISTE. Les trois webhooks de conformité de Shopify
  * (`customers/data_request`, `customers/redact`, `shop/redact`) ne sont PAS souscriptibles
  * pour une app créée depuis l'admin : ils sont réservés aux apps distribuées par le Partner
- * Dashboard. Les endpoints correspondants sont écrits, mais ils ne seront jamais appelés
- * tant que l'app garde sa forme actuelle.
+ * Dashboard. Aucun endpoint ne leur est donc exposé — les écrire donnerait l'illusion d'une
+ * conformité automatique alors que Shopify ne les appellerait jamais. Le jour où l'app sera
+ * recréée en distribution « custom » depuis le Partner Dashboard, il faudra les ajouter ET
+ * garder ce module : lui seul couvre la purge de rétention, qu'aucun webhook ne déclenche.
  *
  * Sans ce module, le dispositif n'aurait donc AUCUN chemin d'effacement opérant, et
  * accumulerait des adresses e-mail et des adresses IP indéfiniment — une infraction directe

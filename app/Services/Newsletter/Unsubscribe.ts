@@ -50,18 +50,55 @@ export default class NewsletterUnsubscribe {
     subscriber: NewsletterSubscriber,
     context: { ip?: string | null; userAgent?: string | null; source: string }
   ): Promise<void> {
-    const nowTs = Math.floor(DateTime.now().toSeconds())
-
     if (subscriber.status === 'unsubscribed') return
 
     // --- 1. BLOCAGE LOCAL, synchrone, avant toute chose ----------------------------
+    await this.blockLocally(subscriber, context, true)
+
+    // --- 2. Propagation vers Shopify, APRÈS ----------------------------------------
+    // Un échec ici laisse `shopifySyncPending` à vrai et le cron rejouera. La personne, elle,
+    // ne reçoit déjà plus rien : le blocage local suffit à tenir la promesse.
+    await this.consent.pushUnsubscribed(subscriber)
+  }
+
+  /**
+   * Désabonnement dont SHOPIFY EST L'ORIGINE — page de désabonnement native, admin, compte
+   * client — appris par le webhook de consentement.
+   *
+   * Même blocage local que ci-dessus, à une différence près et elle compte : **aucune
+   * propagation retour**, et `shopifySyncPending` reste à faux. Repousser vers Shopify un état
+   * qui en vient déjà ferait rejouer le cron de synchronisation indéfiniment sur une écriture
+   * sans effet, et ferait remonter une fausse alerte de non-réconciliation au bout de 6 h.
+   *
+   * IDEMPOTENT : Shopify livre « au moins une fois », donc ce webhook arrive parfois deux fois.
+   */
+  public async unsubscribeFromShopify(
+    subscriber: NewsletterSubscriber,
+    marketingState: string
+  ): Promise<void> {
+    if (subscriber.status === 'unsubscribed') return
+
+    await this.blockLocally(subscriber, { source: `shopify:${marketingState}` }, false)
+  }
+
+  /**
+   * Le blocage local, commun aux deux chemins.
+   *
+   * `pendingSync` dit s'il reste quelque chose à pousser vers Shopify : vrai quand la demande
+   * vient de chez nous, faux quand elle vient de chez eux.
+   */
+  private async blockLocally(
+    subscriber: NewsletterSubscriber,
+    context: { ip?: string | null; userAgent?: string | null; source: string },
+    pendingSync: boolean
+  ): Promise<void> {
     subscriber.status = 'unsubscribed'
-    subscriber.unsubscribedTs = nowTs
+    subscriber.unsubscribedTs = Math.floor(DateTime.now().toSeconds())
     subscriber.sequenceDone = true
     subscriber.sequenceStopReason = 'unsubscribed'
     subscriber.nextEmail = null
     subscriber.nextEmailDueTs = null
-    subscriber.shopifySyncPending = true
+    subscriber.shopifySyncPending = pendingSync
     await subscriber.save()
 
     await this.consent.recordProof({
@@ -80,10 +117,5 @@ export default class NewsletterUnsubscribe {
     await this.consent.suppress(subscriber.emailHash, 'unsubscribe')
 
     Logger.info('newsletter #%s désabonné (%s)', subscriber.id, context.source)
-
-    // --- 2. Propagation vers Shopify, APRÈS ----------------------------------------
-    // Un échec ici laisse `shopifySyncPending` à vrai et le cron rejouera. La personne, elle,
-    // ne reçoit déjà plus rien : le blocage local suffit à tenir la promesse.
-    await this.consent.pushUnsubscribed(subscriber)
   }
 }

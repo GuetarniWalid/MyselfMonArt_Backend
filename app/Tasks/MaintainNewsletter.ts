@@ -5,6 +5,7 @@ import NewsletterErasure from 'App/Services/Newsletter/Erasure'
 import NewsletterHealth from 'App/Services/Newsletter/Health'
 import NewsletterMarkets from 'App/Services/Newsletter/Markets'
 import NewsletterRates from 'App/Services/Newsletter/Rates'
+import type { WebhookTopic } from 'App/Services/Shopify/Webhook'
 
 /**
  * Entretien quotidien de la newsletter. Quatre travaux, du plus au moins urgent.
@@ -70,7 +71,19 @@ export default class MaintainNewsletter extends BaseTask {
    * échec, on ne recrée que ce qui manque vraiment.
    */
   private async reconcileWebhooks(): Promise<void> {
-    const REQUIRED: Array<'ORDERS_PAID'> = ['ORDERS_PAID']
+    /**
+     * ⚠️ LES DEUX N'ONT PAS LE MÊME POIDS, et il faut le savoir avant d'en retirer un.
+     *
+     * `ORDERS_PAID` est une OPTIMISATION : la porte d'avant-envoi vérifie de toute façon la
+     * conversion en interrogeant l'API, donc sa disparition ne fait rien partir de travers.
+     *
+     * `CUSTOMERS_EMAIL_MARKETING_CONSENT_UPDATE` ne l'est pas tout à fait. La porte refuse déjà
+     * d'envoyer à qui n'est pas `SUBSCRIBED`, donc personne ne reçoit rien à tort — mais sans
+     * ce sujet, un désabonnement fait chez Shopify (page native, admin, compte client) n'inscrit
+     * jamais l'empreinte sur la liste repoussoir. La personne pourrait alors se réinscrire par
+     * l'encart et recevoir un nouveau bon après avoir demandé l'arrêt.
+     */
+    const REQUIRED: WebhookTopic[] = ['ORDERS_PAID', 'CUSTOMERS_EMAIL_MARKETING_CONSENT_UPDATE']
 
     try {
       const shopify = new Shopify()

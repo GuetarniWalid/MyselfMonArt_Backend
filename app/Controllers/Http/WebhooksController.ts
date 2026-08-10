@@ -16,6 +16,7 @@ import PrintFileService from 'App/Services/CustomArt/PrintFileService'
 import OrderMailer, { OrderMailItem } from 'App/Services/CustomArt/OrderMailer'
 import { chosenCandidate } from 'App/Services/CustomArt/chosenCandidate'
 import { describeJob } from 'App/Services/CustomArt/jobLabelling'
+import NewsletterConsentWebhook from 'App/Services/Newsletter/ConsentWebhook'
 
 interface UpdateFailure {
   productId: string
@@ -65,6 +66,35 @@ export default class WebhooksController {
       if (existingLog) {
         console.info(`Webhook ${webhookId} already processed, skipping`)
         return response.status(200).send({ message: 'Webhook already processed' })
+      }
+
+      // ⛔ AVANT l'extraction de `id` ci-dessous, et ce n'est pas cosmétique : la charge utile
+      // du consentement porte `customer_id`, pas `id`. Placée après, cette branche ne serait
+      // jamais atteinte — le webhook rendrait 200 « No ID found » et ne ferait rien, sans que
+      // rien ne ressemble à une panne. C'est aussi pour ça que ce sujet n'a rien à faire dans
+      // le circuit produit qui suit (cooldown, `processingProducts`) : il ne parle pas produit.
+      if (topic === 'customers/email_marketing_consent/update') {
+        try {
+          await WebhookLog.create({ webhookId, topic, shop, status: 'completed' })
+        } catch (error: any) {
+          if (error?.code === 'ER_DUP_ENTRY') {
+            return response.status(200).send({ message: 'Webhook already processed' })
+          }
+          // Journal indisponible : on traite quand même. La relecture est idempotente, donc un
+          // doublon ne coûte rien ; une relecture perdue laisserait la séquence tourner.
+          console.error(`Error logging consent webhook ${webhookId}:`, error)
+        }
+
+        const consentPayload = request.body()
+        response.status(200).send({ message: 'Webhook received' })
+
+        setImmediate(() => {
+          new NewsletterConsentWebhook().handle(consentPayload, rawBody).catch((error) => {
+            console.error('❌ Uncaught error in consent webhook processing:', error)
+          })
+        })
+
+        return
       }
 
       const { id } = request.body()
