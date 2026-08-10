@@ -58,10 +58,22 @@ export default class Authentication {
         },
       })
 
-      const { access_token: accessToken, expires_in: expiresIn } = response.data
+      const {
+        access_token: accessToken,
+        expires_in: expiresIn,
+        refresh_token: rotatedRefreshToken,
+      } = response.data
 
       tokenModel.accessToken = accessToken
       tokenModel.expiresAt = DateTime.now().plus({ seconds: expiresIn })
+      // Pinterest peut renvoyer un refresh token renouvelé. Ne pas le
+      // réenregistrer condamnait l'intégration : on gardait indéfiniment celui
+      // délivré à la toute première autorisation, jusqu'à son expiration (un an)
+      // — c'est ainsi que la publication Pinterest s'est arrêtée le 2026-07-20,
+      // sans possibilité de rattrapage automatique.
+      if (rotatedRefreshToken) {
+        tokenModel.refreshToken = rotatedRefreshToken
+      }
       await tokenModel.save()
 
       return accessToken
