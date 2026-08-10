@@ -1,5 +1,6 @@
 import { DateTime } from 'luxon'
 import SocialPublication, { SocialChannel } from 'App/Models/SocialPublication'
+import { isDuplicateKeyError } from 'App/Services/Social/PublishError'
 
 /**
  * Registre des publications sociales, partagé par le cron ET par les commandes
@@ -36,6 +37,38 @@ export default class PublicationLedger {
         `${channel}: le produit ${productId} a déjà été publié (voir social_publications). ` +
           `Republier créerait un doublon. Utiliser --force pour passer outre en connaissance de cause.`
       )
+    }
+  }
+
+  /**
+   * Réserve la publication AVANT tout appel réseau.
+   *
+   * Renvoie `null` si la contrainte `uq_channel_product` refuse l'insertion :
+   * une autre exécution tient déjà ce produit (cron et lancement manuel qui se
+   * chevauchent). L'appelant doit alors abandonner son tick en silence — c'est
+   * la garantie que deux exécutions concurrentes ne publient jamais deux fois
+   * le même produit, là où une simple lecture préalable laissait la fenêtre
+   * ouverte.
+   */
+  public static async reserve(input: {
+    channel: SocialChannel
+    productId: string
+    externalBoardId?: string | null
+    metadata: Record<string, unknown>
+  }): Promise<SocialPublication | null> {
+    try {
+      return await SocialPublication.create({
+        channel: input.channel,
+        shopifyProductId: input.productId,
+        externalId: null,
+        externalBoardId: input.externalBoardId ?? null,
+        status: 'pending',
+        publishedAt: DateTime.now(),
+        metadata: input.metadata,
+      })
+    } catch (error) {
+      if (isDuplicateKeyError(error)) return null
+      throw error
     }
   }
 

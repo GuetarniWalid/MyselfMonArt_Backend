@@ -49,6 +49,20 @@ export function isAmbiguousPublishFailure(error: unknown): boolean {
   return error instanceof PublishError && error.ambiguous
 }
 
+/**
+ * Violation de la contrainte d'unicité `uq_channel_product` : une autre
+ * exécution tient déjà ce produit. MySQL renvoie `ER_DUP_ENTRY` / errno 1062,
+ * mais Lucid peut emballer l'erreur — on inspecte donc aussi la cause et le
+ * message plutôt que de se fier à une seule forme.
+ */
+export function isDuplicateKeyError(error: unknown): boolean {
+  const candidate = error as any
+  if ([candidate?.code, candidate?.cause?.code].includes('ER_DUP_ENTRY')) return true
+  if ([candidate?.errno, candidate?.cause?.errno].includes(1062)) return true
+  const message = String(candidate?.message ?? '')
+  return message.includes('ER_DUP_ENTRY') || message.includes('Duplicate entry')
+}
+
 /** Message court et lisible pour les logs. */
 export function describeError(error: unknown): string {
   if (error instanceof PublishError) {

@@ -6,6 +6,7 @@ import PinterestFormatSelector from 'App/Services/Pinterest/PinterestFormatSelec
 import PinFormatter from 'App/Services/Pinterest/PinFormatter'
 import Shopify from 'App/Services/Shopify'
 import SocialPublication from 'App/Models/SocialPublication'
+import PublicationLedger from 'App/Services/Social/PublicationLedger'
 import { describeError, isAmbiguousPublishFailure } from 'App/Services/Social/PublishError'
 
 /**
@@ -56,15 +57,18 @@ export default class DailyPublication {
       carouselSlideCount: PinFormatter.carouselSlideNodes(product.media?.nodes ?? []).length,
     })
 
-    const reservation = await SocialPublication.create({
+    const reservation = await PublicationLedger.reserve({
       channel: 'pinterest',
-      shopifyProductId: product.id,
-      externalId: null,
+      productId: product.id,
       externalBoardId: board.id,
-      status: 'pending',
-      publishedAt: DateTime.now(),
       metadata: { boardName: board.name, format },
     })
+    if (!reservation) {
+      console.log(
+        `⏭️  Pinterest skipped — ${product.id} vient d'être réservé par une autre exécution.`
+      )
+      return
+    }
 
     let published: { pin: PinterestPin; usedFormat: PinterestPinFormat }
     try {

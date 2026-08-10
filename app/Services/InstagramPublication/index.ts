@@ -7,6 +7,7 @@ import PostFormatter from 'App/Services/Instagram/PostFormatter'
 import PublicationSelector from 'App/Services/Instagram/PublicationSelector'
 import Shopify from 'App/Services/Shopify'
 import SocialPublication from 'App/Models/SocialPublication'
+import PublicationLedger from 'App/Services/Social/PublicationLedger'
 import { describeError, isAmbiguousPublishFailure } from 'App/Services/Social/PublishError'
 
 /** Mémorise la légende réellement construite, pour la réconciliation. */
@@ -63,14 +64,17 @@ export default class InstagramPublication {
       carouselSlideCount: PostFormatter.carouselSlideNodes(product.media?.nodes ?? []).length,
     })
 
-    const reservation = await SocialPublication.create({
+    const reservation = await PublicationLedger.reserve({
       channel: 'instagram',
-      shopifyProductId: product.id,
-      externalId: null,
-      status: 'pending',
-      publishedAt: DateTime.now(),
+      productId: product.id,
       metadata: { format },
     })
+    if (!reservation) {
+      console.log(
+        `⏭️  Instagram skipped — ${product.id} vient d'être réservé par une autre exécution.`
+      )
+      return
+    }
 
     const instagram = new Instagram()
     const attempt: Attempt = {}

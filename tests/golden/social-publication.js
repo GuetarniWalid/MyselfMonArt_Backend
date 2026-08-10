@@ -132,6 +132,37 @@ console.log('\n▸ Publication sociale — anti-doublon et titres de carrousel\n
   )
 }
 
+// ── 1 bis. La contrainte d'unicité est reconnue quelle que soit la forme de l'erreur ─────
+// `uq_channel_product` est le dernier rempart : quand deux exécutions se chevauchent, la
+// seconde DOIT reconnaître le refus de MySQL et abandonner son tick. Si la détection rate,
+// l'erreur remonte comme une panne et, pire, la réservation est perdue.
+{
+  const { isDuplicateKeyError } = publishError
+
+  // Forme brute de mysql2, telle que vérifiée en production (ERROR 1062).
+  ok(isDuplicateKeyError({ code: 'ER_DUP_ENTRY', errno: 1062 }), 'erreur mysql2 brute reconnue')
+  // Formes emballées par Lucid / knex.
+  ok(
+    isDuplicateKeyError({ cause: { code: 'ER_DUP_ENTRY' } }),
+    'erreur emballée (cause.code) reconnue'
+  )
+  ok(isDuplicateKeyError({ cause: { errno: 1062 } }), 'erreur emballée (cause.errno) reconnue')
+  ok(
+    isDuplicateKeyError(
+      new Error("Duplicate entry 'pinterest-gid://shopify/Product/1' for key 'uq_channel_product'")
+    ),
+    'erreur réduite à son message reconnue'
+  )
+  // Et surtout : ne pas confondre une vraie panne avec un doublon, sinon on avalerait
+  // silencieusement des incidents.
+  ok(!isDuplicateKeyError(new Error('ECONNREFUSED')), 'une panne de base n’est pas un doublon')
+  ok(
+    !isDuplicateKeyError({ code: 'ER_NO_SUCH_TABLE', errno: 1146 }),
+    'une autre erreur SQL n’est pas un doublon'
+  )
+  ok(!isDuplicateKeyError(null), 'absence d’erreur = pas un doublon')
+}
+
 // ── 2. Le carrousel porte un titre sur CHAQUE diapositive, dans les limites Pinterest ────
 {
   const PinFormatter = loadTsModule(
