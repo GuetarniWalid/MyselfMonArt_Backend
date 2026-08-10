@@ -163,6 +163,50 @@ console.log('\n▸ Publication sociale — anti-doublon et titres de carrousel\n
   ok(!isDuplicateKeyError(null), 'absence d’erreur = pas un doublon')
 }
 
+// ── 1 ter. On ne publie que sur le compte de la boutique ─────────────────────────────────
+// Le 2026-08-10, une ré-autorisation OAuth a connecté le jeton au compte « madebymood.app »
+// au lieu de « myselfmonart ». Sans ce garde-fou, le cron de 18h aurait publié les œuvres de
+// la boutique chez un tiers — irréversible une fois en ligne.
+{
+  const { assertExpectedAccount } = loadTsModule(
+    path.join(ROOT, 'app/Services/Social/AccountGuard.ts')
+  )
+  const check = (username, expected) => {
+    try {
+      assertExpectedAccount({ channel: 'Instagram', username, expected })
+      return 'passe'
+    } catch (error) {
+      return error.message
+    }
+  }
+
+  ok(check('myselfmonart', 'myselfmonart') === 'passe', 'le bon compte passe')
+  ok(
+    check('MyselfMonArt', 'myselfmonart') === 'passe',
+    'la casse ne fait pas echouer un compte legitime'
+  )
+  ok(check(' myselfmonart ', 'myselfmonart') === 'passe', 'les espaces parasites non plus')
+
+  // Le cas réel de l'incident.
+  const wrong = check('madebymood.app', 'myselfmonart')
+  ok(wrong !== 'passe', 'le mauvais compte est BLOQUÉ')
+  ok(
+    wrong.includes('madebymood.app') && wrong.includes('myselfmonart'),
+    'le message nomme le compte connecté ET celui attendu'
+  )
+
+  // Un compte inconnu est traité comme un écart, pas comme un feu vert.
+  ok(check(undefined, 'myselfmonart') !== 'passe', 'un compte non identifié est bloqué')
+  ok(check('', 'myselfmonart') !== 'passe', 'un nom vide est bloqué')
+
+  // Non configuré : on ne change rien au comportement existant.
+  ok(
+    check('nimporte-qui', undefined) === 'passe',
+    'garde-fou non configuré = comportement inchangé'
+  )
+  ok(check('nimporte-qui', '   ') === 'passe', 'valeur vide = garde-fou considéré non configuré')
+}
+
 // ── 2. Le carrousel porte un titre sur CHAQUE diapositive, dans les limites Pinterest ────
 {
   const PinFormatter = loadTsModule(
