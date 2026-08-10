@@ -266,6 +266,12 @@
           "propertyName": "yes",
           "type": "boolean",
           "description": "Confirm the publish. Without this flag, the command prints the payload and exits without posting."
+        },
+        {
+          "name": "force",
+          "propertyName": "force",
+          "type": "boolean",
+          "description": "Republier un produit déjà présent dans social_publications (crée sciemment un doublon)."
         }
       ]
     },
@@ -327,6 +333,45 @@
       ],
       "aliases": [],
       "flags": []
+    },
+    "newsletter:test_send": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/NewsletterTestSend",
+      "commandName": "newsletter:test_send",
+      "description": "Envoie un e-mail témoin de la séquence (aucun inscrit, aucune remise créée)",
+      "args": [
+        {
+          "type": "string",
+          "propertyName": "email",
+          "name": "email",
+          "required": true,
+          "description": "Adresse destinataire du témoin"
+        }
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "transport",
+          "propertyName": "transport",
+          "type": "string",
+          "description": "Transport à exercer : ses (défaut) ou smtp"
+        },
+        {
+          "name": "no",
+          "propertyName": "no",
+          "type": "string",
+          "description": "Quel e-mail de la séquence : 1, 2 ou 3 (défaut 1)"
+        },
+        {
+          "name": "locale",
+          "propertyName": "locale",
+          "type": "string",
+          "description": "Langue : fr, en, de, es, nl (défaut fr)"
+        }
+      ]
     },
     "photoshop:mockup_automation": {
       "settings": {
@@ -423,6 +468,12 @@
           "propertyName": "skipCreateBoards",
           "type": "boolean",
           "description": "Skip auto-creation of missing boards (matching-only test, no Pinterest API write)."
+        },
+        {
+          "name": "force",
+          "propertyName": "force",
+          "type": "boolean",
+          "description": "Republier un produit déjà présent dans social_publications (crée sciemment un doublon)."
         }
       ]
     },
