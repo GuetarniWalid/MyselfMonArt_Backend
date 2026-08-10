@@ -2,6 +2,22 @@ import type { Board, PinterestPin } from 'Types/Pinterest'
 import type { Product as ShopifyProduct } from 'Types/Product'
 import BoardMatcher from './BoardMatcher'
 
+/**
+ * Choisit le prochain produit à épingler.
+ *
+ * Règle : UN PRODUIT N'EST PUBLIÉ QU'UNE SEULE FOIS, tous formats et tous
+ * boards confondus. Auparavant la déduplication portait sur la paire
+ * (produit × board) : un produit correspondant à plusieurs boards était donc
+ * épinglé plusieurs fois — c'est ainsi qu'un même tableau se retrouvait publié
+ * en carrousel sur un board puis en image sur un autre. Le board reste choisi
+ * parmi ceux qui correspondent au produit, mais il n'y en a qu'un seul.
+ *
+ * Un produit est considéré comme déjà publié si NOTRE base en garde la trace
+ * (`social_publications`, y compris une réservation `pending`) OU si Pinterest
+ * expose encore un pin vivant pointant vers sa fiche produit. La base prime :
+ * c'est la source qu'on maîtrise, indépendante de ce que l'API veut bien
+ * renvoyer.
+ */
 export default class PublicationSelector {
   private readonly matcher = new BoardMatcher()
 
@@ -9,32 +25,24 @@ export default class PublicationSelector {
     private readonly boards: Board[],
     private readonly pins: PinterestPin[],
     private readonly shopifyProducts: ShopifyProduct[],
-    // (product, board) paires déjà publiées d'après NOTRE base social_publications
-    // (channel='pinterest'). Source de vérité fiable pour la dédup « 1 fois par
-    // board » — indépendante de ce que l'API Pinterest veut bien nous renvoyer.
-    private readonly publishedProductBoardKeys: Set<string> = new Set()
+    // Produits déjà publiés (ou réservés) d'après social_publications.
+    private readonly publishedProductIds: Set<string> = new Set()
   ) {}
 
   /**
-   * Clé stable d'une paire (produit, board). Utilisée ici ET par l'appelant
-   * (DailyPublication) qui alimente `publishedProductBoardKeys` depuis la base,
-   * pour que les deux côtés s'accordent sur le format de clé.
+   * `null` quand tout le catalogue de toiles est déjà passé. Depuis qu'un
+   * produit n'est publié qu'une seule fois, l'épuisement est une fin normale et
+   * non une anomalie : le cron doit sauter son tour en silence, pas hurler une
+   * erreur cinq fois par jour.
    */
-  public static pairKey(productId: string, boardId: string): string {
-    return `${productId}::${boardId}`
-  }
-
   public async selectNextProductToPublish(): Promise<{
     product: ShopifyProduct
     board: Board
-  }> {
+  } | null> {
     const eligibleProducts = this.getEligibleProducts()
-    if (eligibleProducts.length === 0) {
-      throw new Error('No eligible product to publish on Pinterest')
-    }
-    const leastPublishedProduct = this.getLeastPublishedProduct(eligibleProducts)
-    const nextAvailableBoard = this.getNextAvailableBoard(leastPublishedProduct)
-    return { product: leastPublishedProduct, board: nextAvailableBoard }
+    if (eligibleProducts.length === 0) return null
+    const product = this.getNextProduct(eligibleProducts)
+    return { product, board: this.pickBoard(product) }
   }
 
   private static readonly IMAGE_PRIORITY = [2, 3, 1, 0]
@@ -42,26 +50,20 @@ export default class PublicationSelector {
   private getEligibleProducts(): ShopifyProduct[] {
     return this.shopifyProducts.filter((product) => {
       if (!this.isPainting(product)) return false
+      if (this.isAlreadyPublished(product.id)) return false
       if (!this.hasPublishableImage(product)) return false
-      const matchingBoards = this.matcher.getMatchingBoards(product, this.boards)
-      if (matchingBoards.length === 0) return false
-      return matchingBoards.some((board) => !this.isBoardUsedForProduct(product.id, board.id))
+      return this.matcher.getMatchingBoards(product, this.boards).length > 0
     })
   }
 
   /**
-   * Un board est « déjà utilisé » pour un produit si SOIT on a notre propre trace
-   * de l'avoir pinné là (social_publications — la source qu'on maîtrise), SOIT
-   * Pinterest montre encore un pin live pour ce produit sur ce board. S'appuyer
-   * sur nos traces (et pas seulement sur les pins live) garantit qu'un produit
-   * n'est pinné qu'une fois par board, même si l'API Pinterest omet le lien de
-   * tracking d'un pin (auquel cas la détection par pin live échouerait).
+   * Un produit est « déjà publié » dès qu'il existe une trace en base (publiée
+   * OU réservée) ou un pin vivant chez Pinterest. Aucune notion de board ici :
+   * une seule publication par produit, point.
    */
-  private isBoardUsedForProduct(productId: string, boardId: string): boolean {
-    if (this.publishedProductBoardKeys.has(PublicationSelector.pairKey(productId, boardId))) {
-      return true
-    }
-    return this.getProductPins(productId).some((pin) => pin.board_id === boardId)
+  private isAlreadyPublished(productId: string): boolean {
+    if (this.publishedProductIds.has(productId)) return true
+    return this.getProductPins(productId).length > 0
   }
 
   /**
@@ -96,19 +98,19 @@ export default class PublicationSelector {
     }
   }
 
-  private getLeastPublishedProduct(products: ShopifyProduct[]): ShopifyProduct {
-    return [...products].sort((a, b) => {
-      const pinDiff = this.getProductPins(a.id).length - this.getProductPins(b.id).length
-      if (pinDiff !== 0) return pinDiff
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    })[0]
+  /**
+   * Les produits éligibles n'ont, par construction, aucune publication : on
+   * prend donc simplement le plus récemment créé (même règle qu'Instagram, la
+   * nouveauté part en premier).
+   */
+  private getNextProduct(products: ShopifyProduct[]): ShopifyProduct {
+    return [...products].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )[0]
   }
 
-  private getNextAvailableBoard(product: ShopifyProduct): Board {
+  private pickBoard(product: ShopifyProduct): Board {
     const matchingBoards = this.matcher.getMatchingBoards(product, this.boards)
-    const availableBoards = matchingBoards.filter(
-      (board) => !this.isBoardUsedForProduct(product.id, board.id)
-    )
-    return availableBoards[Math.floor(Math.random() * availableBoards.length)]
+    return matchingBoards[Math.floor(Math.random() * matchingBoards.length)]
   }
 }

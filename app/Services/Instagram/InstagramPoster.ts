@@ -8,6 +8,7 @@ import type {
 import InstagramPostPayloadValidator from 'App/Validators/InstagramPostPayloadValidator'
 import { validator } from '@ioc:Adonis/Core/Validator'
 import Shopify from 'App/Services/Shopify'
+import { PublishError } from 'App/Services/Social/PublishError'
 import Authentication from './Authentication'
 
 export default class InstagramPoster extends Authentication {
@@ -160,9 +161,35 @@ export default class InstagramPoster extends Authentication {
       const body = error?.response?.data
       // Omit the (long) caption from the error context, keep the useful bits.
       const { caption, ...debugParams } = params
-      throw new Error(
-        `Instagram POST /media failed (status ${status}): ${JSON.stringify(body)} | params=${JSON.stringify(debugParams)}`
+      // Phase `prepare` : créer un conteneur ne publie rien. Se rabattre sur un
+      // autre format après cet échec est sans risque.
+      throw new PublishError(
+        `Instagram POST /media failed (status ${status}): ${JSON.stringify(body)} | params=${JSON.stringify(debugParams)}`,
+        'prepare',
+        error
       )
+    }
+  }
+
+  /**
+   * Retrouve un média récemment publié dont la légende correspond exactement.
+   * Sert à réconcilier après un échec ambigu de POST /media_publish : si Meta a
+   * en réalité publié, on récupère son id au lieu de republier.
+   * Best-effort — renvoie null à la moindre difficulté.
+   */
+  public async findRecentMediaByCaption(caption: string): Promise<string | null> {
+    try {
+      const igUserId = await this.getInstagramUserId()
+      const response = await this.request<{ data?: Array<{ id: string; caption?: string }> }>({
+        method: 'GET',
+        url: `/${igUserId}/media`,
+        params: { fields: 'id,caption', limit: 5 },
+      })
+      const match = (response.data ?? []).find((media) => (media.caption ?? '') === caption)
+      return match?.id ?? null
+    } catch (error) {
+      console.warn(`[Instagram] Réconciliation impossible: ${(error as any)?.message ?? error}`)
+      return null
     }
   }
 
@@ -219,8 +246,13 @@ export default class InstagramPoster extends Authentication {
     } catch (error) {
       const status = error?.response?.status
       const body = error?.response?.data
-      throw new Error(
-        `Instagram POST /media_publish failed (status ${status}): ${JSON.stringify(body)} | creation_id=${creationId}`
+      // Phase `publish` : c'est CET appel qui met le post en ligne. Un timeout
+      // ou un 5xx ici peut parfaitement accompagner un post déjà publié — d'où
+      // l'interdiction faite à l'appelant de se rabattre sur un autre format.
+      throw new PublishError(
+        `Instagram POST /media_publish failed (status ${status}): ${JSON.stringify(body)} | creation_id=${creationId}`,
+        'publish',
+        error
       )
     }
   }

@@ -4,11 +4,27 @@ export interface PinterestBoardOwner {
   id: string
 }
 
+/**
+ * Une diapositive telle que Pinterest la renvoie sur GET /v5/pins/{id} pour un
+ * pin `multiple_images`. `title` / `description` / `link` sont nullables : ce
+ * sont EUX que l'interface Pinterest affiche sur un carrousel, d'où le
+ * rattrapage `pinterest:backfill_carousel_titles` quand ils sont vides.
+ */
+export interface PinterestMediaItem {
+  item_type: string
+  title: string | null
+  description: string | null
+  link: string | null
+}
+
 export interface PinterestMedia {
   type: string
   url: string
   width: number
   height: number
+  /** 'image' | 'video' | 'multiple_images' | 'multiple_videos' */
+  media_type?: string
+  items?: PinterestMediaItem[]
 }
 
 export interface PinterestPin {
@@ -92,15 +108,38 @@ export interface VideoPinPayload extends PinPayloadBase {
   }
 }
 
+/**
+ * Une diapositive de carrousel. Pinterest affiche le titre/la description
+ * PORTÉS PAR LA DIAPOSITIVE, pas ceux du pin : sans ces champs le carrousel
+ * s'affiche sans aucun titre, alors même que le pin en a un.
+ * cf. `media_source.items[]` de POST /v5/pins et `carousel_slots` de PATCH.
+ */
+export interface CarouselSlot {
+  title?: string
+  description?: string
+  link?: string
+}
+
 /** Carousel pin — 2 to 5 base64 images sharing the same aspect ratio. */
 export interface CarouselPinPayload extends PinPayloadBase {
   media_source: {
     source_type: 'multiple_image_base64'
-    items: Array<{
-      content_type: PinContentType
-      data: string
-    }>
+    items: Array<
+      CarouselSlot & {
+        content_type: PinContentType
+        data: string
+      }
+    >
   }
+}
+
+/** Corps accepté par PATCH /v5/pins/{pin_id} (mise à jour d'un pin existant). */
+export interface PinUpdatePayload {
+  title?: string
+  description?: string
+  alt_text?: string
+  link?: string
+  carousel_slots?: CarouselSlot[]
 }
 
 export type PinPayload = ImagePinPayload | VideoPinPayload | CarouselPinPayload

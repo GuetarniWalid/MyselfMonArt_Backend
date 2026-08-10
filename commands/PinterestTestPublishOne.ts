@@ -1,8 +1,9 @@
 import { BaseCommand, flags } from '@adonisjs/core/build/standalone'
-import type { PinterestPinFormat } from 'Types/Pinterest'
+import type { PinPayload, PinterestPinFormat } from 'Types/Pinterest'
 import Pinterest from 'App/Services/Pinterest'
 import PinterestFormatSelector from 'App/Services/Pinterest/PinterestFormatSelector'
 import BoardMatcher from 'App/Services/Pinterest/BoardMatcher'
+import PublicationLedger from 'App/Services/Social/PublicationLedger'
 import Shopify from 'App/Services/Shopify'
 import fs from 'fs/promises'
 import path from 'path'
@@ -38,6 +39,12 @@ export default class PinterestTestPublishOne extends BaseCommand {
   })
   public skipCreateBoards: boolean
 
+  @flags.boolean({
+    description:
+      'Republier un produit déjà présent dans social_publications (crée sciemment un doublon).',
+  })
+  public force: boolean
+
   public async run() {
     const format = this.resolveFormat()
 
@@ -57,13 +64,27 @@ export default class PinterestTestPublishOne extends BaseCommand {
       this.logger.info('Skipping auto-creation (--skip-create-boards).')
     }
 
-    const { product, board } = this.product
+    const selected = this.product
       ? this.pickByProductId(pinterest, products)
       : await pinterest.publicationSelector.selectNextProductToPublish()
+    if (!selected) {
+      this.logger.warning(
+        'Aucun produit éligible — tout le catalogue de toiles est déjà épinglé. Cibler un produit précis avec --product.'
+      )
+      return
+    }
+    const { product, board } = selected
 
     this.logger.info(`Format:  ${format}${this.publish ? ' (WILL PUBLISH)' : ' (dry-run)'}`)
     this.logger.info(`Product: ${product.title} (${product.id})`)
     this.logger.info(`Board:   ${board.name} (${board.id})`)
+
+    // Un test qui publie pour de vrai doit obéir à la même règle que le cron :
+    // un produit n'est publié qu'une fois. Sinon la commande fabrique des
+    // doublons invisibles en base.
+    if (this.publish) {
+      await PublicationLedger.assertPublishable('pinterest', product.id, this.force)
+    }
 
     if (format === 'video') {
       await this.runVideo(pinterest, shopify, product, board)
@@ -93,8 +114,7 @@ export default class PinterestTestPublishOne extends BaseCommand {
     this.logger.info(`Image preview saved at: ${previewPath}`)
 
     if (this.publish) {
-      const pin = await pinterest.poster.publishPin(payload)
-      this.logger.success(`Published image pin id=${pin.id}`)
+      await this.publishAndRecord(pinterest, payload, product, board, 'image')
     } else {
       this.logger.info('Dry-run — pin NOT published. Re-run with --publish to post.')
     }
@@ -124,8 +144,7 @@ export default class PinterestTestPublishOne extends BaseCommand {
     )
 
     if (this.publish) {
-      const pin = await pinterest.poster.publishPin(payload)
-      this.logger.success(`Published carousel pin id=${pin.id}`)
+      await this.publishAndRecord(pinterest, payload, product, board, 'carousel')
     } else {
       this.logger.info('Dry-run — pin NOT published. Re-run with --publish to post.')
     }
@@ -170,13 +189,36 @@ export default class PinterestTestPublishOne extends BaseCommand {
     this.logger.info(`Cover preview saved at: ${coverPath}`)
 
     if (this.publish) {
-      const pin = await pinterest.poster.publishPin(payload)
-      this.logger.success(`Published video pin id=${pin.id}`)
+      await this.publishAndRecord(pinterest, payload, product, board, 'video')
     } else {
       this.logger.info(
         'Dry-run — media uploaded & processed, but pin NOT created. Re-run with --publish to post.'
       )
     }
+  }
+
+  /**
+   * Publie le pin ET l'inscrit au registre, pour qu'un test manuel ne puisse
+   * plus produire une publication fantôme que le cron reproposera ensuite.
+   */
+  private async publishAndRecord(
+    pinterest: Pinterest,
+    payload: PinPayload,
+    product: any,
+    board: any,
+    format: PinterestPinFormat
+  ) {
+    const pin = await pinterest.poster.publishPin(payload)
+    await PublicationLedger.recordManual({
+      channel: 'pinterest',
+      productId: product.id,
+      externalId: pin.id,
+      externalBoardId: board.id,
+      format,
+      title: pin.title,
+      boardName: board.name,
+    })
+    this.logger.success(`Published ${format} pin id=${pin.id}`)
   }
 
   private dumpPayload(payloadForDisplay: Record<string, unknown>) {

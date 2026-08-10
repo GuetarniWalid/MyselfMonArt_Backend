@@ -1,0 +1,241 @@
+/**
+ * Test « golden » de la PUBLICATION SOCIALE (Pinterest / Instagram).
+ *
+ * POURQUOI CE TEST EXISTE
+ * Les deux régressions qu'il verrouille ne provoquent aucune erreur quand elles reviennent :
+ * le cron dit « publié », les logs sont verts, et c'est la boutique qui se retrouve avec
+ * deux fois la même œuvre sur le compte — constaté en production.
+ *
+ *  1. LE REPLI QUI PUBLIE DEUX FOIS. Quand un format riche échoue, on se rabat sur une
+ *     simple image pour ne pas perdre la publication du jour. Mais si l'échec est survenu
+ *     PENDANT l'appel qui met le post en ligne (timeout, 5xx, socket coupé), la plateforme
+ *     a très bien pu accepter le post malgré tout : le repli en publie alors un second.
+ *     C'est exactement ce qui a produit « un carrousel + une image » pour un même tableau.
+ *     On verrouille donc la règle de décision : seul un refus EXPLICITE (4xx) autorise le
+ *     repli ; toute ambiguïté l'interdit.
+ *
+ *  2. LE CARROUSEL SANS TITRE. Pinterest affiche le titre porté par CHAQUE diapositive, pas
+ *     celui du pin. Tant que `media_source.items[]` ne portait que l'image, les carrousels
+ *     sortaient muets alors que le pin avait bien un titre. On verrouille la présence du
+ *     titre sur chaque diapositive ET le respect des limites Pinterest (100 / 800), y
+ *     compris sur la bascule de secours qui reprend les champs Shopify bruts (titre trop
+ *     long, description en HTML).
+ *
+ * On verrouille enfin la règle « un produit n'est publié qu'une seule fois », tous boards
+ * confondus — la déduplication par paire (produit × board) laissait repasser un même
+ * tableau sur chaque board correspondant.
+ *
+ * POURQUOI PAS JAPA : mêmes raisons que les autres goldens — de la logique pure, on
+ * transpile le TypeScript en mémoire, `node` suffit.
+ */
+const fs = require('fs')
+const path = require('path')
+
+const ROOT = path.resolve(__dirname, '../..')
+const ts = require(path.join(ROOT, 'node_modules/typescript'))
+
+// Le générateur de texte appelle le modèle : hors sujet ici, et il tirerait tout le SDK.
+// On le remplace par une doublure — les tests portent sur le formatage, pas sur la rédaction.
+const STUBS = {
+  Claude: {
+    __esModule: true,
+    default: class {
+      async generatePinPayload() {
+        return { title: '', description: '', alt_text: '' }
+      }
+    },
+  },
+}
+
+function resolveTs(absPath) {
+  for (const candidate of [absPath, `${absPath}.ts`, path.join(absPath, 'index.ts')]) {
+    if (candidate.endsWith('.ts') && fs.existsSync(candidate)) return candidate
+  }
+  throw new Error(`Module TS introuvable : ${absPath}`)
+}
+
+/** Charge un module TS en mémoire, en résolvant récursivement ses imports relatifs. */
+function loadTsModule(absPath, cache = new Map()) {
+  const resolved = resolveTs(absPath)
+  if (cache.has(resolved)) return cache.get(resolved)
+
+  const js = ts.transpileModule(fs.readFileSync(resolved, 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+  }).outputText
+
+  const module = { exports: {} }
+  cache.set(resolved, module.exports)
+  const req = (id) => {
+    if (id.includes('Claude/')) return STUBS.Claude
+    if (id.startsWith('.')) return loadTsModule(path.resolve(path.dirname(resolved), id), cache)
+    return require(id)
+  }
+  // eslint-disable-next-line no-new-func
+  new Function('require', 'module', 'exports', js)(req, module, module.exports)
+  cache.set(resolved, module.exports)
+  return module.exports
+}
+
+let pass = 0
+let fail = 0
+function ok(cond, label) {
+  if (cond) pass++
+  else {
+    fail++
+    console.log('  FAIL  ' + label)
+  }
+}
+
+const publishError = loadTsModule(path.join(ROOT, 'app/Services/Social/PublishError.ts'))
+const { PublishError, isAmbiguousPublishFailure, isDefinitiveRejection } = publishError
+
+console.log('\n▸ Publication sociale — anti-doublon et titres de carrousel\n')
+
+// ── 1. La règle de repli : seule une erreur non ambiguë autorise une republication ───────
+{
+  const httpError = (status) => ({ response: { status, data: { error: 'x' } } })
+
+  // Échecs AVANT publication : rien n'existe côté plateforme, le repli est sûr.
+  const prepare = new PublishError('conteneur refusé', 'prepare', httpError(500))
+  ok(!isAmbiguousPublishFailure(prepare), 'échec en phase prepare = repli autorisé (rien publié)')
+
+  // Refus explicite pendant la publication : la requête est rejetée, rien n'est créé.
+  for (const status of [400, 401, 403, 404, 422]) {
+    const rejected = new PublishError('rejeté', 'publish', httpError(status))
+    ok(
+      !isAmbiguousPublishFailure(rejected),
+      `publish + ${status} = refus explicite, repli autorisé`
+    )
+  }
+
+  // Ambigus : la plateforme a PEUT-ÊTRE publié. Republier = doublon.
+  for (const status of [408, 429, 500, 502, 503, 504]) {
+    const ambiguous = new PublishError('incertain', 'publish', httpError(status))
+    ok(isAmbiguousPublishFailure(ambiguous), `publish + ${status} = ambigu, repli INTERDIT`)
+  }
+
+  // Le cas réellement observé en production : aucune réponse du tout.
+  const timeout = new PublishError('Connection timeout', 'publish', new Error('Connection timeout'))
+  ok(
+    isAmbiguousPublishFailure(timeout),
+    'publish sans réponse (timeout réseau) = ambigu, repli INTERDIT'
+  )
+  ok(
+    !isDefinitiveRejection(new Error('socket hang up')),
+    'une erreur sans réponse HTTP n’est jamais un refus explicite'
+  )
+
+  // Une erreur quelconque (hors PublishError) ne doit pas bloquer le repli légitime.
+  ok(
+    !isAmbiguousPublishFailure(new Error('pas assez d’images pour un carrousel')),
+    'erreur de construction du payload = repli autorisé'
+  )
+}
+
+// ── 2. Le carrousel porte un titre sur CHAQUE diapositive, dans les limites Pinterest ────
+{
+  const PinFormatter = loadTsModule(
+    path.join(ROOT, 'app/Services/Pinterest/PinFormatter.ts')
+  ).default
+
+  const slot = PinFormatter.buildCarouselSlot(
+    'Ces pointes de danse racontent une histoire de persévérance',
+    'Une description inspirante.',
+    'https://www.myselfmonart.com/products/x?shopify_product_id=gid://shopify/Product/1'
+  )
+  ok(Boolean(slot.title && slot.title.length > 0), 'chaque diapositive porte un titre non vide')
+  ok(
+    Boolean(slot.link && slot.link.includes('shopify_product_id')),
+    'chaque diapositive porte le lien produit'
+  )
+
+  // La bascule de secours reprend le titre Shopify brut : il peut dépasser la limite.
+  const longTitle = 'Tableau '.repeat(40)
+  const longDescription = 'Mot '.repeat(500)
+  const bounded = PinFormatter.buildCarouselSlot(longTitle, longDescription, 'https://x.test')
+  ok(bounded.title.length <= 100, `titre borné à 100 (obtenu : ${bounded.title.length})`)
+  ok(
+    bounded.description.length <= 800,
+    `description bornée à 800 (obtenu : ${bounded.description.length})`
+  )
+  ok(bounded.title.endsWith('…'), 'la troncature est visible (ellipse) plutôt que coupée net')
+}
+
+// ── 3. Un produit n'est publié qu'une seule fois, tous boards confondus ──────────────────
+{
+  const PublicationSelector = loadTsModule(
+    path.join(ROOT, 'app/Services/Pinterest/PublicationSelector.ts')
+  ).default
+
+  const board = (id, name) => ({ id, name, privacy: 'PUBLIC' })
+  const product = (id, createdAt) => ({
+    id: `gid://shopify/Product/${id}`,
+    title: `Tableau chat ${id}`,
+    createdAt,
+    artworkTypeMetafield: { value: 'painting' },
+    // La collection mère est ce qui rattache un produit à ses boards.
+    metafields: {
+      edges: [
+        {
+          node: {
+            namespace: 'link',
+            key: 'mother_collection',
+            reference: { title: 'Tableau Chat Chambre' },
+          },
+        },
+      ],
+    },
+    onlineStoreUrl: `https://www.myselfmonart.com/products/p${id}`,
+    media: {
+      nodes: [0, 1, 2, 3].map((i) => ({
+        mediaContentType: 'IMAGE',
+        alt: 'alt',
+        image: { url: `https://cdn.test/${id}-${i}.jpg` },
+      })),
+    },
+  })
+
+  // Deux boards correspondent au même produit : c'est précisément la situation qui, avec
+  // une déduplication par paire (produit × board), republiait le tableau sur le second.
+  const boards = [board('b1', 'Tableau Décoration Chat'), board('b2', 'Tableau Décoration Chambre')]
+  const products = [product('1', '2026-01-01'), product('2', '2026-02-01')]
+
+  const published = new Set(['gid://shopify/Product/2'])
+  const selector = new PublicationSelector(boards, [], products, published)
+
+  return selector.selectNextProductToPublish().then(async (first) => {
+    ok(first !== null, 'un produit non publié reste sélectionnable')
+    ok(
+      first && first.product.id === 'gid://shopify/Product/1',
+      'le produit déjà publié est écarté, quel que soit le board'
+    )
+
+    // Une fois les deux produits au registre, plus rien n'est éligible : le cron saute son
+    // tour au lieu de republier (et sans lever d'erreur cinq fois par jour).
+    const exhausted = new PublicationSelector(
+      boards,
+      [],
+      products,
+      new Set(products.map((p) => p.id))
+    )
+    ok(
+      (await exhausted.selectNextProductToPublish()) === null,
+      'catalogue épuisé = null, pas de republication'
+    )
+
+    // Même sans trace en base, un pin vivant pointant vers le produit suffit à l'exclure.
+    const livePin = {
+      id: 'pin1',
+      board_id: 'b1',
+      link: 'https://www.myselfmonart.com/products/p1?shopify_product_id=gid://shopify/Product/1',
+    }
+    const withLivePin = new PublicationSelector(boards, [livePin], [products[0]], new Set())
+    ok(
+      (await withLivePin.selectNextProductToPublish()) === null,
+      'un pin déjà en ligne exclut le produit même sans trace en base'
+    )
+
+    console.log(`\n  ${pass} assertions OK, ${fail} en échec\n`)
+    if (fail > 0) process.exit(1)
+  })
+}

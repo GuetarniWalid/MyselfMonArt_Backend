@@ -22,9 +22,10 @@ export default class Pinterest {
   constructor(
     private readonly shopifyProducts: ShopifyProduct[],
     private readonly shopifyCollections: Collection[] = [],
-    // (product, board) déjà publiées d'après notre base — transmis au sélecteur
-    // pour garantir « 1 pin par board » sans dépendre des pins live de l'API.
-    private readonly publishedProductBoardKeys: Set<string> = new Set()
+    // Produits déjà publiés (ou réservés) d'après notre base — transmis au
+    // sélecteur pour garantir « 1 publication par produit » sans dépendre des
+    // pins live de l'API.
+    private readonly publishedProductIds: Set<string> = new Set()
   ) {
     this.authentication = new Authentication()
     this.fetcher = new PinterestFetcher()
@@ -60,7 +61,7 @@ export default class Pinterest {
       this.boards,
       this.pins,
       this.shopifyProducts,
-      this.publishedProductBoardKeys
+      this.publishedProductIds
     )
   }
 }

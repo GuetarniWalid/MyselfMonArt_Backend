@@ -3,6 +3,14 @@ import { BaseModel, column } from '@ioc:Adonis/Lucid/Orm'
 
 export type SocialChannel = 'pinterest' | 'instagram'
 
+/**
+ * `pending` : ligne de réservation posée AVANT l'appel réseau. Elle exclut déjà
+ * le produit des prochaines sélections, ce qui garantit qu'un crash entre le
+ * post et sa confirmation ne provoque jamais une seconde publication.
+ * `published` : la plateforme a confirmé le post (`externalId` renseigné).
+ */
+export type SocialPublicationStatus = 'pending' | 'published'
+
 export default class SocialPublication extends BaseModel {
   @column({ isPrimary: true })
   public id: number
@@ -14,7 +22,10 @@ export default class SocialPublication extends BaseModel {
   public shopifyProductId: string
 
   @column()
-  public externalId: string
+  public externalId: string | null
+
+  @column()
+  public status: SocialPublicationStatus
 
   @column()
   public externalBoardId: string | null

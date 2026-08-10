@@ -1,4 +1,10 @@
-import type { Board, CarouselPinPayload, ImagePinPayload, VideoPinPayload } from 'Types/Pinterest'
+import type {
+  Board,
+  CarouselPinPayload,
+  CarouselSlot,
+  ImagePinPayload,
+  VideoPinPayload,
+} from 'Types/Pinterest'
 import type { Product as ShopifyProduct } from 'Types/Product'
 import sharp from 'sharp'
 import PinterestFormatSelector from './PinterestFormatSelector'
@@ -65,21 +71,55 @@ export default class PinFormatter {
   ): Promise<CarouselPinPayload> {
     const { buffers, firstAlt } = await this.processImagesForCarousel(shopifyProduct)
     const text = await this.generateText(shopifyProduct, firstAlt)
+    const link = this.getProductLinkWithProductId(shopifyProduct)
 
     return {
       board_id: board.id,
       title: text.title,
       description: text.description,
-      link: this.getProductLinkWithProductId(shopifyProduct),
+      link,
       alt_text: text.alt_text,
       media_source: {
         source_type: 'multiple_image_base64',
+        // Chaque diapositive porte son propre titre/description/lien : c'est
+        // CE titre-là que Pinterest affiche sur un carrousel, pas celui du pin.
+        // Sans lui, le carrousel sortait muet alors que le pin avait un titre.
         items: buffers.map((buffer) => ({
-          content_type: 'image/png',
+          content_type: 'image/png' as const,
           data: buffer.toString('base64'),
+          ...PinFormatter.buildCarouselSlot(text.title, text.description, link),
         })),
       },
     }
+  }
+
+  // Limites Pinterest : titre 100 caractères, description 800, alt 500.
+  private static readonly MAX_TITLE_LENGTH = 100
+  private static readonly MAX_DESCRIPTION_LENGTH = 800
+  private static readonly MAX_ALT_LENGTH = 500
+
+  /**
+   * Construit le titre/description/lien d'une diapositive de carrousel, en
+   * respectant les limites Pinterest. Toutes les diapositives partagent le même
+   * texte que le pin : quelle que soit celle sur laquelle l'internaute tombe,
+   * l'œuvre est nommée et le lien mène à la bonne fiche produit.
+   * Partagé avec la commande de rattrapage `pinterest:backfill_carousel_titles`.
+   */
+  public static buildCarouselSlot(title: string, description: string, link: string): CarouselSlot {
+    return {
+      title: PinFormatter.truncate(title, PinFormatter.MAX_TITLE_LENGTH),
+      description: PinFormatter.truncate(description, PinFormatter.MAX_DESCRIPTION_LENGTH),
+      link,
+    }
+  }
+
+  /** Tronque sur une frontière de mot quand c'est possible, avec une ellipse. */
+  private static truncate(value: string, max: number): string {
+    const text = (value ?? '').trim()
+    if (text.length <= max) return text
+    const hard = text.slice(0, max - 1)
+    const lastSpace = hard.lastIndexOf(' ')
+    return `${(lastSpace > max * 0.6 ? hard.slice(0, lastSpace) : hard).trimEnd()}…`
   }
 
   /** Download a product video from its CDN URL into a buffer (for upload). */
@@ -112,11 +152,33 @@ export default class PinFormatter {
       shopifyProduct.description,
       productType
     )
+    // La bascule de secours reprend les champs Shopify bruts : titre pouvant
+    // dépasser 100 caractères et description en HTML de plusieurs milliers de
+    // signes. Envoyés tels quels, Pinterest rejette le pin (400) et le produit
+    // échoue à chaque tentative. On nettoie et on borne systématiquement.
     return {
-      title: generated.title || shopifyProduct.title,
-      description: generated.description || shopifyProduct.description,
-      alt_text: generated.alt_text || fallbackAlt,
+      title: PinFormatter.truncate(
+        generated.title || shopifyProduct.title,
+        PinFormatter.MAX_TITLE_LENGTH
+      ),
+      description: PinFormatter.truncate(
+        generated.description || PinFormatter.stripHtml(shopifyProduct.description),
+        PinFormatter.MAX_DESCRIPTION_LENGTH
+      ),
+      alt_text: PinFormatter.truncate(
+        generated.alt_text || fallbackAlt,
+        PinFormatter.MAX_ALT_LENGTH
+      ),
     }
+  }
+
+  /** Retire le balisage HTML d'une description produit Shopify. */
+  private static stripHtml(value: string): string {
+    return (value ?? '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
   }
 
   private getProductTypeFr(shopifyProduct: ShopifyProduct): string {

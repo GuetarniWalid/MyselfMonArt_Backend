@@ -340,6 +340,31 @@
       "aliases": [],
       "flags": []
     },
+    "pinterest:backfill_carousel_titles": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/PinterestBackfillCarouselTitles",
+      "commandName": "pinterest:backfill_carousel_titles",
+      "description": "Ajoute le titre manquant sur les diapositives des carrousels Pinterest déjà publiés. Sans --yes, se contente de lister ce qui serait corrigé.",
+      "args": [],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "yes",
+          "propertyName": "yes",
+          "type": "boolean",
+          "description": "Applique réellement les corrections. Sans ce drapeau, simple simulation."
+        },
+        {
+          "name": "limit",
+          "propertyName": "limit",
+          "type": "number",
+          "description": "Nombre maximum de pins à corriger (utile pour un essai prudent)."
+        }
+      ]
+    },
     "pinterest:get_boards": {
       "settings": {
         "loadApp": true,

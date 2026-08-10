@@ -3,12 +3,14 @@ import type {
   MediaUpload,
   MediaUploadRegistration,
   PinPayload,
+  PinUpdatePayload,
   PinterestPin,
 } from 'Types/Pinterest'
 import PinterestPinPayloadValidator from 'App/Validators/PinterestPinPayloadValidator'
 import { validator } from '@ioc:Adonis/Core/Validator'
 import axios from 'axios'
 import FormData from 'form-data'
+import { PublishError } from 'App/Services/Social/PublishError'
 import Authentication from './Authentication'
 
 export default class PinterestPoster extends Authentication {
@@ -160,8 +162,36 @@ export default class PinterestPoster extends Authentication {
     } catch (error) {
       const status = error?.response?.status
       const body = error?.response?.data
+      // Phase `publish` : ce POST crée le pin. Un timeout ou un 5xx peut donc
+      // masquer un pin bel et bien créé — l'appelant ne doit surtout pas se
+      // rabattre sur un autre format sans avoir réconcilié d'abord.
+      throw new PublishError(
+        `Pinterest POST /pins failed (status ${status}): ${JSON.stringify(body)} | payload board=${pinPayload.board_id} link=${pinPayload.link} source_type=${pinPayload.media_source.source_type}`,
+        'publish',
+        error
+      )
+    }
+  }
+
+  /**
+   * Met à jour un pin existant (PATCH /v5/pins/{id}).
+   *
+   * `carousel_slots` est le seul moyen de corriger a posteriori le titre des
+   * diapositives d'un carrousel déjà publié — utilisé par la commande de
+   * rattrapage `pinterest:backfill_carousel_titles`.
+   */
+  public async updatePin(pinId: string, payload: PinUpdatePayload): Promise<PinterestPin> {
+    try {
+      return (await this.request({
+        method: 'PATCH',
+        url: `/pins/${pinId}`,
+        data: payload,
+      })) as PinterestPin
+    } catch (error) {
+      const status = error?.response?.status
+      const body = error?.response?.data
       throw new Error(
-        `Pinterest POST /pins failed (status ${status}): ${JSON.stringify(body)} | payload board=${pinPayload.board_id} link=${pinPayload.link} source_type=${pinPayload.media_source.source_type}`
+        `Pinterest PATCH /pins/${pinId} failed (status ${status}): ${JSON.stringify(body)}`
       )
     }
   }

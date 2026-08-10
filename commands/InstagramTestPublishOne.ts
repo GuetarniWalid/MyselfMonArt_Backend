@@ -1,5 +1,6 @@
 import { BaseCommand, flags } from '@adonisjs/core/build/standalone'
 import Instagram from 'App/Services/Instagram'
+import PublicationLedger from 'App/Services/Social/PublicationLedger'
 import Shopify from 'App/Services/Shopify'
 
 export default class InstagramTestPublishOne extends BaseCommand {
@@ -24,6 +25,12 @@ export default class InstagramTestPublishOne extends BaseCommand {
   })
   public yes: boolean
 
+  @flags.boolean({
+    description:
+      'Republier un produit déjà présent dans social_publications (crée sciemment un doublon).',
+  })
+  public force: boolean
+
   public async run() {
     const shopify = new Shopify()
     const products = await shopify.product.getAll()
@@ -31,6 +38,13 @@ export default class InstagramTestPublishOne extends BaseCommand {
 
     const product = this.product ? this.pickById(products) : this.pickMostRecent(products)
     this.logger.info(`Product: ${product.title} (${product.id})`)
+
+    // Contrôlé avant l'appel au modèle : inutile de rédiger une légende pour un
+    // produit déjà publié. Sans ce garde-fou la commande republiait le produit
+    // le plus récent — précisément celui que le cron venait de poster.
+    if (this.yes) {
+      await PublicationLedger.assertPublishable('instagram', product.id, this.force)
+    }
 
     const instagram = new Instagram()
 
@@ -52,6 +66,13 @@ export default class InstagramTestPublishOne extends BaseCommand {
 
     this.logger.info('Publishing to Instagram (upload → POST /media → POST /media_publish)...')
     const result = await instagram.poster.publishPost(payload)
+    // Enregistré au registre pour que le cron ne le repropose jamais.
+    await PublicationLedger.recordManual({
+      channel: 'instagram',
+      productId: product.id,
+      externalId: result.mediaId,
+      format: 'image',
+    })
     this.logger.success(`Published to Instagram. media id = ${result.mediaId}`)
   }
 

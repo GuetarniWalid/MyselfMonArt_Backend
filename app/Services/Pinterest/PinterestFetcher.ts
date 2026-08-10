@@ -8,6 +8,20 @@ export default class PinterestFetcher extends Authentication {
     return this.paginate<PinterestPin>('/pins')
   }
 
+  /**
+   * Première page de pins seulement — utilisé pour la réconciliation après un
+   * échec ambigu, où il s'agit juste de savoir si le pin qu'on vient de tenter
+   * existe. Bien moins coûteux que de paginer tout le compte.
+   */
+  public async getRecentPins(pageSize: number = PAGE_SIZE): Promise<PinterestPin[]> {
+    const response = (await this.request({
+      method: 'GET',
+      url: '/pins',
+      params: { page_size: pageSize },
+    })) as PinterestResponse<PinterestPin>
+    return response.items
+  }
+
   public async getAllBoards() {
     return this.paginate<Board>('/boards')
   }

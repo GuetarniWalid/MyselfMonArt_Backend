@@ -1,6 +1,6 @@
 import Env from '@ioc:Adonis/Core/Env'
 import Token from 'App/Models/Token'
-import Mail from '@ioc:Adonis/Addons/Mail'
+import TokenAlert from 'App/Services/Social/TokenAlert'
 import axios, { AxiosInstance } from 'axios'
 import { DateTime } from 'luxon'
 
@@ -84,16 +84,12 @@ export default class Authentication {
     return !!tokenModel
   }
 
+  /**
+   * Alerte l'exploitant. Ne lance JAMAIS : auparavant l'échec SMTP
+   * (ports bloqués sur le droplet) remplaçait l'erreur d'origine dans les
+   * logs, et le vrai motif — jeton expiré — restait invisible.
+   */
   private async sendEmail(error: any) {
-    const subject =
-      error instanceof Error ? 'Pinterest Authentication Error' : 'Pinterest Token Refresh Error'
-    const text =
-      error instanceof Error
-        ? error.message
-        : `An error occurred during Pinterest token refresh: ${error.message}`
-
-    await Mail.send((message) => {
-      message.to(Env.get('MAIL_RECIPIENT')).from(Env.get('MAIL_SENDER')).subject(subject).text(text)
-    })
+    await TokenAlert.notify('pinterest', error)
   }
 }
