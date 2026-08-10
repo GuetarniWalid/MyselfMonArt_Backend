@@ -453,6 +453,25 @@
       "aliases": [],
       "flags": []
     },
+    "pinterest:repair_mirrored_pins": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/PinterestRepairMirroredPins",
+      "commandName": "pinterest:repair_mirrored_pins",
+      "description": "Répare les pins recopiés depuis Instagram : titre ajouté et lien repointé vers la fiche produit. Sans --yes, simple simulation.",
+      "args": [],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "yes",
+          "propertyName": "yes",
+          "type": "boolean",
+          "description": "Applique réellement les corrections. Sans ce drapeau, simple simulation."
+        }
+      ]
+    },
     "pinterest:test_publish_one": {
       "settings": {
         "loadApp": true,
