@@ -22,6 +22,19 @@ export default class PinterestFetcher extends Authentication {
     return response.items
   }
 
+  /**
+   * Un pin précis, éventuellement avec ses métriques (vues, « j'aime », etc.).
+   * Les métriques ne sont pas incluses dans la liste paginée : il faut les
+   * demander pin par pin.
+   */
+  public async getPin(pinId: string, withMetrics: boolean = false): Promise<PinterestPin> {
+    return (await this.request({
+      method: 'GET',
+      url: `/pins/${pinId}`,
+      ...(withMetrics ? { params: { pin_metrics: true } } : {}),
+    })) as PinterestPin
+  }
+
   public async getAllBoards() {
     return this.paginate<Board>('/boards')
   }

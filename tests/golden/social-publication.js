@@ -192,6 +192,57 @@ console.log('\n▸ Publication sociale — anti-doublon et titres de carrousel\n
   ok(bounded.title.endsWith('…'), 'la troncature est visible (ellipse) plutôt que coupée net')
 }
 
+// ── 2 bis. Dédoublonnage des pins : on garde le plus performant ──────────────────────────
+// Décision IRRÉVERSIBLE (l'API Pinterest ne restaure rien) : c'est ce classement qui choisit
+// quel pin meurt. Une inversion supprimerait le pin le plus vu du compte, sans recours.
+{
+  const { rankByPerformance } = loadTsModule(
+    path.join(ROOT, 'app/Services/Pinterest/PinRanking.ts')
+  )
+  const pin = (id, metrics, createdAt) => ({ id, metrics, createdAt })
+
+  // Les vues priment.
+  let ranked = rankByPerformance([
+    pin('faible', { impression: 12, reaction: 40 }, 1000),
+    pin('fort', { impression: 900, reaction: 1 }, 2000),
+  ])
+  ok(ranked[0].id === 'fort', 'le pin le plus vu est conservé')
+
+  // À vues égales, les « j'aime » départagent.
+  ranked = rankByPerformance([
+    pin('peu-aime', { impression: 100, reaction: 2 }, 1000),
+    pin('tres-aime', { impression: 100, reaction: 30 }, 2000),
+  ])
+  ok(ranked[0].id === 'tres-aime', 'à vues égales, le plus aimé est conservé')
+
+  // Un pin sans aucune statistique ne doit jamais l'emporter sur un pin qui en a.
+  ranked = rankByPerformance([
+    pin('sans-stats', {}, 1000),
+    pin('avec-stats', { impression: 3 }, 5000),
+  ])
+  ok(ranked[0].id === 'avec-stats', 'métriques absentes = zéro, jamais gagnant')
+
+  // Égalité parfaite : le plus ancien gagne (mieux établi, mieux indexé).
+  ranked = rankByPerformance([
+    pin('recent', { impression: 5, reaction: 1 }, 9000),
+    pin('ancien', { impression: 5, reaction: 1 }, 1000),
+  ])
+  ok(ranked[0].id === 'ancien', 'à égalité parfaite, le pin le plus ancien est conservé')
+
+  // Le tri ne doit pas muter l'entrée de l'appelant.
+  const input = [pin('a', { impression: 1 }, 1), pin('b', { impression: 2 }, 2)]
+  rankByPerformance(input)
+  ok(input[0].id === 'a', 'le classement ne mute pas le tableau fourni')
+
+  // Un seul perdant par paire, jamais plus.
+  const trio = rankByPerformance([
+    pin('x', { impression: 1 }, 1),
+    pin('y', { impression: 2 }, 2),
+    pin('z', { impression: 3 }, 3),
+  ])
+  ok(trio.length === 3 && trio[0].id === 'z', 'un groupe de 3 est ordonné du meilleur au pire')
+}
+
 // ── 3. Un produit n'est publié qu'une seule fois, tous boards confondus ──────────────────
 {
   const PublicationSelector = loadTsModule(

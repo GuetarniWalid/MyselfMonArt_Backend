@@ -410,6 +410,25 @@
         }
       ]
     },
+    "pinterest:dedupe_pins": {
+      "settings": {
+        "loadApp": true,
+        "stayAlive": false
+      },
+      "commandPath": "./commands/PinterestDedupePins",
+      "commandName": "pinterest:dedupe_pins",
+      "description": "Supprime les pins en double (même produit épinglé plusieurs fois) en gardant le plus performant. Sans --yes, simple simulation chiffrée.",
+      "args": [],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "yes",
+          "propertyName": "yes",
+          "type": "boolean",
+          "description": "Supprime réellement les pins perdants. SANS RETOUR POSSIBLE."
+        }
+      ]
+    },
     "pinterest:get_boards": {
       "settings": {
         "loadApp": true,

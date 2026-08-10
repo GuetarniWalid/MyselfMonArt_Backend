@@ -27,13 +27,33 @@ export interface PinterestMedia {
   items?: PinterestMediaItem[]
 }
 
+/**
+ * Métriques d'un pin, renvoyées par `GET /v5/pins/{id}?pin_metrics=true`.
+ * `impression` = vues, `reaction` = « j'aime ». Les métriques « lifetime » ne
+ * sont pas garanties sur un pin antérieur au 2023-03-20 (hors vidéo/Idea), d'où
+ * le repli sur la fenêtre 90 jours.
+ */
+export interface PinterestPinMetricValues {
+  impression?: number
+  reaction?: number
+  save?: number
+  pin_click?: number
+  clickthrough?: number
+  comment?: number
+}
+
+export interface PinterestPinMetrics {
+  '90d'?: PinterestPinMetricValues
+  'lifetime_metrics'?: PinterestPinMetricValues
+}
+
 export interface PinterestPin {
   alt_text: string
   is_removable: boolean
   creative_type: 'REGULAR' | string
   board_owner: PinterestBoardOwner
   link: string
-  pin_metrics: any | null
+  pin_metrics: PinterestPinMetrics | null
   is_owner: boolean
   title: string
   board_id: string

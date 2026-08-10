@@ -174,6 +174,24 @@ export default class PinterestPoster extends Authentication {
   }
 
   /**
+   * Supprime définitivement un pin (DELETE /v5/pins/{id}).
+   *
+   * IRRÉVERSIBLE — l'API ne propose aucune restauration. Réservé au
+   * dédoublonnage explicite (`pinterest:dedupe_pins`), jamais appelé par le cron.
+   */
+  public async deletePin(pinId: string): Promise<void> {
+    try {
+      await this.request({ method: 'DELETE', url: `/pins/${pinId}` })
+    } catch (error) {
+      const status = error?.response?.status
+      const body = error?.response?.data
+      throw new Error(
+        `Pinterest DELETE /pins/${pinId} failed (status ${status}): ${JSON.stringify(body)}`
+      )
+    }
+  }
+
+  /**
    * Met à jour un pin existant (PATCH /v5/pins/{id}).
    *
    * `carousel_slots` est le seul moyen de corriger a posteriori le titre des
