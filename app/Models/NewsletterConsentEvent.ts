@@ -4,6 +4,12 @@ import { BaseModel, column } from '@ioc:Adonis/Lucid/Orm'
 export type ConsentEventKind =
   | 'subscribe'
   | 'resubscribe'
+  /**
+   * Un bon NEUF a été émis à quelqu'un qui était déjà inscrit — son précédent avait expiré.
+   * Distinct de `resubscribe`, qui n'est que la trace du geste : seul `reissue` dit qu'une
+   * remise de plus a été créée, et c'est à ce titre qu'il compte dans le plafond des émissions.
+   */
+  | 'reissue'
   | 'unsubscribe'
   | 'bounce'
   | 'complaint'

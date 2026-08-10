@@ -10,8 +10,15 @@ import { emailHash, normalizeEmail, normalizeLocale, unsubToken } from './identi
 import { newsletterSecret } from './secret'
 import { announcedDateFromEnd, announcedIso } from './expiry'
 import { resolveCurrency } from './currency'
+import { decideReplay } from './replay'
+import { decideQuota } from './quota'
+import type { QuotaScope, QuotaWindow } from './quota'
 import {
-  MAX_SUBSCRIBES_PER_EMAIL_PER_DAY,
+  ISSUE_WINDOW_EMAIL_SECONDS,
+  ISSUE_WINDOW_IP_SECONDS,
+  ISSUING_EVENTS,
+  MAX_ISSUES_PER_EMAIL_PER_DAY,
+  MAX_ISSUES_PER_IP_PER_HOUR,
   PURPOSE,
   SUBSCRIBABLE_PRIOR_STATES,
   TERMS_VERSION,
@@ -64,6 +71,13 @@ export interface SubscribeOutcome {
   code?: string
   expiresAt?: string
   error?: string
+  /**
+   * Renseignés UNIQUEMENT avec `error: 'rate_limited'`, pour que l'encart puisse écrire
+   * « réessayez demain » quand le plafond est journalier, au lieu du « réessayez dans un
+   * instant » qui est faux dans ce cas — et qui envoie le client réessayer pour rien.
+   */
+  scope?: QuotaScope
+  retryAfter?: number
 }
 
 /**
@@ -126,15 +140,21 @@ export default class NewsletterSubscribe {
     const existing = await NewsletterSubscriber.findBy('email', email)
 
     if (existing) {
-      const replay = await this.replay(existing, input, locale, hash)
-      if (replay) return replay
+      return await this.replay(existing, input, locale, hash)
     }
 
-    // --- Garde de débit par ADRESSE (le throttle par IP est posé par le middleware) ---
-    // Compté sur le journal de preuve, qui est append-only : rien ne peut le remettre à zéro,
-    // pas même un redémarrage — contrairement au compteur en mémoire du middleware.
-    if (await this.tooManyAttempts(hash)) {
-      return { ok: false, error: 'rate_limited' }
+    // --- Plafond des ÉMISSIONS ------------------------------------------------------
+    // Posé ICI et pas plus haut : une adresse déjà connue est traitée par `replay`, qui ne
+    // consulte le plafond que s'il faut vraiment émettre. Renvoyer un code existant est une
+    // lecture, et une lecture ne se rationne pas.
+    const quota = await this.issuingQuota(hash, input.ip ?? null)
+    if (quota.blocked) {
+      return {
+        ok: false,
+        error: 'rate_limited',
+        scope: quota.scope,
+        retryAfter: quota.retryAfter,
+      }
     }
 
     // --- Étape 3 : LECTURE avant écriture ------------------------------------------
@@ -209,10 +229,7 @@ export default class NewsletterSubscribe {
     } catch (error) {
       // Course perdue contre une soumission simultanée : la contrainte UNIQUE a tranché.
       const raced = await NewsletterSubscriber.findBy('email', email)
-      if (raced) {
-        const replay = await this.replay(raced, input, locale, hash)
-        if (replay) return replay
-      }
+      if (raced) return await this.replay(raced, input, locale, hash)
       throw error
     }
 
@@ -284,28 +301,48 @@ export default class NewsletterSubscribe {
   // --- interne ---------------------------------------------------------------------
 
   /**
-   * Ré-soumission d'une adresse déjà connue.
+   * Ré-soumission d'une adresse déjà connue. Répond TOUJOURS quelque chose.
    *
-   * On RENVOIE LE MÊME CODE tant qu'il est valide, et on ne relance pas la séquence : sans
-   * ça, il suffirait de resoumettre son adresse pour se faire réexpédier les trois e-mails.
-   * Renvoie `null` quand la ligne est réutilisable telle quelle pour une vraie ré-inscription
-   * (jamais le cas aujourd'hui : une ligne existante répond toujours quelque chose).
+   * Trois issues, décidées par `decideReplay` (module pur, testé hors ligne) :
+   *
+   *   • `return`  — le bon en cours est valide : on le renvoie tel quel, avec sa date
+   *                 d'origine. Rien n'est créé, rien n'est envoyé, la séquence ne bouge pas.
+   *   • `reissue` — il n'y a plus rien de valide à renvoyer : on émet un bon neuf plutôt que
+   *                 de rendre la main sans code (cf. l'en-tête de `replay.ts`).
+   *   • `refuse`  — ligne terminale, ou bon déjà consommé.
+   *
+   * ⛔ DANS AUCUN CAS LA SÉQUENCE NE REDÉMARRE : sans ça, il suffirait de resoumettre son
+   * adresse pour se faire réexpédier les trois e-mails.
    */
   private async replay(
     subscriber: NewsletterSubscriber,
     input: SubscribeInput,
     locale: NewsletterLocale,
     hash: string
-  ): Promise<SubscribeOutcome | null> {
-    const nowTs = Math.floor(DateTime.now().toSeconds())
+  ): Promise<SubscribeOutcome> {
+    const now = DateTime.now()
+    const nowTs = Math.floor(now.toSeconds())
+
+    const decision = decideReplay(
+      {
+        status: subscriber.status,
+        discountCode: subscriber.discountCode,
+        discountExpiresTs: subscriber.discountExpiresTs,
+        codeConsumedTs: subscriber.codeConsumedTs,
+      },
+      nowTs
+    )
 
     // Une ligne terminale ne se réveille jamais par l'encart. Se réabonner après un
     // désabonnement, un rebond dur ou une plainte est un geste qui passe par un humain.
-    if (subscriber.status !== 'active') {
+    //
+    // ⛔ ET ON N'ÉCRIT PAS DE PREUVE ICI. Une ligne `resubscribe` posée sur quelqu'un qui
+    // s'était désabonné se relirait, des mois plus tard, comme un consentement retrouvé.
+    if (decision.action === 'refuse') {
       Logger.info(
-        'newsletter subscribe: ré-soumission sur inscrit #%s en statut %s — refus',
+        'newsletter subscribe: ré-soumission sur inscrit #%s — refus (%s)',
         subscriber.id,
-        subscriber.status
+        decision.reason
       )
       return { ok: true, state: 'refused' }
     }
@@ -314,22 +351,6 @@ export default class NewsletterSubscribe {
     if (subscriber.locale !== locale) {
       subscriber.locale = locale
       await subscriber.save()
-    }
-
-    // La DEVISE, non — et c'est volontaire. Le code déjà émis est calibré pour une devise et
-    // verrouillé sur ses marchés : la réécrire ici ferait annoncer dans E2 et E3 un montant que
-    // le code ne donnera pas. Cas rare (même adresse, deux marchés, moins de sept jours) mais
-    // silencieux, d'où le journal : c'est le seul endroit où il devient diagnosticable.
-    const resubmitted = resolveCurrency(input.currency, input.country)
-    if (subscriber.currency && subscriber.currency !== resubmitted) {
-      Logger.warn(
-        'newsletter subscribe: ré-soumission de #%s depuis %s alors que son bon est en %s — ' +
-          'le code reste calibré pour %s',
-        subscriber.id,
-        resubmitted,
-        subscriber.currency,
-        subscriber.currency
-      )
     }
 
     await this.consent.recordProof({
@@ -345,12 +366,25 @@ export default class NewsletterSubscribe {
       locale,
     })
 
-    const codeStillValid =
-      !!subscriber.discountCode &&
-      subscriber.discountExpiresTs !== null &&
-      subscriber.discountExpiresTs > nowTs
+    const resubmitted = resolveCurrency(input.currency, input.country)
 
-    if (codeStillValid) {
+    if (decision.action === 'return') {
+      // La DEVISE ne bouge pas — et c'est volontaire. Le code déjà émis est calibré pour une
+      // devise et verrouillé sur ses marchés : la réécrire ici ferait annoncer dans E2 et E3 un
+      // montant que le code ne donnera pas. Cas rare (même adresse, deux marchés, moins de sept
+      // jours) mais silencieux, d'où le journal : c'est le seul endroit où il devient
+      // diagnosticable.
+      if (subscriber.currency && subscriber.currency !== resubmitted) {
+        Logger.warn(
+          'newsletter subscribe: ré-soumission de #%s depuis %s alors que son bon est en %s — ' +
+            'le code reste calibré pour %s',
+          subscriber.id,
+          resubmitted,
+          subscriber.currency,
+          subscriber.currency
+        )
+      }
+
       return {
         ok: true,
         state: 'already',
@@ -359,9 +393,116 @@ export default class NewsletterSubscribe {
       }
     }
 
-    // Code expiré : on ne relance pas la séquence, mais on n'a rien à annoncer non plus.
-    // Le thème affichera un message honnête plutôt qu'un bon périmé.
-    return { ok: true, state: 'refused' }
+    return await this.reissue(subscriber, input, hash, resubmitted, now, decision.reason)
+  }
+
+  /**
+   * RÉÉMISSION — le bon précédent est mort (expiré, ou jamais créé) et la personne revient.
+   *
+   * On ne renvoie pas un code périmé : au paiement, il donnerait « Unable to find a valid
+   * discount matching the code entered », c'est-à-dire une promesse affichée à l'écran puis
+   * démentie à la caisse. On en émet un neuf, et on répond `already` — la personne EST déjà
+   * inscrite, ce n'est pas une nouvelle inscription et il n'en faut pas une seconde.
+   */
+  private async reissue(
+    subscriber: NewsletterSubscriber,
+    input: SubscribeInput,
+    hash: string,
+    currency: ReturnType<typeof resolveCurrency>,
+    now: DateTime,
+    reason: string
+  ): Promise<SubscribeOutcome> {
+    // ⛔ LE PLAFOND S'APPLIQUE ICI, et seulement ici sur ce chemin : c'est le seul geste de la
+    // ré-soumission qui CRÉE quelque chose. Sans lui, l'encart deviendrait un robinet à remises
+    // pour qui sait attendre l'expiration.
+    const quota = await this.issuingQuota(hash, input.ip ?? null)
+    if (quota.blocked) {
+      Logger.info(
+        'newsletter subscribe: réémission refusée pour #%s — plafond %s atteint',
+        subscriber.id,
+        quota.scope
+      )
+      return { ok: false, error: 'rate_limited', scope: quota.scope, retryAfter: quota.retryAfter }
+    }
+
+    // La preuve AVANT la mutation, comme sur le chemin d'inscription : `discountCodeBasicCreate`
+    // peut échouer ET avoir créé la remise (bug Shopify confirmé). Une émission non journalisée
+    // sortirait du plafond, donc du comptage.
+    await this.consent.recordProof({
+      subscriberId: subscriber.id,
+      email: subscriber.email,
+      emailHash: hash,
+      event: 'reissue',
+      ip: input.ip,
+      userAgent: input.userAgent,
+      sourceUrl: input.sourceUrl,
+      consentLabel: input.consentLabel,
+      termsVersion: TERMS_VERSION,
+      locale: subscriber.locale,
+    })
+
+    try {
+      const issued = await this.voucher.issue(String(subscriber.id), currency, now)
+      subscriber.discountCode = issued.code
+      subscriber.discountGid = issued.discountGid
+      subscriber.discountExpiresTs = issued.expiresTs
+      subscriber.discountAnnouncedDate = issued.announcedDate
+      // La DEVISE, elle, se recalibre — à l'inverse du cas « bon encore valide ». L'argument qui
+      // l'interdisait là-bas (un code vivant calibré pour une autre devise) tombe ici : le code
+      // d'avant est mort et aucun e-mail ne l'annonce plus. Garder l'ancienne devise donnerait à
+      // un visiteur passé sur le marché canadien un bon en euros, restreint aux marchés euro,
+      // donc inutilisable là où il se trouve.
+      subscriber.currency = currency
+      const country = String(input.country ?? '')
+        .trim()
+        .toUpperCase()
+        .slice(0, 2)
+      if (country) subscriber.country = country
+      subscriber.voucherAmount = issued.amount
+      subscriber.voucherThreshold = issued.threshold
+      subscriber.voucherAmountEur = issued.amountEur
+      subscriber.voucherThresholdEur = issued.thresholdEur
+      await subscriber.save()
+    } catch (error) {
+      Logger.error(
+        'newsletter subscribe: réémission impossible pour #%s — %s',
+        subscriber.id,
+        (error as any)?.message ?? error
+      )
+      // La ligne garde son ancien code mort : on n'a rien abîmé, et le marchand peut reprendre
+      // la main. L'encart, lui, affichera un refus honnête plutôt qu'un bon qui ne marche pas.
+      return { ok: false, error: 'voucher_unavailable' }
+    }
+
+    // ⛔ LA SÉQUENCE NE REPART PAS, et si elle était encore ouverte on la ferme. Son calendrier
+    // a été construit autour de la PREMIÈRE fenêtre : E3 dit « vos 15 € s'arrêtent demain » et
+    // partirait maintenant à quatre jours de la nouvelle échéance. Un e-mail qui annonce une
+    // date fausse, c'est le clic « signaler comme spam » — et une plainte vaut ici dix fois le
+    // seuil contractuel de SES. En régime normal la séquence est déjà close (la porte
+    // d'avant-envoi la ferme dès que le bon approche de l'expiration) : ceci est un filet.
+    if (!subscriber.sequenceDone) {
+      subscriber.sequenceDone = true
+      subscriber.sequenceStopReason = 'bon réémis'
+      subscriber.nextEmail = null
+      subscriber.nextEmailDueTs = null
+      await subscriber.save()
+    }
+
+    Logger.info(
+      'newsletter subscribe: bon réémis pour #%s (%s) — %s en %s, annoncé jusqu’au %s',
+      subscriber.id,
+      reason,
+      subscriber.discountCode,
+      currency,
+      subscriber.discountAnnouncedDate
+    )
+
+    return {
+      ok: true,
+      state: 'already',
+      code: subscriber.discountCode!,
+      expiresAt: announcedFor(subscriber),
+    }
   }
 
   /** Écrit l'état Shopify préalable sur la dernière preuve posée pour cette adresse. */
@@ -380,15 +521,49 @@ export default class NewsletterSubscribe {
     }
   }
 
-  /** Trop de tentatives sur cette adresse en 24 h ? (garde complémentaire au throttle IP) */
-  private async tooManyAttempts(hash: string): Promise<boolean> {
-    const since = Math.floor(DateTime.now().minus({ hours: 24 }).toSeconds())
-    const result = await Database.from('newsletter_consent_events')
-      .where('email_hash', hash)
-      .whereIn('event', ['subscribe', 'resubscribe'])
-      .where('occurred_ts', '>', since)
-      .count('* as total')
-    const total = Number(result?.[0]?.total ?? 0)
-    return total >= MAX_SUBSCRIBES_PER_EMAIL_PER_DAY
+  /**
+   * Le plafond des ÉMISSIONS : 3 par adresse et par jour, 10 par IP et par heure.
+   *
+   * ⛔ NE COMPTE QUE LES ÉMISSIONS (`ISSUING_EVENTS`), jamais les re-soumissions. Renvoyer un
+   * code existant est une lecture — l'inclure ici, c'est refuser son bon à un client légitime
+   * qui a simplement fermé l'onglet, et c'est exactement le défaut que cette version corrige.
+   *
+   * Compté sur le journal de preuve, qui est append-only : rien ne le remet à zéro, ni un
+   * redémarrage, ni un déploiement, ni l'autre instance PM2 — contrairement au compteur en
+   * mémoire du middleware `throttle`, qui ne peut être qu'une garde anti-flot.
+   */
+  private async issuingQuota(hash: string, ip: string | null) {
+    const nowTs = Math.floor(DateTime.now().toSeconds())
+
+    const issuedSince = async (column: 'email_hash' | 'ip', value: string, seconds: number) => {
+      const rows = await Database.from('newsletter_consent_events')
+        .where(column, value)
+        .whereIn('event', [...ISSUING_EVENTS])
+        .where('occurred_ts', '>', nowTs - seconds)
+        .select('occurred_ts')
+      return rows.map((row: any) => Number(row.occurred_ts))
+    }
+
+    const windows: QuotaWindow[] = [
+      {
+        scope: 'day',
+        issuedTs: await issuedSince('email_hash', hash, ISSUE_WINDOW_EMAIL_SECONDS),
+        max: MAX_ISSUES_PER_EMAIL_PER_DAY,
+        seconds: ISSUE_WINDOW_EMAIL_SECONDS,
+      },
+    ]
+
+    // Sans IP (appel serveur à serveur, en-tête absent), il n'y a rien à compter : on ne
+    // regroupe surtout pas les sans-IP dans un même seau, ce qui les bloquerait mutuellement.
+    if (ip) {
+      windows.push({
+        scope: 'hour',
+        issuedTs: await issuedSince('ip', ip, ISSUE_WINDOW_IP_SECONDS),
+        max: MAX_ISSUES_PER_IP_PER_HOUR,
+        seconds: ISSUE_WINDOW_IP_SECONDS,
+      })
+    }
+
+    return decideQuota(windows, nowTs)
   }
 }

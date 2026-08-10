@@ -74,8 +74,22 @@ export default class NewsletterController {
       })
 
       if (!outcome.ok) {
-        const status = outcome.error === 'rate_limited' ? 429 : 400
-        return response.status(status).json(outcome)
+        // ⛔ LE CORPS D'UN 429 EST UN CONTRAT, pas un détail de mise en forme : l'encart s'en
+        // sert pour choisir entre « trop d'essais, réessayez demain » et « réessayez dans un
+        // instant ». `scope` et `retry_after` (secondes) disent LEQUEL des deux plafonds a
+        // parlé — sans eux, le thème doit deviner, et il devine faux dès que le plafond est
+        // journalier. Le même corps est renvoyé par le middleware `throttle`, pour que la
+        // réponse ne dépende pas de la couche qui a refusé.
+        if (outcome.error === 'rate_limited') {
+          if (outcome.retryAfter) response.header('Retry-After', String(outcome.retryAfter))
+          return response.status(429).json({
+            ok: false,
+            error: 'rate_limited',
+            ...(outcome.scope ? { scope: outcome.scope } : {}),
+            ...(outcome.retryAfter ? { retry_after: outcome.retryAfter } : {}),
+          })
+        }
+        return response.status(400).json({ ok: false, error: outcome.error })
       }
 
       return response.status(200).json({

@@ -212,6 +212,36 @@ Le thème transmet **trois axes indépendants** : `locale` (langue des e-mails),
 la langue : un Allemand lit en allemand et paie en euros, un Suisse peut lire en français et
 payer en francs.
 
+**Ré-soumission d'une adresse déjà connue.** ⛔ L'encart traite la réponse comme un **échec dès
+que `code` est absent** (`!data.ok || !data.code`) — il ne lit même pas `state`. Toute réponse
+sans code affiche donc « votre inscription n'a pas abouti ». D'où la règle : **on ne rend jamais
+la main sans code à quelqu'un qui est en droit d'en avoir un** (`replay.ts`, module pur, testé).
+
+| Situation | Réponse | Effet de bord |
+|---|---|---|
+| Bon encore valide | `already` + **le même code**, sa date d'origine | aucun — c'est une **lecture** |
+| Bon expiré, ou jamais créé (`voucher_failed`) | `already` + **un code neuf**, nouvelle échéance | une émission ; devise **recalibrée** sur la soumission ; séquence **close**, jamais relancée |
+| Bon consommé **et** expiré | `refused` | le cadeau de bienvenue a été honoré, on n'en émet pas un second |
+| Statut terminal (désabonné, rebond, plainte) | `refused` | **aucune preuve écrite** : une ligne `resubscribe` se relirait comme un consentement retrouvé |
+
+**Les plafonds ne comptent que les ÉMISSIONS** — 3/jour par adresse, 10/h par IP, sur le journal
+de preuve (append-only : ni un redémarrage ni un déploiement ne les remet à zéro). Renvoyer un
+code existant ne crée ni inscrit, ni remise, ni e-mail : c'est gratuit et illimité. Le `throttle`
+de la route (60/h par IP) n'est plus qu'une garde **anti-flot** — le régler sur 10 refusait un
+client derrière une IP partagée venu simplement rechercher son bon.
+
+**Le corps d'un 429 est un contrat**, identique qu'il vienne du middleware ou du contrôleur :
+
+```json
+{ "ok": false, "error": "rate_limited", "scope": "day", "retry_after": 34200 }
+```
+
+`scope` (`day` | `hour` | `minute`) et `retry_after` (secondes, aussi en en-tête `Retry-After`)
+existent pour que l'encart écrive « réessayez **demain** » quand le plafond est journalier, au
+lieu du « réessayez dans un instant » — faux dans ce cas, et qui renvoie le client se faire
+refuser une seconde fois. Le corps du middleware porte **en plus** `success`/`message`, forme
+historique que lisent déjà le studio custom-art et l'extension du marchand : ne pas la retirer.
+
 **Le code** — `MERCI-` + 6 caractères sans ambiguïté (ni I, ni O, ni 0, ni 1), `usageLimit: 1`,
 `combinesWith` tout à `false`, **7 jours**. Relu après création. **Son usage est le signal de
 conversion**, même pour un achat en invité sous une autre adresse.

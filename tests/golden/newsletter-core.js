@@ -56,6 +56,8 @@ const template = load('app/Services/Newsletter/emails/template.ts')
 const strings = load('app/Services/Newsletter/emails/strings.ts')
 const expiry = load('app/Services/Newsletter/expiry.ts')
 const currency = load('app/Services/Newsletter/currency.ts')
+const replay = load('app/Services/Newsletter/replay.ts')
+const quota = load('app/Services/Newsletter/quota.ts')
 const { DateTime } = require('luxon')
 
 /**
@@ -1280,6 +1282,138 @@ check('avec mention postale : elle apparaît dans les deux versions', () => {
   })
   assert.ok(out.html.includes('KINDOPIA'), 'mention absente du HTML')
   assert.ok(out.text.includes('KINDOPIA'), 'mention absente de la version texte')
+})
+
+// --- Ré-soumission : ON NE REND JAMAIS LA MAIN SANS CODE ---------------------------------
+//
+// L'encart traite la réponse comme un échec dès que `code` est absent (`!data.ok || !data.code`)
+// — il ne lit même pas `state`. Toute issue qui ne porte pas de code affiche donc « votre
+// inscription n'a pas abouti » à quelqu'un qui a un bon valide, ou qui y a droit. C'est le
+// défaut observé en production, et c'est ce que ces cas verrouillent.
+const NOW = 1_786_000_000
+const LIGNE = {
+  status: 'active',
+  discountCode: 'MERCI-A7F3K2',
+  discountExpiresTs: NOW + 3600,
+  codeConsumedTs: null,
+}
+
+check('bon encore valide : on le RENVOIE, on ne le remplace pas', () => {
+  assert.strictEqual(replay.decideReplay(LIGNE, NOW).action, 'return')
+  // Borne stricte : à une seconde de la fin, le code marche encore.
+  assert.strictEqual(
+    replay.decideReplay({ ...LIGNE, discountExpiresTs: NOW + 1 }, NOW).action,
+    'return'
+  )
+})
+
+check('bon expiré : on ÉMET un bon neuf, jamais un code mort', () => {
+  const out = replay.decideReplay({ ...LIGNE, discountExpiresTs: NOW - 1 }, NOW)
+  assert.strictEqual(out.action, 'reissue')
+  // Renvoyer le code périmé donnerait « Unable to find a valid discount matching the code
+  // entered » à la caisse : une promesse affichée à l'écran puis démentie au paiement.
+  assert.strictEqual(
+    replay.decideReplay({ ...LIGNE, discountExpiresTs: NOW }, NOW).action,
+    'reissue'
+  )
+})
+
+check('inscription sans bon (Shopify était tombé) : on émet, on ne refuse pas', () => {
+  const out = replay.decideReplay({ ...LIGNE, discountCode: null, discountExpiresTs: null }, NOW)
+  assert.strictEqual(out.action, 'reissue')
+  assert.strictEqual(out.reason, 'aucun bon émis')
+})
+
+check('ligne terminale : refus, quel que soit l’état du bon', () => {
+  for (const status of ['unsubscribed', 'bounced', 'complained', 'redacted']) {
+    assert.strictEqual(
+      replay.decideReplay({ ...LIGNE, status }, NOW).action,
+      'refuse',
+      `${status} ne doit jamais rouvrir par l’encart`
+    )
+  }
+})
+
+check('bon consommé : renvoyé s’il vit encore, jamais réémis une fois mort', () => {
+  // Encore dans sa fenêtre : c'est SON code, il a le droit de le relire.
+  assert.strictEqual(
+    replay.decideReplay({ ...LIGNE, codeConsumedTs: NOW - 60 }, NOW).action,
+    'return'
+  )
+  // Consommé ET expiré : le cadeau de bienvenue a été honoré. En émettre un second ferait de
+  // l'encart un robinet à remises pour qui sait attendre sept jours.
+  assert.strictEqual(
+    replay.decideReplay({ ...LIGNE, codeConsumedTs: NOW - 60, discountExpiresTs: NOW - 1 }, NOW)
+      .action,
+    'refuse'
+  )
+})
+
+// --- Plafond : il compte les ÉMISSIONS, pas les lectures ---------------------------------
+check('une re-soumission ne compte pas comme une émission', () => {
+  // ⛔ Le jour où `resubscribe` revient dans cette liste, le client qui cherche son code se
+  // fait refuser au bout de trois consultations. C'est exactement le défaut corrigé ici.
+  assert.ok(!config.ISSUING_EVENTS.includes('resubscribe'))
+  assert.ok(config.ISSUING_EVENTS.includes('subscribe'))
+  assert.ok(config.ISSUING_EVENTS.includes('reissue'))
+})
+
+check('sous le plafond : rien ne bloque', () => {
+  const out = quota.decideQuota(
+    [{ scope: 'day', issuedTs: [NOW - 10, NOW - 20], max: 3, seconds: 86400 }],
+    NOW
+  )
+  assert.strictEqual(out.blocked, false)
+})
+
+check('au plafond : bloqué, et l’attente annoncée est VRAIE', () => {
+  const out = quota.decideQuota(
+    [{ scope: 'day', issuedTs: [NOW - 86000, NOW - 500, NOW - 10], max: 3, seconds: 86400 }],
+    NOW
+  )
+  assert.strictEqual(out.blocked, true)
+  assert.strictEqual(out.scope, 'day')
+  // Fenêtre GLISSANTE : la place se libère quand la plus ancienne des trois sort, pas à
+  // minuit. 86400 − 86000 = 400 s.
+  assert.strictEqual(out.retryAfter, 400)
+})
+
+check('les émissions sorties de la fenêtre ne comptent plus', () => {
+  const out = quota.decideQuota(
+    [{ scope: 'day', issuedTs: [NOW - 86401, NOW - 90000, NOW - 10], max: 3, seconds: 86400 }],
+    NOW
+  )
+  assert.strictEqual(out.blocked, false)
+})
+
+check('deux plafonds atteints : on annonce LA PLUS LONGUE attente', () => {
+  const out = quota.decideQuota(
+    [
+      { scope: 'hour', issuedTs: [NOW - 100], max: 1, seconds: 3600 },
+      { scope: 'day', issuedTs: [NOW - 100], max: 1, seconds: 86400 },
+    ],
+    NOW
+  )
+  assert.strictEqual(out.blocked, true)
+  // Annoncer 3500 s enverrait la personne réessayer pour se faire refuser à nouveau.
+  assert.strictEqual(out.scope, 'day')
+  assert.strictEqual(out.retryAfter, 86300)
+})
+
+check('plafond dépassé : l’attente se compte sur la (n − max + 1)ᵉ émission', () => {
+  const out = quota.decideQuota(
+    [{ scope: 'hour', issuedTs: [NOW - 3000, NOW - 2000, NOW - 1000], max: 2, seconds: 3600 }],
+    NOW
+  )
+  // Il faut que DEUX émissions sortent pour repasser sous 2 : c'est celle de −2000 qui décide.
+  assert.strictEqual(out.retryAfter, 1600)
+})
+
+check('garde anti-flot au-dessus du plafond métier', () => {
+  // ⛔ Si le throttle de la route descendait au niveau des émissions, il refuserait AVANT le
+  // service — avec un corps qui ne dit ni quel plafond a parlé, ni pour combien de temps, et en
+  // frappant les lectures, qui ne coûtent rien.
+  assert.ok(config.MAX_REQUESTS_PER_IP_PER_HOUR > config.MAX_ISSUES_PER_IP_PER_HOUR)
 })
 
 if (failures) {

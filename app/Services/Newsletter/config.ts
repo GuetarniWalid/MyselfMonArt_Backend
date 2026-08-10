@@ -195,10 +195,47 @@ export const SUBSCRIBABLE_PRIOR_STATES = ['NOT_SUBSCRIBED', 'PENDING', 'SUBSCRIB
 
 // --- Limitation de débit -----------------------------------------------------------------
 
-/** Par adresse e-mail, sur 24 h — complète le throttle par IP du middleware. */
-export const MAX_SUBSCRIBES_PER_EMAIL_PER_DAY = 3
-/** Par IP, sur 1 h — appliqué par le middleware `throttle`. */
-export const MAX_SUBSCRIBES_PER_IP_PER_HOUR = 10
+/**
+ * ⛔ TROIS PLAFONDS, ET ILS NE COMPTENT PAS LA MÊME CHOSE. La distinction n'est pas cosmétique :
+ * c'est elle qui répare le défaut « déjà inscrit, reparti sans son code ».
+ *
+ * Une seule route sert deux gestes de nature différente. RENVOYER un bon existant est une
+ * LECTURE — aucune inscription, aucune remise créée, aucun e-mail, aucun appel à Shopify.
+ * ÉMETTRE un bon est une CRÉATION : une remise de plus dans l'admin, du quota d'API consommé,
+ * de l'argent engagé. Les soumettre au même plafond bloquait un client légitime qui voulait
+ * simplement retrouver son bon — le pire faux positif possible, puisqu'il frappe exactement les
+ * personnes qui reviennent.
+ *
+ * Les deux premiers plafonds ne comptent donc QUE les émissions (cf. `ISSUING_EVENTS`), sur le
+ * journal de preuve qui est append-only : rien ne les remet à zéro, ni un redémarrage, ni un
+ * déploiement, ni l'autre instance PM2. Le troisième, lui, compte les requêtes — c'est une
+ * garde anti-flot, pas une règle métier.
+ */
+
+/** ÉMISSIONS par adresse e-mail, sur 24 h. Une lecture ne compte pas. */
+export const MAX_ISSUES_PER_EMAIL_PER_DAY = 3
+export const ISSUE_WINDOW_EMAIL_SECONDS = 24 * 3600
+
+/** ÉMISSIONS par IP, sur 1 h. Le plafond du contrat, désormais appliqué aux seules créations. */
+export const MAX_ISSUES_PER_IP_PER_HOUR = 10
+export const ISSUE_WINDOW_IP_SECONDS = 3600
+
+/**
+ * REQUÊTES par IP et par heure, posé par le middleware `throttle` sur la route.
+ *
+ * ⚠️ Volontairement HAUT, et ce n'est pas un relâchement : ce plafond-là ne protège plus la
+ * marge (les émissions ont le leur, ci-dessus), il protège la machine. Le régler sur la valeur
+ * des créations refusait un client derrière un partage d'adresse — 4G, réseau d'entreprise —
+ * qui n'avait rien fait d'autre que revenir chercher son code.
+ */
+export const MAX_REQUESTS_PER_IP_PER_HOUR = 60
+
+/**
+ * Les faits du journal qui comptent comme une ÉMISSION. `resubscribe` n'y est PAS : c'est la
+ * trace d'une re-soumission, donc d'une lecture, et l'y remettre rétablirait exactement le
+ * défaut corrigé ici.
+ */
+export const ISSUING_EVENTS = ['subscribe', 'reissue'] as const
 
 // --- Mentions ----------------------------------------------------------------------------
 

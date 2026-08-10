@@ -20,6 +20,8 @@
 
 import Route from '@ioc:Adonis/Core/Route'
 import Env from '@ioc:Adonis/Core/Env'
+// Module PUR (aucune dépendance Adonis) : importable ici sans rien monter.
+import { MAX_REQUESTS_PER_IP_PER_HOUR } from 'App/Services/Newsletter/config'
 
 Route.get('/', 'DashboardController.index').middleware(['auth'])
 // Application "Publisher" : UI servie ici ; le rendu des mockups est délégué au moteur externe (PC via tunnel Cloudflare).
@@ -276,10 +278,15 @@ Route.get('/custom-art-print-queue', async ({ view }) => {
 // Séquence e-mail du bon de 15 € (cf. app/Services/Newsletter/).
 //
 // L'encart produit poste ici en fetch ; la réponse porte le CODE NOMINATIF, que l'encart
-// affiche immédiatement — d'où le throttle généreux mais réel (10/h par IP, plus une garde
-// de 3/jour par ADRESSE en base, qu'un redémarrage ne remet pas à zéro).
+// affiche immédiatement.
+//
+// ⛔ CE THROTTLE-CI NE PROTÈGE PLUS LA MARGE, seulement la machine — d'où sa valeur haute.
+// Les plafonds du contrat (10 émissions/h par IP, 3/jour par adresse) sont appliqués DANS le
+// service, sur le journal de preuve, et ne comptent que les créations : renvoyer à quelqu'un le
+// bon qu'il a déjà est une lecture. Régler ce compteur-ci sur 10 refusait un client derrière une
+// IP partagée — 4G, réseau d'entreprise — venu simplement rechercher son code.
 Route.post('/api/newsletter/subscribe', 'NewsletterController.subscribe').middleware([
-  'throttle:10,3600',
+  `throttle:${MAX_REQUESTS_PER_IP_PER_HOUR},3600`,
 ])
 // Santé du dispositif, sans donnée personnelle — même esprit que /promo/status.
 Route.get('/api/newsletter/status', 'NewsletterController.status').middleware(['throttle:60,60'])
