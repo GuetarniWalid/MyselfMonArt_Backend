@@ -587,6 +587,162 @@ check('l’espace française avant « : » ne fuit pas vers les autres langues',
   }
 })
 
+/**
+ * ⛔ UNE LANGUE NE PEUT PAS PERDRE UNE MARQUE DE REMPLACEMENT EN CHEMIN.
+ *
+ * C'est la régression la plus coûteuse d'une réécriture, et la seule qui ne se voie sur AUCUN
+ * écran de développement : un `{code}` oublié dans l'objet allemand part en production comme un
+ * objet sans code, un `{date}` perdu dans une clause et l'échéance disparaît d'une mention
+ * obligatoire. Rien ne lève, rien ne s'affiche en rouge — le lecteur reçoit simplement un
+ * e-mail amputé, et il est le seul à le savoir.
+ *
+ * Le français est la référence : chaque champ des quatre autres langues doit porter EXACTEMENT
+ * le même jeu de marques que son homologue français. On compare des ENSEMBLES, pas des listes :
+ * une langue a le droit de répéter une marque ou de changer l'ordre des mots, pas d'en gagner
+ * ni d'en perdre une.
+ */
+check('aucune langue ne perd ni n’invente une marque de remplacement', () => {
+  const jeu = (s) => [...new Set(s.match(/\{\w+\}/g) ?? [])].sort().join(' ')
+  const réf = plateChaines(strings.pack('fr'))
+
+  for (const locale of config.LOCALES) {
+    if (locale === 'fr') continue
+    const à = plateChaines(strings.pack(locale))
+    for (const [clé, attendu] of Object.entries(réf)) {
+      // `questions[1].link` n'existe pas (2ᵉ question sans lien) : une langue qui l'omet aussi
+      // est conforme. C'est la seule absence tolérée, et elle ne porte aucune marque.
+      if (!(clé in à)) {
+        assert.ok(!attendu, `${locale}/${clé} : champ manquant, alors qu’il porte ${attendu}`)
+        continue
+      }
+      assert.strictEqual(
+        jeu(à[clé]),
+        jeu(attendu),
+        `${locale}/${clé} : marques « ${jeu(à[clé]) || 'aucune'} » au lieu de « ${attendu || 'aucune'} »`
+      )
+    }
+  }
+})
+
+/**
+ * ⛔ CHAQUE CHAMP DOIT TENIR DANS SA CASE, UNE FOIS LES MARQUES RENDUES.
+ *
+ * Le gabarit du designer n'a AUCUNE hauteur fixe : rien ne casse bruyamment, un texte trop long
+ * se contente de passer à la ligne — un titre de 36 px sur trois lignes, un libellé de bouton
+ * qui déborde, une bandelette en capitales qui pousse le code hors de l'écran. Ça ne se voit
+ * qu'à la réception, donc trop tard.
+ *
+ * ⛔ ET LE PIRE CAS N'EST NI LE FRANÇAIS NI L'EURO. On mesure chaque langue avec la devise la
+ * plus large qu'elle peut servir et le mois le plus long de son calendrier :
+ *   • « 130 $CA » fait trois signes de plus que « 80 € » ;
+ *   • l'espagnol écrit « 12 de septiembre de 2026 » — VINGT-QUATRE signes contre dix-sept en
+ *     français, ce qui mange à lui seul les trois quarts d'une pastille d'échéance ;
+ *   • l'allemand compose ses noms et déborde là où le français passait.
+ * Un champ juste en euros et en français peut donc être faux pour tout le monde.
+ *
+ * Les plafonds sont les cases du gabarit, relevées dans `template.ts` (corps de police, largeur
+ * utile de 540 px, et le repli mobile des media queries). Ils sont volontairement un peu larges :
+ * ce test attrape le débordement franc, pas le signe en trop.
+ */
+check('chaque champ tient dans sa case, au pire cas de devise et de date', () => {
+  // Devises réellement servies par langue — lues dans la table des marchés (cf. marketPath.ts) :
+  // une langue ne voit que les devises des marchés où elle est publiée.
+  const DEVISES = {
+    fr: ['EUR', 'CAD', 'CHF'],
+    en: ['EUR', 'USD', 'CAD', 'GBP'],
+    de: ['EUR', 'CHF'],
+    es: ['EUR'],
+    nl: ['EUR'],
+  }
+  // Mois longs des cinq calendriers : on prend le rendu le plus large qui sorte de l'année.
+  const DATES = ['2026-09-12', '2026-12-22', '2026-11-30', '2026-02-28']
+
+  const PLAFONDS = {
+    'mail1.subject': 55,
+    'mail1.preheader': 100,
+    'mail1.heroH2': 45,
+    'mail1.heroSub': 115,
+    'mail1.codeValidity': 38,
+    'mail1.cta': 32,
+    'mail1.ctaFine': 150,
+    'mail1.productEyebrow': 20,
+    'mail1.productLink': 26,
+    'mail1.materials': 62,
+    'mail1.cond[0].strong': 30,
+    'mail1.cond[1].strong': 30,
+    'mail1.cond[2].strong': 30,
+    'mail1.cond[0].rest': 62,
+    'mail1.cond[1].rest': 62,
+    'mail1.cond[2].rest': 62,
+    'mail2.subject': 55,
+    'mail2.preheader': 100,
+    'mail2.band': 42,
+    'mail2.h1': 52,
+    'mail2.intro': 190,
+    'mail2.bestEyebrow': 32,
+    'mail2.cta': 32,
+    'mail2.ctaFine': 150,
+    'mail2.trustpilot': 60,
+    'mail2.questions[0].title': 40,
+    'mail2.questions[1].title': 40,
+    'mail2.questions[2].title': 40,
+    'mail2.questions[0].body': 330,
+    'mail2.questions[1].body': 330,
+    'mail2.questions[2].body': 330,
+    'mail2.questions[0].link': 26,
+    'mail2.questions[2].link': 26,
+    'mail3.subject': 55,
+    'mail3.preheader': 100,
+    'mail3.eyebrow': 18,
+    'mail3.h1': 52,
+    'mail3.intro': 190,
+    'mail3.codeValidity': 32,
+    'mail3.cta': 32,
+    'mail3.ctaFine': 120,
+    'mail3.productEyebrow': 26,
+    'mail3.productLink': 26,
+    'mail3.honesty.strong': 30,
+    'mail3.honesty.rest': 270,
+    'mail3.lastWord': 230,
+    'footer.tagline': 85,
+  }
+
+  /** La valeur la plus large que cette marque puisse prendre dans cette langue. */
+  const pire = (candidats) => candidats.sort((a, b) => b.length - a.length)[0]
+
+  for (const locale of config.LOCALES) {
+    const devises = DEVISES[locale]
+    const valeurs = {
+      code: 'MERCI-A7F3K2',
+      date: pire(DATES.map((d) => expiry.formatAnnouncedDate(d, locale))),
+      signupDate: pire(DATES.map((d) => expiry.formatAnnouncedDate(d, locale))),
+      amount: pire(
+        devises.map((d) => currency.moneyLabel(currency.VOUCHER_OFFERS[d].amount, d, locale))
+      ),
+      min: pire(
+        devises.map((d) => currency.moneyLabel(currency.VOUCHER_OFFERS[d].threshold, d, locale))
+      ),
+      betterDeal: pire(devises.map((d) => currency.moneyLabel(150, d, locale))),
+      contact: 'contact@myselfmonart.com',
+      score: '4,2',
+      count: '128',
+      price: '129,00 €',
+      priceWithVoucher: '114,00 €',
+    }
+    const rendu = (s) => s.replace(/\{(\w+)\}/g, (t, k) => (k in valeurs ? valeurs[k] : t))
+
+    const champs = plateChaines(strings.pack(locale))
+    for (const [clé, plafond] of Object.entries(PLAFONDS)) {
+      if (!(clé in champs)) continue
+      const texte = rendu(champs[clé])
+      assert.ok(
+        texte.length <= plafond,
+        `${locale}/${clé} : ${texte.length} signes rendus pour ${plafond} — « ${texte} »`
+      )
+    }
+  }
+})
+
 /** Aplatit un pack en { chemin: chaîne }, pour balayer les cinq langues d'un seul geste. */
 function plateChaines(objet, préfixe = '', sortie = {}) {
   for (const [clé, valeur] of Object.entries(objet)) {
@@ -604,24 +760,27 @@ function plateChaines(objet, préfixe = '', sortie = {}) {
 }
 
 /**
- * Le titre du 3ᵉ e-mail ne se traduit PAS mot à mot. « Vos 15 € s'arrêtent » se dit en
- * français ; « Your US$15 ends » ne se dit pas en anglais — un montant ne peut pas être le
- * sujet de ce verbe — et « Ihre US$15 enden » se trompe en plus de genre et de nombre. Les
- * quatre autres langues prennent donc le GUTSCHEIN / voucher / vale / waardebon pour sujet.
+ * Le titre du 3ᵉ e-mail ne se traduit PAS mot à mot, et il ne peut pas prendre le MONTANT pour
+ * sujet. « Your US$15 ends » ne se dit pas en anglais, et « Ihre US$15 enden » se trompe en
+ * plus de genre et de nombre. Chaque langue nomme donc la chose : code / voucher / Gutschein /
+ * vale / waardebon.
+ *
+ * ⛔ ON CHERCHE LE NOM DANS LE TEXTE, PAS DANS LES MARQUES. Sans retirer les `{…}` d'abord,
+ * « Votre {code} expire » passerait le test sans nommer quoi que ce soit : c'est la marque de
+ * remplacement qui contiendrait le mot, et le lecteur, lui, ne lirait qu'un identifiant.
  */
 check('le titre de E3 a un sujet grammatical dans chaque langue', () => {
-  const sujets = { en: 'voucher', de: 'Gutschein', es: 'vale', nl: 'waardebon' }
+  const sujets = { fr: 'code', en: 'voucher', de: 'Gutschein', es: 'vale', nl: 'waardebon' }
+  const sansMarques = (s) => s.replace(/\{\w+\}/g, ' ')
   for (const [locale, sujet] of Object.entries(sujets)) {
     const m3 = strings.pack(locale).mail3
     for (const clé of ['subject', 'docTitle', 'h1']) {
       assert.ok(
-        m3[clé].includes(sujet),
+        sansMarques(m3[clé]).includes(sujet),
         `${locale}/mail3.${clé} : « ${sujet} » doit être le sujet, pas le montant`
       )
     }
   }
-  // Le français garde sa formule, qui est correcte chez lui.
-  assert.ok(strings.pack('fr').mail3.h1.startsWith('Vos {amount}'))
 })
 
 /**
@@ -754,14 +913,20 @@ check('aucune valeur d’exemple du gabarit ne survit au rendu', () => {
  * l'annoncer ensuite.
  */
 check('le point d’honnêteté disparaît quand aucune promotion n’est active', () => {
+  // ⛔ Le repère se LIT dans les chaînes, il ne se recopie pas ici. Ce test cherchait le mot
+  // « honnêteté », qui était dans le texte du designer ; une réécriture de plume l'a fait
+  // disparaître et le test est tombé alors que la RÈGLE — le paragraphe ne s'affiche que si une
+  // promotion existe — n'avait pas bougé d'un pouce. Un test qui s'accroche à un mot mesure la
+  // plume ; celui-ci doit mesurer la condition d'affichage.
+  const repère = strings.pack('fr').mail3.honesty.strong
   const sans = template.renderNewsletterEmail({ ...BASE, emailNo: 3, betterDealAmount: null })
-  assert.ok(!sans.html.includes('honnêteté'), 'sans promotion : le paragraphe doit disparaître')
+  assert.ok(!plat(sans.html).includes(repère), 'sans promotion : le paragraphe doit disparaître')
   assert.ok(!/\bau-delà de\b/.test(sans.text), 'sans promotion : rien dans la version texte')
 
   // 15 € de bon ÷ 10 % de promotion = 150 € de panier. Le seuil se CALCULE dans la devise du
   // lecteur ; il ne se convertit pas (un Américain croise à 150 $, pas à 173 $).
   const avec = template.renderNewsletterEmail({ ...BASE, emailNo: 3, betterDealAmount: 150 })
-  assert.ok(avec.html.includes('honnêteté'), 'avec promotion : le paragraphe doit apparaître')
+  assert.ok(plat(avec.html).includes(repère), 'avec promotion : le paragraphe doit apparaître')
   assert.ok(plat(avec.html).includes('150 €'), 'avec promotion : le seuil doit être affiché')
 
   const us = template.renderNewsletterEmail({
