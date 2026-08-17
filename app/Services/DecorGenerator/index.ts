@@ -17,10 +17,26 @@ export interface DecorOptions {
 // ils ne servent qu'au PROMPT, pour que le SUPPORT VIDE (le « tableau ») accroché dans la pièce
 // garde, lui, la forme du tableau (portrait 3:4 / carré 1:1 / paysage 4:3). L'insertion (étape 2)
 // sort elle aussi en carré -> le tout reste aligné.
+// `measure` : le ratio ÉNONCÉ EN ARITHMÉTIQUE. « exactement 3:4 » reste flou pour un modèle d'image
+// (il sort du 3:4 « à peu près ») ; « sa hauteur vaut 1,33 fois sa largeur » est mesurable et tient
+// mieux. Enjeu réel : plus le rectangle gris sort au bon ratio, moins l'insertion a d'écart à
+// rattraper sur le support (cf. la règle d'or d'ArtworkInserter).
 const TARGET = {
-  portrait: { ratio: '3:4', orientation: 'portrait' },
-  square: { ratio: '1:1', orientation: 'square' },
-  landscape: { ratio: '4:3', orientation: 'landscape' },
+  portrait: {
+    ratio: '3:4',
+    orientation: 'portrait',
+    measure: 'its height is 1.33 times its width — clearly taller than it is wide',
+  },
+  square: {
+    ratio: '1:1',
+    orientation: 'square',
+    measure: 'its four sides are equal — a true square',
+  },
+  landscape: {
+    ratio: '4:3',
+    orientation: 'landscape',
+    measure: 'its width is 1.33 times its height — clearly wider than it is tall',
+  },
 } as const
 
 // Modèles Google (migration NB2 du 12/06/2026 — fini gpt-image-2 et ses ~112 s par décor).
@@ -111,7 +127,7 @@ export default class DecorGenerator {
     }
     Logger.info('decor scene: %s', scene.slice(0, 140))
 
-    const prompt = buildDecorPrompt(scene, t.ratio, t.orientation, product)
+    const prompt = buildDecorPrompt(scene, t.ratio, t.orientation, t.measure, product)
 
     const req: any = {
       model: IMAGE_MODEL,
@@ -211,6 +227,7 @@ function buildDecorPrompt(
   scene: string,
   ratio: string,
   orientation: string,
+  measure: string,
   product: Product
 ): string {
   const productNoun =
@@ -228,7 +245,7 @@ SCENE: ${scene}
 
 THE EMPTY ${productNoun} — the focal point: a brand-new, unprinted ${productNoun} hangs alone on a clear stretch of wall, centered at eye level. Its face is ONE perfectly uniform, smooth, MATTE light-grey (#ECECEC) surface — evenly lit and completely shadow-free even though the room is directionally lit; nothing printed or reflected on it, no gradient, no glow, no pattern. It is perfectly flat and planar, parallel to the camera, with crisp straight edges and exact 90-degree corners. ${productLine}
 
-GEOMETRY (strict): inside the square photo, the empty ${productNoun} is unmistakably a ${orientation} rectangle of exactly ${ratio} proportions (never square unless 1:1 IS the stated proportion), its axes parallel to the photo edges. It spans roughly two-thirds of the frame, with a calm, even margin of bare wall on all four sides — it never touches the photo edge and nothing overlaps it. No wide-angle distortion, no keystone, vertical lines perfectly vertical.
+GEOMETRY (strict): inside the square photo, the empty ${productNoun} is unmistakably a ${orientation} rectangle of exactly ${ratio} proportions — ${measure} — never square unless 1:1 IS the stated proportion, its axes parallel to the photo edges. It spans roughly two-thirds of the frame, with a calm, even margin of bare wall on all four sides — it never touches the photo edge and nothing overlaps it. No wide-angle distortion, no keystone, vertical lines perfectly vertical.
 
 RENDERING: editorial photography realism — the room's single directional light source gives soft believable shadows, gentle contrast and depth; rich true-to-life colours graded with confidence, never washed out or pallid; every object physically plausible at correct scale, a real recognizable thing, nothing floating, melted, duplicated or malformed; subtle natural film grain, crisp focus. Only the grey surface stays flat-lit and untouched by shadow. The image must read as a real photograph of a real lived-in room — never staged CGI, never an obvious AI render.
 

@@ -16,8 +16,8 @@ export interface InsertOptions {
 
 // Le DÉCOR est désormais TOUJOURS CARRÉ (cf. DecorGenerator) -> la sortie d'insertion est elle aussi
 // verrouillée en 1:1 pour épouser le décor sans reframing. Le tableau (support) dans la pièce garde sa
-// forme (portrait/carré/paysage) : c'est la zone grise à remplir, PAS le ratio de l'image. `target` ne
-// sert donc plus qu'à valider l'entrée (un vieux décor sauvegardé non carré serait recadré en carré).
+// forme (portrait/carré/paysage) : c'est la zone grise à remplir, PAS le ratio de l'image. `target`
+// valide l'entrée et sert de PROPORTIONS DE SECOURS si l'œuvre n'est pas mesurable (cf. describeRatio).
 const OUTPUT_ASPECT_RATIO = '1:1'
 // Sortie 2K (décision 12/06) : c'est l'image FINALE envoyée à Shopify -> zoom net en fiche produit.
 // Le décor 1K en entrée n'est pas un problème : le modèle re-rend toute la scène à 2K.
@@ -27,6 +27,57 @@ const TARGET = {
   square: { ratio: '1:1' },
   landscape: { ratio: '4:3' },
 } as const
+
+// ---- Proportions de l'ŒUVRE, énoncées au modèle en CLAIR ----------------------------------------
+// Le rectangle gris du décor n'est JAMAIS au ratio exact demandé (un modèle d'image ne dessine pas un
+// 3:4 au pixel près). Si le prompt exige « remplis la zone grise bord à bord » ET « ne recadre pas
+// l'œuvre », les deux consignes sont incompatibles et le modèle sacrifie l'œuvre (rognée, décentrée).
+// La sortie : c'est le SUPPORT qui se met à la forme de l'œuvre — et pour ça il faut donner un NOMBRE.
+// « Reste fidèle » est abstrait et se perd en cours de rendu ; « la face fait 3:4 » est une contrainte
+// géométrique vérifiable, que le modèle tient.
+type Shape = { label: string; orientation: string; sentence: string }
+const COMMON_RATIOS: ReadonlyArray<readonly [number, number]> = [
+  [1, 1],
+  [4, 5],
+  [3, 4],
+  [2, 3],
+  [5, 7],
+  [9, 16],
+  [5, 4],
+  [4, 3],
+  [3, 2],
+  [7, 5],
+  [16, 9],
+  [1, 2],
+  [2, 1],
+]
+function describeRatio(w: number, h: number): Shape {
+  const r = w / h
+  const orientation = Math.abs(r - 1) < 0.02 ? 'square' : r < 1 ? 'portrait' : 'landscape'
+  // Ratio usuel s'il y en a un à 1,5 % près (plus lisible pour le modèle), sinon la valeur mesurée.
+  let label = `${Math.round(r * 100)}:100`
+  let best = Infinity
+  for (const [a, b] of COMMON_RATIOS) {
+    const d = Math.abs(a / b - r) / r
+    if (d <= 0.015 && d < best) {
+      best = d
+      label = `${a}:${b}`
+    }
+  }
+  const sentence =
+    orientation === 'square'
+      ? `exactly ${label} — a perfect square`
+      : orientation === 'portrait'
+        ? `exactly ${label} — an upright PORTRAIT rectangle, its height ${(h / w).toFixed(2)} times its width`
+        : `exactly ${label} — a wide LANDSCAPE rectangle, its width ${(w / h).toFixed(2)} times its height`
+  return { label, orientation, sentence }
+}
+// Secours quand les dimensions de l'œuvre sont illisibles : on retombe sur la cible déclarée.
+const FALLBACK_SHAPE: Record<Target, Shape> = {
+  portrait: describeRatio(3, 4),
+  square: describeRatio(1, 1),
+  landscape: describeRatio(4, 3),
+}
 
 // IDs modèles GA uniquement : Google éteint les alias '-preview' 3.x le 25/06/2026. Contrairement
 // au constat du 04/06, les ids GA sont fiables (re-testés en API directe le 12/06 + bench M1 CustomArt).
@@ -53,6 +104,7 @@ const SUPPORT: Record<
     mounted: string // "...comme la vraie oeuvre <mounted>"
     fitClause: string // précision sur l'ajustement bord à bord / wrap
     texture: string // texture de surface réaliste (toile = tissage fin, poster = papier mat…)
+    keeps: string // ce qui reste INCHANGÉ pendant que le support se remet à la forme de l'oeuvre
     supportRule: string // règle dure spécifique au support (cadre ou pas)
     negative: string // rappel négatif final propre au support
   }
@@ -62,12 +114,15 @@ const SUPPORT: Record<
       'gallery-wrapped stretched canvas (a bare canvas stretched over a wooden stretcher frame, NO surrounding picture frame)',
     face: 'canvas face',
     mounted: 'artwork printed directly onto that bare stretched canvas',
+    // Le "wrap" ne doit PAS se lire comme « rogne la face avant pour habiller les tranches » : la face
+    // porte l'oeuvre COMPLÈTE, seules les tranches prolongent ses couleurs de bord.
     fitClause:
-      'The print covers the canvas face edge-to-edge; if the thin wrapped side edges (the shallow depth of the canvas) are visible, let the artwork wrap cleanly and continuously around them. Keep the canvas perfectly flat and planar with its clean wrapped edges and subtle shallow depth.',
+      'The front face carries the COMPLETE artwork; if the thin wrapped side edges (the shallow depth of the canvas) are visible at an angle, simply continue the artwork’s edge colours around them — never take that continuation out of the front face. Keep the canvas perfectly flat and planar with its clean wrapped edges and subtle shallow depth.',
     texture:
       'The artwork is printed on a REAL stretched cotton/linen canvas: render a FINE, SUBTLE woven canvas weave across the whole surface and along the wrapped edges, catching the light very slightly so the texture is visible but delicate — never a coarse burlap weave, never a glossy sheen; keep it matte and true to the artwork colours.',
+    keeps: 'edge profile, wrapped sides, thickness and matte canvas material',
     supportRule:
-      'This is a FRAMELESS gallery-wrapped canvas — it is a canvas, NOT a poster and NOT a framed picture. Do NOT add or invent any frame, border, mat, passe-partout, fillet, molding or glass around it. The image goes directly onto the bare stretched canvas, edge-to-edge. Reuse the exact frameless canvas object already in the FIRST image and keep it frameless.',
+      'This is a FRAMELESS gallery-wrapped canvas — it is a canvas, NOT a poster and NOT a framed picture. Do NOT add or invent any frame, border, mat, passe-partout, fillet, molding or glass around it. The image goes directly onto the bare stretched canvas, edge-to-edge. It is the SAME frameless canvas object as in the FIRST image — same material, same edge profile, still frameless — simply re-stretched to the artwork’s proportions.',
     negative:
       'no added frame, no border, no mat, no molding, no glass — it stays a bare frameless gallery-wrapped stretched canvas with clean wrapped edges and a fine matte canvas weave',
   },
@@ -79,8 +134,9 @@ const SUPPORT: Record<
       'The print fills the whole aperture edge-to-edge with NO mat / no passe-partout, sitting flat behind the frame opening.',
     texture:
       'The poster is a flat matte printed sheet with a smooth paper surface — no canvas weave, no gloss, no glass glare.',
+    keeps: 'frame profile, colour, material and bar thickness',
     supportRule:
-      'Reuse the slim frame that is ALREADY in the FIRST image. Do NOT add a SECOND frame, extra border, mat or molding. The artwork stays strictly inside the existing aperture.',
+      'It is the SAME slim frame as in the FIRST image — same profile, same colour, same bar thickness — simply re-cut so its aperture takes the artwork’s proportions. Do NOT add a SECOND frame, extra border, mat or molding. The artwork stays strictly inside that single aperture.',
     negative: 'no second frame, no extra border or mat, keep the single slim frame already present',
   },
   tapestry: {
@@ -92,20 +148,37 @@ const SUPPORT: Record<
       'The artwork sits flat across the rectangular textile face, following its subtle natural weave and any gentle fabric undulation, edge-to-edge with no leftover grey band.',
     texture:
       'The design reads as WOVEN into the textile: a soft natural fabric weave across the whole face, gently following any fabric undulation — matte, no gloss.',
+    keeps:
+      'textile character, hanging rod and the way it hangs (the rod stays exactly as wide as the panel)',
     supportRule:
-      'This is a soft textile hung from a slim rod — NOT a framed picture. Do NOT add any frame, border, mat, molding or glass. Keep the existing tapestry object and its rod exactly as they are.',
+      'This is a soft textile hung from a slim rod — NOT a framed picture. Do NOT add any frame, border, mat, molding or glass. It is the SAME tapestry and the SAME rod as in the FIRST image — same fabric, same rod — with the panel simply re-cut to the artwork’s proportions, the rod following its new width.',
     negative: 'no frame, no glass, no border — keep the hanging woven textile look',
   },
 }
 
 // Prompt d'insertion PRODUIT-AWARE : place l'oeuvre dans la surface vide grise du bon support
 // (toile nue / poster encadré / tapisserie), fidèlement, sans rien toucher d'autre dans la pièce.
+//
+// SENS DE L'ADAPTATION (correctif 17/08/2026) : l'ŒUVRE est l'invariant, le SUPPORT s'y plie.
+// L'ancien prompt disait l'inverse sans le savoir — « remplis EXACTEMENT la zone grise, sans bande
+// grise résiduelle » + « ne recadre pas l'oeuvre » sont incompatibles dès que le rectangle gris n'est
+// pas au ratio de l'oeuvre (c'est-à-dire presque toujours), et le modèle tranchait en faveur du
+// support parce que le reste du prompt le déclarait intouchable (« Keep EVERYTHING ELSE… the support
+// itself… exactly the same »). Résultat : oeuvre rognée, décentrée, ratio perdu. On énonce donc la
+// règle d'or EN TÊTE, on chiffre les proportions de l'oeuvre, et on décrit l'état final atteint
+// (les 4 coins coïncident) plutôt que d'empiler des interdits.
+//
 // mat=true (jumeau passe-partout) : l'œuvre fournie a DÉJÀ une marge blanche imprimée -> on remplace
 // les clauses anti-mat du support par des clauses qui la conservent (le poster standard la supprimait).
-function buildInsertionPrompt(product: Product, mat = false): string {
+// Le ratio mesuré inclut alors la marge : la règle d'or protège la planche entière, marge comprise.
+function buildInsertionPrompt(
+  product: Product,
+  mat = false,
+  shape: Shape = FALLBACK_SHAPE.portrait
+): string {
   const s = SUPPORT[product]
   const fitClause = mat
-    ? 'IMPORTANT — the SECOND image ALREADY INCLUDES a clean, even, printed WHITE border (a passe-partout / mat) around the central artwork. Treat the WHOLE second image — white border INCLUDED — as a single printed sheet and place that whole sheet flat into the grey area, filling it edge-to-edge. The white margin MUST stay clearly visible as an EVEN white band on all four sides between the support and the inner artwork. Do NOT crop it out, do NOT trim or zoom past it, and do NOT enlarge only the inner artwork to cover the white border — keep the white mat exactly as in the second image.'
+    ? 'IMPORTANT — the SECOND image ALREADY INCLUDES a clean, even, printed WHITE border (a passe-partout / mat) around the central artwork. Treat the WHOLE second image — white border INCLUDED — as a single printed sheet and place that whole sheet flat onto the support, filling it edge-to-edge. The white margin MUST stay clearly visible as an EVEN white band on all four sides between the support and the inner artwork. Do NOT crop it out, do NOT trim or zoom past it, and do NOT enlarge only the inner artwork to cover the white border — keep the white mat exactly as in the second image.'
     : s.fitClause
   const supportRule = mat
     ? `${s.supportRule} The WHITE margin around the artwork is a printed mat (passe-partout) that is PART of the SECOND image — KEEP it intact and even; it is NOT a second frame and must NOT be removed.`
@@ -113,20 +186,25 @@ function buildInsertionPrompt(product: Product, mat = false): string {
   const negative = mat
     ? 'keep the even WHITE passe-partout margin around the artwork exactly as in the second image — never remove, crop or cover it'
     : s.negative
-  return `You are compositing two images. The FIRST image is an interior photograph that contains ONE empty ${s.surface}, with a flat light-grey (#ECECEC) ${s.face}. The SECOND image is an artwork${mat ? ' that already includes a printed white passe-partout border (mat) around it' : ''}.
+  return `You are compositing two images. The FIRST image is an interior photograph that contains ONE empty ${s.surface}, with a flat light-grey (#ECECEC) ${s.face}. The SECOND image is an artwork${mat ? ' that already includes a printed white passe-partout border (mat) around it' : ''}, and its proportions are ${shape.sentence}.
 
-Task: place the SECOND image (the artwork) so it fills EXACTLY the empty light-grey ${s.face} of the existing support in the FIRST image, as if it were the real ${s.mounted}.
+GOLDEN RULE — THE ARTWORK IS FIXED, THE SUPPORT ADAPTS TO IT.
+The SECOND image is a finished printed object delivered at its final proportions. It is reproduced WHOLE and at ${shape.label}, with all four of its edges present in the result. The grey ${s.face} in the FIRST image is only a blank placeholder and its shape is NOT final: give the support the shape of the artwork — make its ${s.face} ${shape.label} (${shape.orientation}) so the whole artwork lands on it corner to corner and covers it completely, leaving no grey anywhere. Whenever the placeholder and the artwork disagree on shape, the SUPPORT is what changes: grow or shrink its height and width until it reads as ${shape.label}.
+While it takes that new shape, the support keeps: the same CENTER POINT on the wall, the same place and depth in the room, the same ${s.keeps}, and the same lighting. Wall that a shrinking support uncovers becomes ordinary wall — the same paint, finish, texture and lighting as the wall right around it, with nothing new appearing there.
+
+Task: place the SECOND image (the artwork) onto that reshaped ${s.face}, as if it were the real ${s.mounted}.
 
 Hard rules:
+- GEOMETRY (this is the point of the job): the four corners of the SECOND image land exactly on the four corners of the ${s.face}. The complete artwork is visible — its top band, its bottom band, its left band and its right band all present — at ${shape.label}, centered, seen at its true proportions: a circle in the artwork stays a circle, and anything printed near an edge (a signature, a painted border, a fine detail) stays entirely inside the picture. The artwork is shown whole, at its own shape: not zoomed in, not slid to one side, not stretched, not squashed, not letterboxed.
 - Keep the artwork 100% identical to the SECOND image: same colors, same patterns, same composition, same brush/print texture, and reproduce any text or signature exactly, character-for-character, with the same fonts and layout. Do NOT redraw, restyle, re-illustrate, crop, mirror, or re-interpret the artwork.
-- Only fit the artwork to the grey ${s.face}. Match its perspective, scale and corners so the artwork sits flat with correct foreshortening, edge to edge, with no leftover grey band. ${fitClause}
+- Match the support's perspective and the room's viewpoint, so the artwork sits flat on the ${s.face} with correct foreshortening, edge to edge, with no leftover grey band. ${fitClause}
 - SURFACE TEXTURE (important): ${s.texture}
-- CONTACT SHADOW, NOT FLOATING (important): match how the support actually sits in the FIRST image. If it HANGS ON A WALL, it sits flat and CLOSE against the wall (only a few centimetres deep): cast only a SMALL, soft, TIGHT contact shadow hugging its edges — a thin shadow just under the top edge and along the side away from the light source — so it clearly reads as mounted ON the wall. If it RESTS, LEANS or STANDS on a surface (table, shelf, console, mantel, easel or floor), cast the contact shadow where it meets that surface — pooling at its BASE and along its leaning edge — consistent with that surface and the light. In every case it must read as physically supported, never floating like a button, and NEVER with a large, soft, detached drop shadow or a wide gap of shadow.
+- CONTACT SHADOW, NOT FLOATING (important): match how the support actually sits in the FIRST image, and let its shadow follow the support's new outline. If it HANGS ON A WALL, it sits flat and CLOSE against the wall (only a few centimetres deep): cast only a SMALL, soft, TIGHT contact shadow hugging its edges — a thin shadow just under the top edge and along the side away from the light source — so it clearly reads as mounted ON the wall. If it RESTS, LEANS or STANDS on a surface (table, shelf, console, mantel, easel or floor), cast the contact shadow where it meets that surface — pooling at its BASE and along its leaning edge — consistent with that surface and the light. In every case it must read as physically supported, never floating like a button, and NEVER with a large, soft, detached drop shadow or a wide gap of shadow.
 - Adapt ONLY global lighting to the room: apply the same soft light direction already present, so it looks naturally lit. The support is MATTE (no glass, no sheen): do NOT add any glossy reflection, specular highlight or glare — keep its surface matte. Do not alter the artwork's own colors or content.
 - SUPPORT TYPE (critical): ${supportRule}
-- Keep EVERYTHING ELSE in the FIRST image exactly the same: walls, furniture, floor, decor, the support itself, lighting and camera. Change nothing outside the grey ${s.face}.
+- Keep EVERYTHING ELSE in the FIRST image exactly the same: walls, wall colour, furniture, floor, decor, lighting and camera framing. The ONLY thing allowed to change is the OUTLINE of the support, resized around its own center so it reads as ${shape.label}. Nothing else is added, moved, removed or resized anywhere in the room.
 
-Output: a single photorealistic image, same framing and aspect ratio as the FIRST image, high fidelity, ${negative}, no text added, no watermark.`
+Output: a single photorealistic image, same framing and aspect ratio as the FIRST image, showing the complete ${shape.label} artwork on a support cut to that same ${shape.label}, high fidelity, ${negative}, no text added, no watermark.`
 }
 
 function parseImage(input: string): { mimeType: string; data: string } {
@@ -205,10 +283,21 @@ export default class ArtworkInserter {
     // Le support dicte le prompt : un canvas est une toile NUE (pas de cadre), à préciser à l'insertion.
     const product: Product =
       opts.product === 'poster' ? 'poster' : opts.product === 'tapestry' ? 'tapestry' : 'canvas'
-    const prompt = buildInsertionPrompt(product, opts.mat)
 
     const decor = parseImage(decorInput)
     const artwork = parseImage(artworkInput)
+
+    // Proportions RÉELLES de l'oeuvre (pas la cible déclarée) : c'est le nombre que le prompt oppose
+    // au rectangle gris du décor. Illisible -> on retombe sur la cible, jamais d'échec pour si peu.
+    let shape = FALLBACK_SHAPE[target]
+    try {
+      const meta = await sharp(Buffer.from(artwork.data, 'base64')).metadata()
+      if (meta.width && meta.height) shape = describeRatio(meta.width, meta.height)
+    } catch {
+      Logger.warn('insert: dimensions oeuvre illisibles, repli sur target=%s', target)
+    }
+    const prompt = buildInsertionPrompt(product, opts.mat, shape)
+    Logger.info('insert shape=%s (%s) target=%s', shape.label, shape.orientation, target)
 
     // Chaîne de modèles : on tente le principal (3.x, meilleure fidélité + sortie 2K), puis on RETOMBE
     // sur un modèle au filtre d'entrée moins strict s'il renvoie une réponse SANS image. Cas typique :
