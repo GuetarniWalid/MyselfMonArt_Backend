@@ -86,6 +86,7 @@ async function finish(
     image?: string
     scene?: string
     prompts?: RecipePrompts
+    plan?: StudioPlan
     error?: string
   }
 ): Promise<void> {
