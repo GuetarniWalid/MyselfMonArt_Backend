@@ -436,22 +436,27 @@ export default class PhotoCheck {
       issues.push('multiple_faces')
       return mk(issues, false)
     }
-    // Un sujet potentiellement DE DOS (produit « de dos ») : le visage n'a pas à être lisible.
-    // Le mapping l'exprime en acceptant l'angle 'back' (perfect/warn) → on ne valide alors que
-    // qualité + unicité (déjà faites), ni angle, ni visage trop petit/masqué.
+    // Produit qui ACCEPTE le dos : le visage n'a pas à être lisible — normal, on ne peut pas
+    // exiger un visage net sur une prise de dos.
+    //
+    // ⚠️ Ce cas sortait AUTREFOIS immédiatement (`if (backAccepted) return mk(issues, false)`),
+    // ce qui sautait AUSSI la contrainte d'angle et le cadrage : une photo de FACE, en gros plan,
+    // était déclarée « parfaite » sur un produit qui refuse la face (constaté par Walid le
+    // 19/08/2026 sur le poster « Dog Mom »). Le client payait alors une génération que le dessin
+    // ne pouvait pas honorer. On ne saute donc QUE les contrôles liés au visage.
     const backAccepted = Boolean(policy.angles['back']) && policy.angles['back'] !== 'reject'
-    if (backAccepted) return mk(issues, false)
 
-    if (a.faceCount === 0) {
+    if (a.faceCount === 0 && !backAccepted) {
       // Aucun visage sur un produit qui en exige un.
       issues.push('no_face')
       return mk(issues, false)
     }
 
-    // faceCount === 1 : contrôles liés au visage selon le cadrage.
+    // Cadrage : vrai quel que soit l'angle (un corps coupé reste un corps coupé).
     if (policy.framing === 'full-body') {
       if (a.bodiesFullyVisible === false) issues.push('not_full_body')
-    } else {
+    } else if (!backAccepted) {
+      // Contrôles de VISAGE : seulement quand le produit compte sur un visage lisible.
       if (a.faceTooSmall) issues.push('face_too_small')
       if (a.obstructed) issues.push('obstructed')
     }

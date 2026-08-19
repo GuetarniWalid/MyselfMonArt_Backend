@@ -34,6 +34,7 @@ export const I18N_PATHS = [
   'examples.bad.caption',
   'photoPolicy.messages.warn_angle',
   'photoPolicy.messages.reject_framing',
+  'photoPolicy.messages.angle_mismatch',
 ]
 
 export interface PersonalizedError {

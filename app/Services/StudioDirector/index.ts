@@ -49,6 +49,11 @@ export interface StudioPhotoPlan {
   /** Angle toléré mais non idéal, message client (FR). null = message générique. */
   warnAngleFr: string | null
   /**
+   * Angle REFUSÉ, message client (FR). Sans lui, le thème sert un texte générique inadapté
+   * (« Il faut une photo de l'arrière de la tête ») sur un poster en pied.
+   */
+  rejectAngleFr: string | null
+  /**
    * Légendes des deux images d'exemple (FR).
    * - `badCaptionFr` est LU PAR L'ACHETEUR sous l'image « à éviter » (le thème n'a qu'un texte
    *   générique en repli) : c'est le seul des trois qui se voit.
@@ -84,7 +89,7 @@ You are shown ONE image: a DESIGN the shop sells. A customer will buy it persona
 Your job: read the design and decide what the shop must ask that customer.
 
 OUTPUT strict JSON only, exactly these keys:
-{"fields": string[], "photoNeeded": boolean, "subject": "person"|"group", "framing": "face"|"full-body", "peopleMin": number, "peopleMax": number, "angles": {"front": g, "three-quarter": g, "profile": g, "back": g}, "photoTitleFr": string, "photoHelpFr": string, "rejectFramingFr": string, "warnAngleFr": string, "badCaptionFr": string, "goodAltFr": string, "badAltFr": string, "animals": string[], "noteFr": string}
+{"fields": string[], "photoNeeded": boolean, "subject": "person"|"group", "framing": "face"|"full-body", "peopleMin": number, "peopleMax": number, "angles": {"front": g, "three-quarter": g, "profile": g, "back": g}, "photoTitleFr": string, "photoHelpFr": string, "rejectFramingFr": string, "warnAngleFr": string, "rejectAngleFr": string, "badCaptionFr": string, "goodAltFr": string, "badAltFr": string, "animals": string[], "noteFr": string}
 where each g is one of "perfect" | "warn" | "reject".
 
 "fields" — pick ONLY from the ids in CATALOG below, in the order the customer should fill them.
@@ -115,7 +120,8 @@ family. Never exceed ${PEOPLE_MAX_CAP}.
 with "vous". The title is a short heading ("Votre photo de dos"). The help is one or two plain
 sentences naming the angle to shoot, what must be fully visible, and any animal that must appear
 in the shot. rejectFramingFr is what to say when the framing is wrong; warnAngleFr when the angle
-is tolerated but not ideal. Everyday French, no jargon, never mention AI or prompts.
+is tolerated but not ideal; rejectAngleFr when the buyer shot the REJECTED angle — say which angle
+to take instead and why this artwork needs it, in one sentence. Everyday French, no jargon, never mention AI or prompts.
 
 "badCaptionFr", "goodAltFr", "badAltFr" — FRENCH, about the two EXAMPLE photos shown to the buyer.
 "badCaptionFr" is read by the buyer under the "avoid this" picture: name the ONE mistake that this
@@ -243,6 +249,7 @@ export default class StudioDirector {
         titleFr,
         rejectFramingFr: str(parsed.rejectFramingFr, 220) || null,
         warnAngleFr: str(parsed.warnAngleFr, 220) || null,
+        rejectAngleFr: str(parsed.rejectAngleFr, 220) || null,
         // Facultatifs : absents -> l'appelant garde les légendes en place (jamais de rejet du
         // plan entier pour une légende manquante).
         badCaptionFr: str(parsed.badCaptionFr, 160) || null,
