@@ -1,12 +1,20 @@
 import { z } from 'zod'
 
 export default class TitleAndSeoGenerator {
-  constructor(private readonly productType: 'poster' | 'painting' | 'tapestry') {}
+  constructor(
+    private readonly productType: 'poster' | 'painting' | 'tapestry',
+    /** Brief de personnalisation : le titre et la meta doivent porter « personnalisé ». */
+    private readonly personalization: string | null = null
+  ) {}
 
   public prepareRequest(descriptionHtml: string) {
     return {
       responseFormat: this.getResponseFormat(),
-      systemPrompt: this.getSystemPrompt(this.productType),
+      systemPrompt: this.personalization
+        ? `${this.getSystemPrompt(this.productType)}
+
+${this.personalization}`
+        : this.getSystemPrompt(this.productType),
       payload: { descriptionHtml },
     }
   }

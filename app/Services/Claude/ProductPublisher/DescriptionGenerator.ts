@@ -4,7 +4,13 @@ import type { ArtworkCategory } from 'Types/ProductPublisher'
 export default class DescriptionGenerator {
   constructor(
     private readonly category: ArtworkCategory,
-    private readonly productType: 'poster' | 'painting' | 'tapestry'
+    private readonly productType: 'poster' | 'painting' | 'tapestry',
+    /**
+     * Brief de personnalisation (cf. personalizationBrief.ts). Présent = produit studio :
+     * le bloc est AJOUTÉ en fin de prompt, donc il prime sur la structure narrative par défaut
+     * (il autorise h3/ul, que le prompt de base interdit).
+     */
+    private readonly personalization: string | null = null
   ) {}
 
   public prepareRequest(imageUrl: string) {
@@ -18,11 +24,27 @@ export default class DescriptionGenerator {
   private getResponseFormat() {
     return z.object({
       title: z.string().describe('H2 title (8-15 words) evoking emotion/benefit'),
-      description: z.string().describe('HTML description with <p> tags only, no headings'),
+      description: z
+        .string()
+        .describe(
+          this.personalization
+            ? 'HTML description: <p> paragraphs, plus the <h3>/<ul>/<li>/<strong> blocks required by the <personnalisation> section'
+            : 'HTML description with <p> tags only, no headings'
+        ),
     })
   }
 
   private getSystemPrompt() {
+    const base = this.getCategorySystemPrompt()
+    // Ajouté EN DERNIER pour primer sur <output> du prompt de catégorie.
+    return this.personalization
+      ? `${base}
+
+${this.personalization}`
+      : base
+  }
+
+  private getCategorySystemPrompt() {
     switch (this.category) {
       case 'figuratif':
         return this.getFigurativeSystemPrompt(this.productType)

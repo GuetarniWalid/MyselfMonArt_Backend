@@ -84,14 +84,17 @@ export default class ProductPublisher extends Authentication implements IProduct
   public async generateHtmlDescription(
     imageUrl: string,
     collectionTitle: string,
-    productType: string
+    productType: string,
+    /** Brief de personnalisation (produits studio) — cf. personalizationBrief.ts. */
+    personalization: string | null = null
   ): Promise<string> {
     await this.ensureImageAnalysis(imageUrl)
 
     return this.retryOperation(async () => {
       const descriptionGenerator = new DescriptionGenerator(
         this.imageAnalysis!.category,
-        productType as 'poster' | 'painting' | 'tapestry'
+        productType as 'poster' | 'painting' | 'tapestry',
+        personalization
       )
       const { responseFormat, systemPrompt } = descriptionGenerator.prepareRequest(imageUrl)
       const jsonSchema: any = zodToJsonSchema(responseFormat, 'description')
@@ -148,7 +151,9 @@ export default class ProductPublisher extends Authentication implements IProduct
   public async generateTitleAndSeo(
     descriptionHtml: string,
     collectionTitle: string,
-    productType: string
+    productType: string,
+    /** Brief de personnalisation : « personnalisé » doit vivre dans le titre et la meta. */
+    personalization: string | null = null
   ): Promise<{
     shortTitle: string
     title: string
@@ -157,7 +162,8 @@ export default class ProductPublisher extends Authentication implements IProduct
   }> {
     return this.retryOperation(async () => {
       const titleAndSeoGenerator = new TitleAndSeoGenerator(
-        productType as 'poster' | 'painting' | 'tapestry'
+        productType as 'poster' | 'painting' | 'tapestry',
+        personalization
       )
       const { responseFormat, systemPrompt } = titleAndSeoGenerator.prepareRequest(descriptionHtml)
       const jsonSchema: any = zodToJsonSchema(responseFormat, 'title_and_seo')

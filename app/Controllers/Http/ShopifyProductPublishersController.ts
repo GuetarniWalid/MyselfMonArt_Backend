@@ -4,6 +4,7 @@ import ReplaceProductImagesValidator from 'App/Validators/ReplaceProductImagesVa
 import ShopifyProductPublisher from 'App/Services/ShopifyProductPublisher'
 import { composePosterMedia } from 'App/Services/ShopifyProductPublisher/composePosterMedia'
 import ProductPublisher from 'App/Services/Claude/ProductPublisher'
+import { buildPersonalizationBrief } from 'App/Services/Claude/ProductPublisher/personalizationBrief'
 import ProductReimage from 'App/Services/Shopify/ProductReimage'
 import PublishAlertMailer from 'App/Services/PublishAlertMailer'
 import IdempotencyStore from 'App/Services/IdempotencyStore'
@@ -138,12 +139,19 @@ export default class ShopifyProductPublishersController {
       const collectionTitle = productPublisher.getCollectionTitle()
       const productType = productPublisher.getProductType()
 
+      // Produit STUDIO : l'IA éditoriale doit savoir que l'acheteur envoie SA photo, sinon elle
+      // décrit une affiche déjà faite (constaté sur « Dog Mom »). Le brief est tiré du parcours réel.
+      const personalizationBrief = personalized
+        ? buildPersonalizationBrief(personalized.studioConfig, personalized.studioRecipe)
+        : null
+
       // Process AI operations on main artwork concurrently (using compressed data URI to save API costs)
       const [descriptionHtml, likesCount] = await Promise.all([
         aiService.generateHtmlDescription(
           compressedMainArtworkDataUri,
           collectionTitle,
-          productType
+          productType,
+          personalizationBrief
         ),
         productPublisher.getLikesCount(),
       ])
@@ -159,7 +167,12 @@ export default class ShopifyProductPublishersController {
       ] = await Promise.all([
         aiService.suggestTags(tags, compressedMainArtworkDataUri, collectionTitle, productType),
         aiService.generateAlt(compressedMainArtworkDataUri, collectionTitle, productType),
-        aiService.generateTitleAndSeo(descriptionHtml, collectionTitle, productType),
+        aiService.generateTitleAndSeo(
+          descriptionHtml,
+          collectionTitle,
+          productType,
+          personalizationBrief
+        ),
       ])
 
       // Build mockup metadata
