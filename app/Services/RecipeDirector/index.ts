@@ -1,5 +1,6 @@
 import Logger from '@ioc:Adonis/Core/Logger'
 import { GoogleGenAI } from '@google/genai'
+import { noThinking, THINKING_HEADROOM_TOKENS } from 'App/Services/Gemini/thinking'
 
 /**
  * PROMPT-DIRECTOR : écrit les fragments de prompt de la recette studio À PARTIR DU DESIGN
@@ -95,10 +96,12 @@ export default class RecipeDirector {
       const config: any = {
         systemInstruction: DIRECTOR_INSTRUCTION,
         temperature: 0.4,
-        maxOutputTokens: 1400,
+        // 1400 = la réponse seule. La marge protège d'une réflexion résiduelle (un futur modèle
+        // qui ignorerait noThinking tronquerait le JSON en silence — c'est l'incident du 19/08).
+        maxOutputTokens: 1400 + THINKING_HEADROOM_TOKENS,
         responseMimeType: 'application/json',
       }
-      if (TEXT_MODEL.startsWith('gemini-2.5')) config.thinkingConfig = { thinkingBudget: 0 }
+      config.thinkingConfig = noThinking(TEXT_MODEL)
       const rsp: any = await Promise.race([
         this.ai.models.generateContent({
           model: TEXT_MODEL,

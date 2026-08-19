@@ -1,6 +1,7 @@
 import Logger from '@ioc:Adonis/Core/Logger'
 import sharp from 'sharp'
 import { GoogleGenAI } from '@google/genai'
+import { noThinking } from 'App/Services/Gemini/thinking'
 
 /**
  * Génère UN exemple photo du studio personnalisé (« bonne photo » OU « photo à éviter »)
@@ -130,7 +131,7 @@ export default class PhotoExamplesGenerator {
         temperature: 0.6,
         maxOutputTokens: 220,
       }
-      if (TEXT_MODEL.startsWith('gemini-2.5')) config.thinkingConfig = { thinkingBudget: 0 }
+      config.thinkingConfig = noThinking(TEXT_MODEL)
       const rsp: any = await Promise.race([
         this.ai.models.generateContent({
           model: TEXT_MODEL,
@@ -170,7 +171,7 @@ export default class PhotoExamplesGenerator {
         temperature: 0.7,
         maxOutputTokens: 160,
       }
-      if (TEXT_MODEL.startsWith('gemini-2.5')) config.thinkingConfig = { thinkingBudget: 0 }
+      config.thinkingConfig = noThinking(TEXT_MODEL)
       const rsp: any = await Promise.race([
         this.ai.models.generateContent({
           model: TEXT_MODEL,

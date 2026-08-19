@@ -1,6 +1,7 @@
 import Logger from '@ioc:Adonis/Core/Logger'
 import sharp from 'sharp'
 import { GoogleGenAI } from '@google/genai'
+import { noThinking } from 'App/Services/Gemini/thinking'
 
 type Target = 'portrait' | 'square' | 'landscape'
 type Product = 'canvas' | 'poster' | 'tapestry'
@@ -197,7 +198,7 @@ export default class DecorGenerator {
       }
       // thinkingBudget n'existe que sur la famille 2.5 (la 3.x utilise thinkingLevel) ;
       // on ne l'envoie que si applicable pour qu'un override env reste valide.
-      if (TEXT_MODEL.startsWith('gemini-2.5')) config.thinkingConfig = { thinkingBudget: 0 }
+      config.thinkingConfig = noThinking(TEXT_MODEL)
       const rsp: any = await Promise.race([
         this.ai.models.generateContent({ model: TEXT_MODEL, contents: userContent, config }),
         new Promise((_, rej) => setTimeout(() => rej(new Error('artDirect timeout')), 60000)),

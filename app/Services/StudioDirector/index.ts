@@ -1,5 +1,6 @@
 import Logger from '@ioc:Adonis/Core/Logger'
 import { GoogleGenAI } from '@google/genai'
+import { noThinking, THINKING_HEADROOM_TOKENS } from 'App/Services/Gemini/thinking'
 
 /**
  * STUDIO-DIRECTOR : lit le DESIGN et décide TOUT le paramétrage du parcours client, au moment
@@ -130,10 +131,11 @@ export default class StudioDirector {
       const config: any = {
         systemInstruction: DIRECTOR_INSTRUCTION,
         temperature: 0.2,
-        maxOutputTokens: 1200,
+        // 1200 = la réponse seule ; la marge protège d'une réflexion résiduelle (cf. thinking.ts).
+        maxOutputTokens: 1200 + THINKING_HEADROOM_TOKENS,
         responseMimeType: 'application/json',
       }
-      if (TEXT_MODEL.startsWith('gemini-2.5')) config.thinkingConfig = { thinkingBudget: 0 }
+      config.thinkingConfig = noThinking(TEXT_MODEL)
       const rsp: any = await Promise.race([
         this.ai.models.generateContent({
           model: TEXT_MODEL,

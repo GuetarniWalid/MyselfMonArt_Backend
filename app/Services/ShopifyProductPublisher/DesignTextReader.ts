@@ -1,5 +1,6 @@
 import Logger from '@ioc:Adonis/Core/Logger'
 import { GoogleGenAI } from '@google/genai'
+import { noThinking } from 'App/Services/Gemini/thinking'
 
 /**
  * Lit les TEXTES écrits sur le design (vision) et en déduit la table de remplacement de la
@@ -59,7 +60,7 @@ export default class DesignTextReader {
         maxOutputTokens: 400,
         responseMimeType: 'application/json',
       }
-      if (TEXT_MODEL.startsWith('gemini-2.5')) config.thinkingConfig = { thinkingBudget: 0 }
+      config.thinkingConfig = noThinking(TEXT_MODEL)
       const rsp: any = await Promise.race([
         this.ai.models.generateContent({
           model: TEXT_MODEL,
