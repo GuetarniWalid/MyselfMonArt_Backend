@@ -366,6 +366,19 @@ export default class PhotoCheck {
 
   // --------------------------------------------------------------------------
   // Verdict : (évaluation intrinsèque, policy) -> { ok, issues, grade, ... }
+  //
+  // CE QUI BLOQUE, ET CE QUI NE BLOQUE PAS (arbitrage du 19/08/2026). Un refus coûte une VENTE :
+  // on ne bloque que ce qu'aucune génération ne pourra rattraper.
+  //   • BLOQUE  : l'ANGLE refusé par la fiche (une photo de face ne produira jamais un dessin de
+  //     dos), la qualité inexploitable (noire, floue, minuscule), le NSFW, et les comptages du
+  //     mode groupe (aucune personne / trop de personnes).
+  //   • NE BLOQUE PAS : le CADRAGE. `bodiesFullyVisible` est mesuré au sens strict par le LLM
+  //     (« de la tête aux pieds, PIEDS INCLUS ») alors que le prompt de génération sait compléter
+  //     un corps coupé (« completing the body naturally if the photo is cropped at the chest or
+  //     waist »). Le refuser recalait des photos idéales — de dos, l'animal bien visible, juste
+  //     les pieds hors champ — et personne n'arrivait au bout du parcours. Le champ reste évalué
+  //     et journalisé ; c'est la CONSIGNE de l'étape photo qui demande une photo entière, pas le
+  //     juge. (Avant cet arbitrage : cf. le bug inverse, où accepter le dos sautait AUSSI l'angle.)
   // --------------------------------------------------------------------------
 
   private deriveVerdict(
@@ -420,10 +433,8 @@ export default class PhotoCheck {
         return mk(issues, false)
       }
       if (policy.peopleMax != null && count > policy.peopleMax) issues.push('too_many_people')
-      // Cadrage en-pied (D-2) : un corps coupé fausse les tailles relatives → refus.
-      if (policy.framing === 'full-body' && a.bodiesFullyVisible === false) {
-        issues.push('not_full_body')
-      }
+      // Cadrage : voir la note de deriveVerdict — ce n'est PLUS un refus (19/08/2026).
+      // `bodiesFullyVisible` reste évalué et journalisé, mais ne bloque plus la vente.
       // Angle dominant du groupe : reject bloque, warn informe (jamais un faux rejet).
       if (angleGrade === 'reject') issues.push('angle_mismatch')
       else if (angleGrade === 'warn') warn = true
@@ -452,11 +463,9 @@ export default class PhotoCheck {
       return mk(issues, false)
     }
 
-    // Cadrage : vrai quel que soit l'angle (un corps coupé reste un corps coupé).
-    if (policy.framing === 'full-body') {
-      if (a.bodiesFullyVisible === false) issues.push('not_full_body')
-    } else if (!backAccepted) {
-      // Contrôles de VISAGE : seulement quand le produit compte sur un visage lisible.
+    // Contrôles de VISAGE : seulement quand le produit compte sur un visage lisible.
+    // (Le cadrage ne bloque plus — voir la note de deriveVerdict.)
+    if (!backAccepted && policy.framing !== 'full-body') {
       if (a.faceTooSmall) issues.push('face_too_small')
       if (a.obstructed) issues.push('obstructed')
     }
