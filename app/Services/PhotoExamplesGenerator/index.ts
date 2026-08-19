@@ -1,7 +1,7 @@
 import Logger from '@ioc:Adonis/Core/Logger'
 import sharp from 'sharp'
 import { GoogleGenAI } from '@google/genai'
-import { noThinking } from 'App/Services/Gemini/thinking'
+import { noThinking, THINKING_HEADROOM_TOKENS } from 'App/Services/Gemini/thinking'
 
 /**
  * Génère UN exemple photo du studio personnalisé (« bonne photo » OU « photo à éviter »)
@@ -36,6 +36,12 @@ export interface PhotoExamplesPolicy {
   perfectAngle?: string
   /** angles notés 🔴 (reject) — la mauvaise photo en utilise un */
   rejectAngles?: string[]
+  /**
+   * Animaux de compagnie DESSINÉS sur l'œuvre (« chien », « chat »), vus par le studio-director.
+   * Sans eux, l'exemple montrait la personne seule : le casting est déduit par un LLM qui les
+   * oubliait, alors que l'acheteur doit comprendre qu'il faut venir AVEC son animal.
+   */
+  companions?: string[]
 }
 
 const ANGLE_TEXT: Record<string, string> = {
@@ -55,7 +61,7 @@ const OPPOSITE_ANGLE: Record<string, string> = {
 const PHOTO_DIRECTOR_INSTRUCTION = `You are a PHOTO CASTING DIRECTOR for a personalized-art e-commerce studio. Customers send ONE photo, and an artist redraws its subject(s) in the style of the ARTWORK you are shown. Your job: look at the ARTWORK image and write the CASTING BRIEF for a sample customer photo — WHO or WHAT should appear in it.
 
 RULES:
-- Derive the subject(s) ONLY from what the artwork depicts: how many people (adults/children, approximate ages), or the animal/object if it is not people. If the artwork shows a family of four, the brief says a family of four (two adults, two young children). A couple -> a couple. A dog portrait -> one dog.
+- Derive the subject(s) ONLY from what the artwork depicts: how many people (adults/children, approximate ages) AND every companion animal shown WITH them. A family of four -> a family of four (two adults, two young children). A couple -> a couple. A dog portrait -> one dog. A woman drawn with her dog -> ONE woman AND her dog, both in the photo — an animal in the artwork is never optional and never replaces the person.
 - Describe subjects as REAL people/animals for a photograph: plain everyday clothing, natural builds. Invent plausible neutral details (never celebrity likenesses).
 - Do NOT describe the artwork's STYLE (line-art, watercolor…), its text, or its layout — only the subjects to photograph.
 - Do NOT describe pose, camera angle, framing or lighting — those are decided elsewhere.
@@ -129,7 +135,7 @@ export default class PhotoExamplesGenerator {
       const config: any = {
         systemInstruction: INTENT_REWRITER_INSTRUCTION,
         temperature: 0.6,
-        maxOutputTokens: 220,
+        maxOutputTokens: 220 + THINKING_HEADROOM_TOKENS,
       }
       config.thinkingConfig = noThinking(TEXT_MODEL)
       const rsp: any = await Promise.race([
@@ -159,17 +165,24 @@ export default class PhotoExamplesGenerator {
     const mimeType = m ? m[1] : 'image/jpeg'
     const data = m ? m[2] : artwork
     // Le nombre de personnes de la policy CADRE le casting (le juge photo l'imposera au client).
+    // Les animaux ne sont JAMAIS comptés comme des personnes (le juge du studio non plus) : sans
+    // cette précision, « exactement UNE personne » faisait disparaître le chien de l'œuvre.
     const countHint =
       policy.subject === 'group'
-        ? `The customer photo must contain between ${policy.peopleMin ?? 1} and ${policy.peopleMax ?? 6} people — if the artwork's count differs, stay within that range while matching the artwork's family structure.`
+        ? `The customer photo must contain between ${policy.peopleMin ?? 1} and ${policy.peopleMax ?? 6} PEOPLE — if the artwork's count differs, stay within that range while matching the artwork's family structure.`
         : policy.subject === 'person'
-          ? 'The customer photo must contain exactly ONE person (or one animal if the artwork depicts an animal).'
+          ? 'The customer photo must contain exactly ONE PERSON.'
           : ''
+    const companionHint = companionsText(policy)
+      ? ` Companion animals are NOT counted as people: this artwork shows ${companionsText(
+          policy
+        )}, so the photo must show the person WITH that animal.`
+      : ''
     try {
       const config: any = {
         systemInstruction: PHOTO_DIRECTOR_INSTRUCTION,
         temperature: 0.7,
-        maxOutputTokens: 160,
+        maxOutputTokens: 160 + THINKING_HEADROOM_TOKENS,
       }
       config.thinkingConfig = noThinking(TEXT_MODEL)
       const rsp: any = await Promise.race([
@@ -177,7 +190,7 @@ export default class PhotoExamplesGenerator {
           model: TEXT_MODEL,
           contents: [
             { inlineData: { mimeType, data } },
-            { text: `${countHint}\nWrite the casting brief.` },
+            { text: `${countHint}${companionHint}\nWrite the casting brief.` },
           ],
           config,
         }),
@@ -189,9 +202,10 @@ export default class PhotoExamplesGenerator {
       Logger.warn('photo-examples photoDirect failed (fallback): %s', (e as any)?.message || e)
     }
     // Repli déterministe si le LLM échoue : casting générique cohérent avec la policy.
+    const withAnimal = companionsText(policy) ? `, together with ${companionsText(policy)}` : ''
     return policy.subject === 'group'
-      ? `A warm ordinary family of ${Math.min(4, policy.peopleMax ?? 4)} — two adults and their children — in plain everyday clothing.`
-      : 'One ordinary person in plain everyday clothing.'
+      ? `A warm ordinary family of ${Math.min(4, policy.peopleMax ?? 4)} — two adults and their children — in plain everyday clothing${withAnimal}.`
+      : `One ordinary person in plain everyday clothing${withAnimal}.`
   }
 
   /** Étage 2 : rend UNE photo (verticale 3:4) et la renvoie en data URI JPEG. */
@@ -227,6 +241,50 @@ export default class PhotoExamplesGenerator {
 
 // ---- Prompts : la POLICY décide (déterministe), le casting habille. --------------------
 
+// « chien », « chien et chat »… tels que lus sur l'œuvre par le studio-director.
+function companionsText(policy: PhotoExamplesPolicy): string {
+  const list = (policy.companions || [])
+    .map((c) => String(c).trim())
+    .filter(Boolean)
+    .slice(0, 3)
+  if (!list.length) return ''
+  const EN: Record<string, string> = {
+    chien: 'a dog',
+    chat: 'a cat',
+    cheval: 'a horse',
+    lapin: 'a rabbit',
+    oiseau: 'a bird',
+  }
+  const parts = list.map((c) => EN[c] || `a ${c}`)
+  return parts.length === 1
+    ? parts[0]
+    : parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1]
+}
+// L'animal est EXIGÉ en code, pas seulement espéré du casting : c'est la garantie déterministe
+// que l'exemple montre bien la personne AVEC son animal.
+function companionClause(policy: PhotoExamplesPolicy): string {
+  const txt = companionsText(policy)
+  return txt
+    ? ` The photo also shows ${txt}, right beside the person or held in their arms — clearly visible in the frame.`
+    : ''
+}
+/**
+ * Humeur : détendue et avenante dans les DEUX exemples — la mauvaise photo doit être mauvaise
+ * pour sa RAISON TECHNIQUE, jamais parce que les gens auraient l'air malheureux.
+ *
+ * MAIS on ne réclame un SOURIRE que si les visages se voient : demander « un sourire naturel » sur
+ * une prise DE DOS met deux règles en conflit, et le modèle sacrifie celle qu'il ne peut pas
+ * satisfaire — il retournerait les gens vers l'objectif, ruinant justement l'exemple. Dos/profil :
+ * la chaleur passe par la posture.
+ */
+function moodClause(angleKey?: string): string {
+  const facesHidden = angleKey === 'back'
+  if (facesHidden) {
+    return 'The mood is warm and relaxed, carried by the posture alone — an easy, comfortable stance, shoulders loose, nothing stiff or sad. Faces stay away from the camera: do NOT turn anyone towards the lens to show an expression.'
+  }
+  return 'Everyone looks relaxed and happy in an ordinary way — a natural, easy smile, the expression of people glad to be photographed. Never a wide forced grin, never a blank stare, never a frown, a sulk or a sad face.'
+}
+
 // Contraintes de la BONNE photo, dérivées de la policy en code.
 function goodConstraints(policy: PhotoExamplesPolicy): string {
   const angle = ANGLE_TEXT[policy.perfectAngle || 'front'] || ANGLE_TEXT.front
@@ -234,21 +292,47 @@ function goodConstraints(policy: PhotoExamplesPolicy): string {
     policy.framing === 'full-body'
       ? 'FULL-LENGTH framing: every subject entirely visible from head to feet, with comfortable margin above heads and below feet — nothing cropped.'
       : 'The face is the subject: a clear, generous head-and-shoulders framing, the face large, fully visible and in sharp focus.'
-  return `${framing} The subjects are ${angle}. They stand naturally close together, softly connected (holding hands or side by side), calm and unposed.`
+  const together =
+    policy.subject === 'group'
+      ? ' They stand naturally close together, softly connected (holding hands or side by side), calm and unposed.'
+      : ' The pose is calm and unposed.'
+  return `${framing} The subjects are ${angle}.${together}${companionClause(policy)} ${moodClause(
+    policy.perfectAngle
+  )}`
 }
 
-// Violations de la MAUVAISE photo : exactement ce que la policy refuse.
+/**
+ * Violations de la MAUVAISE photo — UNE SEULE, celle que la policy refuse vraiment.
+ *
+ * Avant, l'exemple cumulait mauvais angle + cadrage coupé + lumière ratée + flou + fond encombré :
+ * l'acheteur n'y lisait plus la règle du produit (« il me faut une photo de dos »), il y voyait
+ * juste une photo ratée. On isole donc la faute : si un angle est noté 🔴, c'est LUI le défaut et
+ * tout le reste — netteté, lumière, cadrage — reste impeccable. Le cadrage ne devient le défaut
+ * que si aucun angle n'est refusé.
+ */
 function badConstraints(policy: PhotoExamplesPolicy): string {
-  const wrongAngleKey =
-    (policy.rejectAngles && policy.rejectAngles[0]) ||
-    OPPOSITE_ANGLE[policy.perfectAngle || 'front'] ||
-    'front'
-  const angle = ANGLE_TEXT[wrongAngleKey] || ANGLE_TEXT.front
+  const rejected = (policy.rejectAngles && policy.rejectAngles[0]) || null
+  const wrongAngleKey = rejected || OPPOSITE_ANGLE[policy.perfectAngle || 'front'] || null
+  const wellShot =
+    'Everything else about the photo is GOOD: sharp focus, soft even daylight, a calm uncluttered background, straight horizon, natural colours.'
+
+  if (wrongAngleKey && wrongAngleKey !== policy.perfectAngle) {
+    const angle = ANGLE_TEXT[wrongAngleKey] || ANGLE_TEXT.front
+    const framing =
+      policy.framing === 'full-body'
+        ? 'Everyone is fully visible from head to feet, nothing cropped.'
+        : 'A clear head-and-shoulders framing.'
+    return `THE ONE AND ONLY FAULT is the shooting angle: the subjects are ${angle} — the exact viewpoint this artwork cannot use. ${framing} ${wellShot}${companionClause(
+      policy
+    )} ${moodClause(wrongAngleKey)}`
+  }
+
+  // Aucun angle refusé -> la faute est le cadrage.
   const framing =
     policy.framing === 'full-body'
-      ? 'BADLY CROPPED: the framing cuts people off — legs and feet out of frame, one person half outside the edge; subjects at awkwardly different distances.'
-      : 'The face is TINY and far away, partly turned or obstructed, hard to make out.'
-  return `${framing} The subjects are ${angle}. The light is poor — dim, backlit or harsh mixed indoor light; the image is slightly blurry and tilted, with a cluttered distracting background.`
+      ? 'THE ONE AND ONLY FAULT is the framing: it cuts the subjects off — legs and feet out of frame, one person half outside the edge.'
+      : 'THE ONE AND ONLY FAULT is the framing: the face is tiny and far away, lost in the frame.'
+  return `${framing} ${wellShot}${companionClause(policy)} ${moodClause(policy.perfectAngle)}`
 }
 
 function buildGoodPrompt(casting: string, policy: PhotoExamplesPolicy): string {
@@ -264,13 +348,16 @@ RENDERING: honest photorealism — a real snapshot, warm and likeable, natural s
 }
 
 function buildBadPrompt(casting: string, policy: PhotoExamplesPolicy): string {
-  return `A candid amateur smartphone photograph, vertical 3:4 — a realistic example of a photo that is NOT usable for drawing a portrait. It must look like a genuine everyday snapshot gone wrong, instantly recognizable as unsuitable, yet completely plausible.
+  // L'intro ne dit plus « photo ratée » : depuis que la faute est UNIQUE, la photo est bien
+  // prise — elle est simplement inutilisable POUR CETTE ŒUVRE. Dire les deux (« mal prise » et
+  // « nette et bien éclairée ») laissait le modèle choisir, et il ajoutait flou et pénombre.
+  return `A candid amateur smartphone photograph, vertical 3:4 — a realistic example of a photo a customer would send that CANNOT be used for THIS artwork. The photo itself is perfectly well taken; it simply shows the subjects from a viewpoint this artwork cannot work from.
 
 SUBJECTS: ${casting}
 
 ${badConstraints(policy)}
 
-RENDERING: honest photorealism — a believable casual snapshot, just a poorly taken one. Not grotesque, not comedic, no exaggerated distortion. Absolutely no text, watermark, frame or logo. Fictional everyday people only.`
+RENDERING: honest photorealism — a real, pleasant snapshot, natural skin and fabric texture, no filters, no studio look. Not grotesque, not comedic, no exaggerated distortion. Absolutely no text, watermark, frame or logo. Fictional everyday people only.`
 }
 
 // Enveloppe FIXE du brief écrit par l'intent-rewriter : le brief décrit sujets/angle/cadrage/
@@ -283,8 +370,8 @@ function wrapBriefPrompt(kind: ExampleKind, brief: string): string {
       : `A candid amateur smartphone photograph, vertical 3:4 — a realistic example of a photo that is NOT usable for drawing a portrait: a genuine everyday snapshot gone wrong, instantly recognizable as unsuitable, yet completely plausible.`
   const rendering =
     kind === 'good'
-      ? `RENDERING: honest photorealism — a real snapshot, warm and likeable, natural skin and fabric texture, no filters, no studio look. Absolutely no text, watermark, frame or logo. Fictional everyday people only.`
-      : `RENDERING: honest photorealism — a believable casual snapshot, just a poorly taken one. Not grotesque, not comedic, no exaggerated distortion. Absolutely no text, watermark, frame or logo. Fictional everyday people only.`
+      ? `RENDERING: honest photorealism — a real snapshot, warm and likeable, natural skin and fabric texture, no filters, no studio look. ${moodClause(undefined)} Absolutely no text, watermark, frame or logo. Fictional everyday people only.`
+      : `RENDERING: honest photorealism — a believable casual snapshot, just a poorly taken one. Not grotesque, not comedic, no exaggerated distortion. ${moodClause(undefined)} Absolutely no text, watermark, frame or logo. Fictional everyday people only.`
   return `${intro}
 
 THE PHOTO: ${brief}

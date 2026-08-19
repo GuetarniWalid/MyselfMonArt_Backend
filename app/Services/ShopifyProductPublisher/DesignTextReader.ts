@@ -1,6 +1,6 @@
 import Logger from '@ioc:Adonis/Core/Logger'
 import { GoogleGenAI } from '@google/genai'
-import { noThinking } from 'App/Services/Gemini/thinking'
+import { noThinking, THINKING_HEADROOM_TOKENS } from 'App/Services/Gemini/thinking'
 
 /**
  * Lit les TEXTES écrits sur le design (vision) et en déduit la table de remplacement de la
@@ -57,7 +57,7 @@ export default class DesignTextReader {
       const config: any = {
         systemInstruction: READER_INSTRUCTION,
         temperature: 0.1, // lecture : on veut l'exactitude, pas la créativité
-        maxOutputTokens: 400,
+        maxOutputTokens: 400 + THINKING_HEADROOM_TOKENS,
         responseMimeType: 'application/json',
       }
       config.thinkingConfig = noThinking(TEXT_MODEL)

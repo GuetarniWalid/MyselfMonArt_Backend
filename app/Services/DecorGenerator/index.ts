@@ -1,7 +1,7 @@
 import Logger from '@ioc:Adonis/Core/Logger'
 import sharp from 'sharp'
 import { GoogleGenAI } from '@google/genai'
-import { noThinking } from 'App/Services/Gemini/thinking'
+import { noThinking, THINKING_HEADROOM_TOKENS } from 'App/Services/Gemini/thinking'
 
 type Target = 'portrait' | 'square' | 'landscape'
 type Product = 'canvas' | 'poster' | 'tapestry'
@@ -194,7 +194,7 @@ export default class DecorGenerator {
       const config: any = {
         systemInstruction: ART_DIRECTOR_INSTRUCTION,
         temperature: 0.9,
-        maxOutputTokens: 320,
+        maxOutputTokens: 320 + THINKING_HEADROOM_TOKENS,
       }
       // thinkingBudget n'existe que sur la famille 2.5 (la 3.x utilise thinkingLevel) ;
       // on ne l'envoie que si applicable pour qu'un override env reste valide.

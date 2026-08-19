@@ -46,6 +46,18 @@ export default class PhotoExamplesController {
         rejectAngles: Array.isArray(raw.rejectAngles)
           ? raw.rejectAngles.map(angle).filter(Boolean).slice(0, 4)
           : undefined,
+        // Animaux lus sur le design par le studio-director (« chien »…) : 3 mots bornés.
+        companions: Array.isArray(raw.companions)
+          ? raw.companions
+              .map((c: any) =>
+                String(c || '')
+                  .trim()
+                  .toLowerCase()
+                  .slice(0, 24)
+              )
+              .filter(Boolean)
+              .slice(0, 3)
+          : undefined,
       }
       const jobId = randomUUID()
       await ResizeJobs.create(jobId)
