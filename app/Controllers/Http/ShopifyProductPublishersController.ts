@@ -300,6 +300,20 @@ export default class ShopifyProductPublishersController {
             shopify,
           })
           personalizedWarnings = report.warnings
+          // CANAUX DE VENTE. Le personnalisé naît TOUJOURS en brouillon (relecture du studio par
+          // Walid avant activation) et n'a AUCUN « finalize » qui publierait plus tard, contrairement
+          // au bulk. Sans cette ligne, le produit reste sur ZÉRO canal : le jour où Walid le passe en
+          // actif, il est actif mais INVISIBLE — la fiche redirige vers l'accueil (constaté sur le
+          // poster « Dog Mom », 19/08/2026). Publier un brouillon n'expose rien : la visibilité reste
+          // gouvernée par le statut du produit. Best-effort : un canal capricieux ne doit pas faire
+          // supprimer un produit par ailleurs complet.
+          try {
+            await shopify.publications.publishProductOnAll(productCreated.id)
+          } catch (pubErr: any) {
+            personalizedWarnings.push(
+              `Canaux de vente non renseignés (${pubErr?.message || pubErr}) — le produit sera actif mais invisible : publie-le à la main sur la Boutique en ligne.`
+            )
+          }
         } catch (setupErr: any) {
           try {
             await shopify.product.delete(productCreated.id)
