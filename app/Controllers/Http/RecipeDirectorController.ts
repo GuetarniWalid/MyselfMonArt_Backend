@@ -109,6 +109,8 @@ export default class RecipeDirectorController {
         message: job.error || "Échec de l'analyse du design.",
       }
     }
-    return { success: true, status: 'pending' }
+    // `phase` : ce que le job est en train de faire ('plan' puis 'prompt'). Le front en fait un
+    // libellé — sans lui, l'écran reste muet pendant les deux passes vision.
+    return { success: true, status: 'pending', phase: job.phase || null }
   }
 }

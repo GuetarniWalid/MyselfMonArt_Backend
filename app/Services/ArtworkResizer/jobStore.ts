@@ -30,6 +30,9 @@ interface Job {
   scene?: string // décor uniquement : brief art-director utilisé (rejoué pour les autres ratios)
   prompts?: RecipePrompts // analyse de design (poster personnalisé) : fragments de prompt écrits
   plan?: StudioPlan // analyse de design : parcours client déduit (champs + règles photo)
+  // Étape en cours d'un job à plusieurs passes (analyse de design : 'plan' puis 'prompt').
+  // Renvoyée au front pendant le polling : sans elle, 30 à 60 s s'écoulent sans aucun signe.
+  phase?: string
   error?: string
   createdAt: number
 }
@@ -96,6 +99,22 @@ async function finish(
     await safeWrite(file(id), JSON.stringify({ ...base, ...patch }))
   } catch (e) {
     Logger.error('jobStore.finish id=%s: %s', id, (e as Error).message)
+  }
+}
+
+/**
+ * Marque l'étape en cours d'un job encore en vol (best-effort : jamais bloquant, jamais fatal).
+ * Ne touche PAS un job déjà terminé — un `finish` concurrent doit rester la dernière écriture.
+ */
+export async function setPhase(id: string, phase: string): Promise<void> {
+  try {
+    const raw = await fs.readFile(file(id), 'utf8').catch(() => null)
+    if (!raw) return
+    const base = JSON.parse(raw) as Job
+    if (base.status !== 'pending') return
+    await safeWrite(file(id), JSON.stringify({ ...base, phase }))
+  } catch {
+    // best-effort : l'absence de phase ne dégrade que l'affichage
   }
 }
 
@@ -403,6 +422,7 @@ export function startRecipeDirector(
     const t0 = Date.now()
     try {
       // 1) Parcours client (best-effort : un échec ne coûte que l'auto-remplissage).
+      await setPhase(id, 'plan')
       const plan = catalog.length ? await new StudioDirector().plan(artwork, catalog) : null
 
       // 2) Prompt — écrit pour les champs RETENUS par le plan (à défaut : ceux du builder).
@@ -415,6 +435,7 @@ export function startRecipeDirector(
         : []
       const promptSteps = plan ? planSteps : steps
       const context = plan ? recipeContextOf(plan) : undefined
+      await setPhase(id, 'prompt')
       const prompts = await new RecipeDirector().write(artwork, promptSteps, context)
       if (!prompts) throw new Error("L'analyse du design n'a rien donné. Réessaie.")
 
