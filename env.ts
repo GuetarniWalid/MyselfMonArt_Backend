@@ -52,7 +52,13 @@ export default Env.rules({
   MAIL_RECIPIENT: Env.schema.string(),
   RESEND_API_KEY: Env.schema.string.optional(),
   RESEND_FROM: Env.schema.string.optional(),
-  GOOGLE_API_KEY: Env.schema.string(),
+  // GOOGLE_API_KEY : RETIRÉE le 19/08/2026. Aucun service ne la lisait (les appels Google passent
+  // par OAuth GOOGLE_CLIENT_ID/SECRET, et Gemini par GEMINI_API_KEY passée explicitement), mais
+  // le SDK @google/genai la ramasse TOUT SEUL dans l'environnement quand aucune clé n'est fournie
+  // en argument — et celle qui traînait était morte (400 « API key not valid »). Un futur
+  // `new GoogleGenAI()` sans clé explicite serait donc parti sur une clé invalide.
+  // La déclarer ici la rendait OBLIGATOIRE au démarrage : il fallait la retirer d'abord du code,
+  // et seulement ensuite du .env du serveur (l'inverse empêche le backend de démarrer).
   OPENAI_API_KEY: Env.schema.string(),
   OPENAI_MODEL: Env.schema.enum(['gpt-4o-2024-08-06', 'gpt-4o-mini-2024-07-18', 'gpt-5'] as const),
   ANTHROPIC_API_KEY: Env.schema.string(),
