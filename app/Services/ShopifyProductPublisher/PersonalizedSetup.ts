@@ -182,6 +182,16 @@ export default class PersonalizedSetup {
       delete recipeToWrite.prompt.perPerson
       delete recipeToWrite.prompt.addExtra
       delete recipeToWrite.prompt.removeExtra
+      // Le comptage de figures se règle sur les légendes attendues (n = tokens.length). Sans
+      // légendes, n vaut 0 : laisser le contrôle actif ferait échouer TOUS les candidats, donc
+      // tout le produit. C'est calculable, ce n'est pas un réglage — on l'éteint ici, quoi que
+      // le builder ait envoyé (un design sans prénom par sujet est un cas normal).
+      if (recipeToWrite.judge && recipeToWrite.judge.figureCount) {
+        recipeToWrite.judge.figureCount = false
+        warnings.push(
+          'Aucune légende par sujet lue sur le design : le comptage de personnages est désactivé pour ce produit.'
+        )
+      }
     }
     if (!(recipeToWrite.inputs && recipeToWrite.inputs.title)) {
       delete recipeToWrite.prompt.replaceTitle

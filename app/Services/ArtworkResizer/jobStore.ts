@@ -9,6 +9,7 @@ import ArtworkInserter, { InsertOptions } from '../ArtworkInserter'
 import MockupCleaner, { CleanOptions } from '../MockupCleaner'
 import PhotoExamplesGenerator, { ExampleKind, PhotoExamplesPolicy } from '../PhotoExamplesGenerator'
 import RecipeDirector, { RecipeDirectorStepInfo, RecipePrompts } from '../RecipeDirector'
+import StudioDirector, { StudioCatalogEntry, StudioPlan } from '../StudioDirector'
 
 /**
  * Stockage de jobs de redimensionnement sur disque + exécution en arrière-plan.
@@ -28,6 +29,7 @@ interface Job {
   image?: string
   scene?: string // décor uniquement : brief art-director utilisé (rejoué pour les autres ratios)
   prompts?: RecipePrompts // analyse de design (poster personnalisé) : fragments de prompt écrits
+  plan?: StudioPlan // analyse de design : parcours client déduit (champs + règles photo)
   error?: string
   createdAt: number
 }
@@ -327,14 +329,61 @@ export function startPhotoExamples(
   p.finally(() => inflight.delete(p))
 }
 
+// Angle retenu par le StudioDirector -> formulation anglaise pour le prompt-director.
+const ANGLE_PHRASES: Record<string, string> = {
+  'front': 'facing the camera',
+  'three-quarter': 'at a three-quarter angle',
+  'profile': 'in profile',
+  'back': 'from behind',
+}
+
 /**
- * Lance l'écriture des fragments de prompt de la recette personnalisée depuis le DESIGN
- * (RecipeDirector, vision). Même réserve : NE PAS attendre dans le controller.
+ * Consignes transmises au RecipeDirector, dérivées du plan. Deux choses qu'il ne peut pas
+ * deviner seul et qui changent les fragments : l'angle SOUS LEQUEL la photo client arrivera
+ * (le prompt ne doit jamais réclamer un point de vue que la photo ne montrera pas), et
+ * l'animal de compagnie dessiné sur le design — sans cette ligne, la consigne « n'ajoute rien
+ * qui ne soit pas sur la photo » le ferait supprimer du dessin.
+ */
+function recipeContextOf(plan: StudioPlan): string | undefined {
+  const parts: string[] = []
+  if (plan.photo) {
+    const angle = Object.entries(plan.photo.angles).find(([, g]) => g === 'perfect')?.[0]
+    const phrase = angle ? ANGLE_PHRASES[angle] : null
+    if (phrase) {
+      parts.push(
+        `PHOTO CONSTRAINT: the customer photo is required to be shot ${phrase}, matching this design. ` +
+          `Write the fragments for subjects seen ${phrase}, and never ask for a viewpoint the photo will not show.`
+      )
+    }
+    if (plan.photo.framing === 'full-body') {
+      parts.push('The subjects are drawn full length, head to feet.')
+    }
+  }
+  if (plan.animals.present) {
+    parts.push(
+      `COMPANION ANIMALS: this design shows ${plan.animals.kinds.join(', ')}. The buyer's own animal ` +
+        `appears in their photo and must be redrawn in the same style — it belongs to the artwork and is ` +
+        `not an invented accessory. Animals are never counted as figures and never carry a caption.`
+    )
+  }
+  return parts.length ? parts.join('\n') : undefined
+}
+
+/**
+ * Lance l'analyse complète du DESIGN d'un poster personnalisé (2 passes vision, dans cet ordre
+ * car la seconde dépend de la première) :
+ *   1. StudioDirector — QUELS champs demander au client et QUELLE photo exiger (angle, cadrage,
+ *      nombre de personnes, consigne rédigée). Facultatif : s'il échoue, le parcours actuel du
+ *      builder reste en place et seule l'écriture du prompt a lieu (comportement d'avant).
+ *   2. RecipeDirector — les fragments de prompt, écrits POUR LES CHAMPS RETENUS en 1 (et en
+ *      tenant compte d'un animal dessiné sur le design).
+ * Même réserve que les autres jobs : NE PAS attendre dans le controller.
  */
 export function startRecipeDirector(
   id: string,
   artwork: string,
-  steps: RecipeDirectorStepInfo[]
+  steps: RecipeDirectorStepInfo[],
+  catalog: StudioCatalogEntry[] = []
 ): void {
   if (inflight.size >= MAX_INFLIGHT) {
     finish(id, {
@@ -352,10 +401,34 @@ export function startRecipeDirector(
   const p = (async () => {
     const t0 = Date.now()
     try {
-      const prompts = await new RecipeDirector().write(artwork, steps)
+      // 1) Parcours client (best-effort : un échec ne coûte que l'auto-remplissage).
+      const plan = catalog.length ? await new StudioDirector().plan(artwork, catalog) : null
+
+      // 2) Prompt — écrit pour les champs RETENUS par le plan (à défaut : ceux du builder).
+      const byId = new Map(catalog.map((c) => [c.id, c]))
+      const planSteps: RecipeDirectorStepInfo[] = plan
+        ? plan.fields
+            .map((f) => byId.get(f))
+            .filter((c): c is StudioCatalogEntry => Boolean(c))
+            .map((c) => ({ payloadKey: c.payloadKey, type: c.type, titleFr: c.titleFr }))
+        : []
+      const promptSteps = plan ? planSteps : steps
+      const context = plan ? recipeContextOf(plan) : undefined
+      const prompts = await new RecipeDirector().write(artwork, promptSteps, context)
       if (!prompts) throw new Error("L'analyse du design n'a rien donné. Réessaie.")
-      await finish(id, { status: 'done', prompts })
-      Logger.info('recipe-director OK job=%s %ss', id, Math.round((Date.now() - t0) / 1000))
+
+      await finish(id, { status: 'done', prompts, ...(plan ? { plan } : {}) })
+      Logger.info(
+        'recipe-director OK job=%s %ss plan=%s fields=%s angle=%s animals=%s',
+        id,
+        Math.round((Date.now() - t0) / 1000),
+        plan ? 'yes' : 'no',
+        plan ? plan.fields.join(',') || '(none)' : '-',
+        plan?.photo
+          ? Object.entries(plan.photo.angles).find(([, g]) => g === 'perfect')?.[0] || '-'
+          : '-',
+        plan?.animals.kinds.join(',') || '-'
+      )
     } catch (error) {
       await finish(id, { status: 'error', error: mapResizeError(error) })
       Logger.error(

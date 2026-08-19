@@ -76,9 +76,15 @@ Never copy the example's style words if the design differs — describe THIS des
 export default class RecipeDirector {
   private ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
 
+  /**
+   * `context` : consignes de cadrage venues du StudioDirector (angle de prise de vue retenu,
+   * animal de compagnie dessiné sur le design). Ajouté au MESSAGE, jamais à l'instruction
+   * système — le socle éprouvé des fragments reste inchangé.
+   */
   public async write(
     designB64: string,
-    steps: RecipeDirectorStepInfo[]
+    steps: RecipeDirectorStepInfo[],
+    context?: string
   ): Promise<RecipePrompts | null> {
     if (!process.env.GEMINI_API_KEY) return null
     const m = /^data:(.+?);base64,(.+)$/s.exec(designB64)
@@ -98,7 +104,12 @@ export default class RecipeDirector {
           model: TEXT_MODEL,
           contents: [
             { inlineData: { mimeType, data } },
-            { text: `CUSTOMER FIELDS:\n${fields || '(none)'}\nWrite the prompt fragments.` },
+            {
+              text:
+                `CUSTOMER FIELDS:\n${fields || '(none)'}\n` +
+                (context ? `${context}\n` : '') +
+                `Write the prompt fragments.`,
+            },
           ],
           config,
         }),

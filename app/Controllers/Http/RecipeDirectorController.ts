@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto'
 import { schema } from '@ioc:Adonis/Core/Validator'
 import * as ResizeJobs from 'App/Services/ArtworkResizer/jobStore'
 import type { RecipeDirectorStepInfo } from 'App/Services/RecipeDirector'
+import type { StudioCatalogEntry } from 'App/Services/StudioDirector'
 
 /**
  * Analyse du DESIGN d'un poster personnalisé : écrit les fragments de prompt de la recette
@@ -16,12 +17,16 @@ export default class RecipeDirectorController {
   private validationSchema = schema.create({
     artwork: schema.string(), // le design (data URI) — le prompt-director en décrit le style
     steps: schema.array.optional().anyMembers(), // étapes du parcours (whitelistées ci-dessous)
+    // Catalogue d'étapes proposables (front = source de vérité : elles y sont déjà rédigées et
+    // traduites). Présent -> le studio-director CHOISIT dedans ; absent -> analyse d'avant
+    // (prompt seul, parcours laissé tel quel).
+    catalog: schema.array.optional().anyMembers(),
   })
 
   /** POST /api/analyze-design — démarre le job, renvoie { jobId } immédiatement. */
   public async generate({ request, response }: HttpContextContract) {
     try {
-      const { artwork, steps } = await request.validate({ schema: this.validationSchema })
+      const { artwork, steps, catalog } = await request.validate({ schema: this.validationSchema })
       // Whitelist stricte des étapes (données front non fiables) : 3 chaînes bornées par étape.
       const clean: RecipeDirectorStepInfo[] = (Array.isArray(steps) ? steps : [])
         .filter((s: any) => s && typeof s === 'object')
@@ -32,10 +37,27 @@ export default class RecipeDirectorController {
           titleFr: String(s.titleFr || '').slice(0, 120),
         }))
         .filter((s) => s.payloadKey)
+      // Même whitelist stricte pour le catalogue (4 chaînes bornées par entrée).
+      const cleanCatalog: StudioCatalogEntry[] = (Array.isArray(catalog) ? catalog : [])
+        .filter((c: any) => c && typeof c === 'object')
+        .slice(0, 24)
+        .map((c: any) => ({
+          id: String(c.id || '').slice(0, 60),
+          payloadKey: String(c.payloadKey || '').slice(0, 60),
+          type: String(c.type || '').slice(0, 20),
+          titleFr: String(c.titleFr || '').slice(0, 120),
+        }))
+        .filter((c) => c.id && c.payloadKey)
       const jobId = randomUUID()
       await ResizeJobs.create(jobId)
-      ResizeJobs.startRecipeDirector(jobId, artwork, clean) // détaché : surtout PAS de await
-      Logger.info('recipe-director START job=%s steps=%s', jobId, clean.length)
+      // détaché : surtout PAS de await
+      ResizeJobs.startRecipeDirector(jobId, artwork, clean, cleanCatalog)
+      Logger.info(
+        'recipe-director START job=%s steps=%s catalog=%s',
+        jobId,
+        clean.length,
+        cleanCatalog.length
+      )
       return { success: true, data: { jobId } }
     } catch (error) {
       if (error.code === 'E_VALIDATION_FAILURE') {
@@ -71,7 +93,13 @@ export default class RecipeDirectorController {
     }
     if (job.status === 'done') {
       ResizeJobs.remove(id).catch(() => {})
-      return { success: true, status: 'done', data: { prompts: job.prompts } }
+      // `plan` absent = le studio-director n'a rien donné d'exploitable : le front garde son
+      // parcours courant et n'applique que les fragments de prompt.
+      return {
+        success: true,
+        status: 'done',
+        data: { prompts: job.prompts, plan: job.plan || null },
+      }
     }
     if (job.status === 'error') {
       ResizeJobs.remove(id).catch(() => {})
