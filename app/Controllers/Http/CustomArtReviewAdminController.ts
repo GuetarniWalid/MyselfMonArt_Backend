@@ -5,6 +5,8 @@ import sharp from 'sharp'
 import CustomArtJob from 'App/Models/CustomArtJob'
 import CustomArtTeam from 'App/Models/CustomArtTeam'
 import CustomArtStorage from 'App/Services/CustomArt/Storage'
+import CustomArtOrder from 'App/Models/CustomArtOrder'
+import { purgeJobFiles } from 'App/Services/CustomArt/jobPurge'
 import MockupRenderer from 'App/Services/CustomArt/MockupRenderer'
 import PreviewService from 'App/Services/CustomArt/PreviewService'
 import CustomArtWorker from 'App/Services/CustomArt/Worker'
@@ -142,6 +144,43 @@ export default class CustomArtReviewAdminController {
 
     Logger.info('custom-art review RETRY uuid=%s provider=%s', job.uuid, providerKey)
     return { success: true, data: { uuid: job.uuid, status: 'pending', provider: providerKey } }
+  }
+
+  /**
+   * POST /admin/custom-art/review/:uuid/dismiss — RETIRE une création de la file.
+   *
+   * Il n'existait aucun moyen de sortir une création devenue sans objet (test, doublon, demande
+   * abandonnée) : la file grossissait et noyait les vraies. On réutilise EXACTEMENT le chemin de
+   * la purge automatique J+30 (`purgeJobFiles`) : fichiers effacés — photo du client, candidats,
+   * aperçus, mises en situation — et statut `expired`, un état terminal que le front sait déjà
+   * afficher. La LIGNE est conservée : la trace reste, seules les données personnelles partent.
+   *
+   * GARDE : une création ACHETÉE n'est jamais retirable — l'atelier doit encore la produire et ses
+   * fichiers servent au tirage. C'est la règle que la purge automatique applique déjà.
+   */
+  public async dismiss({ params, response }: HttpContextContract) {
+    const job = await this.findJob(params.uuid)
+    if (!job) {
+      return response.status(404).json({ success: false, message: 'Job introuvable.' })
+    }
+    if (job.status !== 'manual_review') {
+      return response.status(409).json({
+        success: false,
+        message: `Ce job n'est pas en revue (statut actuel : ${job.status}).`,
+      })
+    }
+
+    const order = await CustomArtOrder.query().where('job_id', job.id).first()
+    if (order) {
+      return response.status(409).json({
+        success: false,
+        message: 'Cette création a été achetée : elle doit être produite, pas retirée.',
+      })
+    }
+
+    await purgeJobFiles(job)
+    Logger.info('custom-art review DISMISS uuid=%s (fichiers purgés, statut expired)', job.uuid)
+    return { success: true, data: { uuid: job.uuid, status: job.status } }
   }
 
   /**

@@ -201,6 +201,24 @@ export function buildGenericPrompt(input: GenericPromptInput): string {
   for (let i = n + 1; i <= s; i++) {
     lines.push(interpolate(frag('removeExtra'), { ...vars, from: slots[i - 1], index: String(i) }))
   }
+  // RÈGLE DES DÉLIMITEURS — imposée EN CODE, jamais laissée aux fragments.
+  //
+  // Tous les fragments de substitution encadrent la valeur de guillemets : « {to} ». Ce sont des
+  // DÉLIMITEURS, mais rien ne le dit au modèle d'image, qui les DESSINE. Constaté le 19/08/2026 sur
+  // le poster « Dog Mom » : les 6 candidats ont été recalés en `text_misspelled`, le juge lisant
+  // « Best msa » (chevrons compris) là où « Best msa » était attendu — le dessin était bon, seul le
+  // texte portait deux caractères en trop. Le prompt famille s'en sortait par une phrase écrite à la
+  // main (« spelled exactly as written here between the guillemets ») que le prompt-director n'a pas
+  // reprise. On ne peut pas dépendre de la formulation d'un fragment généré : la règle est posée ici,
+  // une fois, pour tout produit qui écrit du texte.
+  if (title || n > 0) {
+    lines.push(
+      'TEXT DELIMITERS: the guillemets « » in the instructions above only mark where each text ' +
+        'starts and ends. Draw the words BETWEEN them and nothing else — never draw the « » ' +
+        'characters themselves, and never add quotation marks of any kind around a text.'
+    )
+  }
+
   if (recipe.prompt.footer) lines.push(interpolate(recipe.prompt.footer, vars))
 
   return lines.filter((l) => l && l.trim().length > 0).join('\n')

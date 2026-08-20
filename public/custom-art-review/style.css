@@ -38,3 +38,7 @@
   font:500 14px/1.4 inherit;color:var(--text);background:var(--surface);max-width:100%;
 }
 .review-actions select:focus{outline:2px solid var(--accent);outline-offset:-1px}
+
+/* Retrait d'une création de la file : action destructrice, signalée comme telle. */
+.ghost-btn.small.danger { border-color: #a93514; color: #a93514; }
+.ghost-btn.small.danger:hover:not(:disabled) { background: #a93514; color: #fff; }

@@ -244,6 +244,9 @@ Route.group(() => {
   Route.get('/review/:uuid/photo', 'CustomArtReviewAdminController.photo')
   Route.post('/review/:uuid/retry', 'CustomArtReviewAdminController.retry')
   Route.post('/review/:uuid/result', 'CustomArtReviewAdminController.uploadResult')
+  // Retrait manuel d'une création sans objet (test, doublon, demande abandonnée) : même purge
+  // que le J+30 automatique. Refusé si la création a été achetée.
+  Route.post('/review/:uuid/dismiss', 'CustomArtReviewAdminController.dismiss')
 
   // File print (M9, plan §9) : validation humaine de chaque fichier d'impression
   // avant la commande manuelle sur le portail Picanova.

@@ -110,6 +110,7 @@ function renderQueue() {
             <button class="ghost-btn small" data-action="retry">↻ Relancer avec ce provider</button>
             <input type="file" accept="image/jpeg,image/png,image/webp" hidden data-role="file">
             <button class="primary-btn small" data-action="attach">⬆ Attacher le résultat final</button>
+            <button class="ghost-btn small danger" data-action="dismiss">🗑 Retirer de la file</button>
           </div>
         </div>
       </article>`
@@ -154,6 +155,31 @@ $('#queue').addEventListener('click', async (e) => {
       toast(err.message, 'err')
       btn.disabled = false
     }
+  }
+
+  // Retrait d'une création sans objet (test, doublon, demande abandonnée). Effacement RÉEL des
+  // fichiers (photo du client comprise) : on confirme, et on nomme la création dans la question.
+  if (btn.dataset.action === 'dismiss') {
+    const nom = (card.querySelector('.review-title') || {}).textContent || 'cette création'
+    if (
+      !confirm(`Retirer ${nom.trim()} de la file ?
+
+La photo du client et les rendus déjà générés seront définitivement supprimés. Une création achetée ne peut pas être retirée.`)
+    )
+      return
+    btn.disabled = true
+    btn.textContent = 'Retrait…'
+    try {
+      await api(`/${uuid}/dismiss`, { method: 'POST' })
+      card.remove()
+      toast('Création retirée de la file ✓')
+      if (!document.querySelectorAll('.review-card').length) loadQueue()
+    } catch (err) {
+      alert(err.message || 'Retrait impossible.')
+      btn.disabled = false
+      btn.textContent = '🗑 Retirer de la file'
+    }
+    return
   }
 
   if (btn.dataset.action === 'attach') {
