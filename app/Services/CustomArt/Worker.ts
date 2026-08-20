@@ -10,6 +10,7 @@ import { mapResizeError } from 'App/Services/ArtworkResizer/jobStore'
 import CustomArtStorage from './Storage'
 import { affectedRows } from './db'
 import MockupRenderer from './MockupRenderer'
+import { notifyReadyIfRequested } from './notifyReady'
 import PreviewService from './PreviewService'
 import { JUDGE_EST_COST_EUR } from './JudgeService'
 import { GENERIC_JUDGE_EST_COST_EUR } from './GenericJudgeService'
@@ -408,6 +409,8 @@ export default class CustomArtWorker {
           // renderForJob ne throw jamais (dégradation gracieuse + backlog interne).
           // Mode factice (M10) : pas de mockups — le moteur (PC) n'est pas le sujet des
           // tests caps/charge, et on n'accumule pas de backlog artificiel.
+          // « Prévenez-moi quand c'est prêt » : l'écran a peut-être renoncé depuis longtemps.
+          void notifyReadyIfRequested(job)
           if (!fakeProviderEnabled()) {
             void MockupRenderer.renderForJob(job)
           }
@@ -677,6 +680,8 @@ export default class CustomArtWorker {
             best.provider,
             Math.round((Date.now() - t0) / 1000)
           )
+          // « Prévenez-moi quand c'est prêt » : l'écran a peut-être renoncé depuis longtemps.
+          void notifyReadyIfRequested(job)
           if (!fake) {
             void MockupRenderer.renderForJob(job)
           }

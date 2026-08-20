@@ -228,6 +228,22 @@ export default class CustomArtJob extends BaseModel {
   @column()
   public forcedProvider: string | null
 
+  /**
+   * « Prévenez-moi quand c'est prêt » : adresse à notifier quand la création dépasse la patience
+   * du studio (3 min). NULL = rien demandé, aucun e-mail. Portée par le JOB et non la session :
+   * la cliente peut la saisir à ce moment-là, pour CETTE création.
+   */
+  @column()
+  public notifyEmail: string | null
+
+  /** Langue du studio au moment de la demande — l'e-mail part dans celle-là. */
+  @column()
+  public notifyLocale: string | null
+
+  /** Envoi effectué : rend la notification idempotente (reprise d'orphelin comprise). */
+  @column.dateTime()
+  public notifySentAt: DateTime | null
+
   @column.dateTime({ autoCreate: true })
   public createdAt: DateTime
 

@@ -7,6 +7,7 @@ import CustomArtTeam from 'App/Models/CustomArtTeam'
 import CustomArtStorage from 'App/Services/CustomArt/Storage'
 import CustomArtOrder from 'App/Models/CustomArtOrder'
 import { purgeJobFiles } from 'App/Services/CustomArt/jobPurge'
+import { notifyReadyIfRequested } from 'App/Services/CustomArt/notifyReady'
 import MockupRenderer from 'App/Services/CustomArt/MockupRenderer'
 import PreviewService from 'App/Services/CustomArt/PreviewService'
 import CustomArtWorker from 'App/Services/CustomArt/Worker'
@@ -258,6 +259,10 @@ export default class CustomArtReviewAdminController {
     await job.save()
 
     Logger.info('custom-art review RESULT uuid=%s (candidat artiste #%s)', job.uuid, index)
+
+    // « Prévenez-moi quand c'est prêt » : c'est ICI que ça compte le plus — la cliente d'un job
+    // passé en revue a attendu bien plus que les 3 minutes du studio.
+    void notifyReadyIfRequested(job)
 
     // Le job vient de passer ready : mises en situation Photopea en tâche de fond
     // (M7, plan §8) — fire-and-forget, renderForJob ne throw jamais (backlog interne).

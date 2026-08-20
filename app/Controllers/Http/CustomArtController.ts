@@ -21,6 +21,8 @@ import { affectedRows } from 'App/Services/CustomArt/db'
 import { chosenCandidate } from 'App/Services/CustomArt/chosenCandidate'
 import { describeJob } from 'App/Services/CustomArt/jobLabelling'
 import SaveMailer from 'App/Services/CustomArt/SaveMailer'
+import { notifyReadyIfRequested } from 'App/Services/CustomArt/notifyReady'
+import { normalizeCustomArtLocale } from 'App/Services/CustomArt/emailTemplate'
 import { clientIp } from 'App/Services/ClientIp'
 
 // Caps anti-abus (plan §4) : 2 essais anonymes/jour (session+IP), 5/jour avec email,
@@ -846,6 +848,86 @@ export default class CustomArtController {
 
     Logger.info('custom-art reveal-next -> nouveau job uuid=%s (depuis %s)', newUuid, job.uuid)
     return { success: true, data: { jobId: newUuid, status: 'pending' } }
+  }
+
+  /**
+   * POST /api/custom-art/jobs/:uuid/notify — { email?, locale? } : « prévenez-moi quand c'est prêt ».
+   *
+   * Appelé par le studio quand il cesse d'attendre (3 min) alors que la création continue côté
+   * serveur. Sans ça, une génération un peu longue était PERDUE pour la cliente : écran en échec,
+   * et aucun moyen de retrouver son œuvre si elle n'avait laissé aucune adresse.
+   *
+   * Mêmes gardes anti-relais que `save` : propriété de session exigée (sinon l'endpoint enverrait
+   * du courrier arbitraire depuis le domaine de la marque), et l'email d'une session ne s'écrase
+   * JAMAIS — le premier posé est définitif.
+   *
+   * Si le job est DÉJÀ prêt (il a fini entre l'abandon de l'écran et cet appel), on envoie tout de
+   * suite : la cliente a demandé à être prévenue, pas à attendre un prochain événement.
+   */
+  public async notify(ctx: HttpContextContract) {
+    const { params, request, response } = ctx
+    try {
+      const job = await this.findJob(params.uuid)
+      if (!job) {
+        return response.status(404).json({ success: false, message: 'Création introuvable.' })
+      }
+
+      const session = await this.callerSession(ctx)
+      if (!session || session.id !== job.sessionId) {
+        return response.status(403).json({
+          success: false,
+          message: 'Cette création appartient à une autre session.',
+        })
+      }
+
+      const raw = String(request.input('email') || '')
+        .trim()
+        .toLowerCase()
+      const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(raw) && raw.length <= 255
+      if (raw && !looksLikeEmail) {
+        return response.status(422).json({ success: false, message: 'Adresse e-mail invalide.' })
+      }
+      // L'email de la session prime toujours (règle de `save`) ; celui du payload ne sert qu'à
+      // la poser la PREMIÈRE fois. Une adresse différente d'une session déjà nommée est refusée.
+      if (session.email && raw && session.email !== raw) {
+        return response.status(409).json({
+          success: false,
+          message: 'Un autre email est déjà associé à cette création.',
+        })
+      }
+      if (!session.email && raw) {
+        session.email = raw
+        await session.save()
+      }
+      const target = session.email || raw
+      if (!target) {
+        // Le studio doit demander l'adresse avant d'appeler : on le dit explicitement plutôt
+        // que de répondre « ok » sans rien pouvoir envoyer.
+        return response
+          .status(422)
+          .json({ success: false, code: 'email_required', message: 'Adresse e-mail requise.' })
+      }
+
+      job.notifyEmail = target
+      job.notifyLocale = normalizeCustomArtLocale(request.input('locale'))
+      await job.save()
+
+      // Déjà prêt : on n'attend pas un prochain passage du worker.
+      if (job.status === 'ready') await notifyReadyIfRequested(job)
+
+      Logger.info(
+        'custom-art notify demandé uuid=%s locale=%s (statut %s)',
+        job.uuid,
+        job.notifyLocale,
+        job.status
+      )
+      return { success: true, data: { armed: true, alreadySent: Boolean(job.notifySentAt) } }
+    } catch (error) {
+      Logger.error('custom-art notify: %s', (error as any)?.message || error)
+      return response
+        .status(500)
+        .json({ success: false, message: 'Impossible d’enregistrer la demande.' })
+    }
   }
 
   /**

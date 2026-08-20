@@ -225,6 +225,8 @@ Route.group(() => {
     'throttle:20,60',
   ])
   Route.post('/jobs/:uuid/save', 'CustomArtController.save').middleware(['throttle:10,60'])
+  // « Prévenez-moi quand c'est prêt » : armé quand le studio cesse d'attendre (3 min).
+  Route.post('/jobs/:uuid/notify', 'CustomArtController.notify').middleware(['throttle:10,60'])
 }).prefix('/api/custom-art')
 
 // CustomArt — admin (auth existante) : stats squelette (jobs/jour, coûts, taux de pass)
