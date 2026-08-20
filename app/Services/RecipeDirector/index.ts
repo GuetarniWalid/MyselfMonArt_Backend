@@ -57,8 +57,11 @@ You are given the DESIGN image and the list of CUSTOMER FIELDS (key — kind —
 OUTPUT strict JSON only, exactly these keys:
 {"base": string, "perPerson": string|null, "replaceTitle": string|null, "addExtra": string|null, "removeExtra": string|null}
 
-HOW TO WRITE "base" (100-220 words, imperative English for an image model):
+HOW TO WRITE "base" (150-320 words, imperative English for an image model):
 - Open by naming the exact ART STYLE you observe on the design: line quality, colours, background, shading, texture — precise enough that the model cannot drift to a generic look.
+- Then state the DENSITY OF INK, which is what image models get wrong most: they always draw more than the reference. Say plainly whether shapes are FILLED or left as bare outline; whether ANY hatching, cross-hatching, scribble-fill, smudging or gradient exists (on a minimal design, say there is none, area by area — hair, clothes, body, animal, ground); and how much of the sheet stays untouched.
+- DESCRIBE THE EMPTINESS, do not merely forbid: "wherever a photograph would show a shaded area, this drawing shows empty paper" works, "no shading" alone does not.
+- COUNT when the design is sparse: how many strokes a head of hair takes, how many marks an animal's face carries, how many lines describe a garment. A number the model can check beats an adjective it can interpret. Close that part with the rule to apply when hesitating — on a minimal design: leave the paper bare rather than add a detail.
 - Say what to derive from the UPLOADED PHOTO for EACH subject (order, relative sizes, apparent ages, hair, build, clothing silhouette — whatever this style actually renders), and what the design's conventions impose (pose, angle, framing, connection between subjects).
 - Forbid inventions: nothing added that is not clearly present in the photo.
 - Close with: the final artwork is [one-sentence style summary], with no text other than the captions requested below.
@@ -134,13 +137,17 @@ export default class RecipeDirector {
 
   /** Garde par fragment : type + placeholders obligatoires ; un fragment douteux -> null. */
   private sanitize(parsed: any): RecipePrompts | null {
+    // Plafond par fragment. `base` porte désormais la DENSITÉ DE TRAIT (150-320 mots) : à 2400
+    // caractères une consigne se faisait couper en plein milieu, et une phrase tronquée sur un
+    // prompt d'image est pire qu'absente. Les autres fragments restent courts par nature.
+    const MAX_LEN: Partial<Record<keyof RecipePrompts, number>> = { base: 3600 }
     const clean = (key: keyof RecipePrompts, minLen: number): string | null => {
       const v = parsed && parsed[key]
       if (typeof v !== 'string') return null
       const txt = v.replace(/\s+/g, ' ').trim()
       if (txt.length < minLen) return null
       for (const ph of REQUIRED_PLACEHOLDERS[key]) if (!txt.includes(ph)) return null
-      return txt.slice(0, 2400)
+      return txt.slice(0, MAX_LEN[key] ?? 2400)
     }
     const base = clean('base', 200) // une base courte = analyse ratée, on rejette tout
     if (!base) return null
