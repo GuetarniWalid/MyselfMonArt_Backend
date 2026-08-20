@@ -211,7 +211,10 @@ export function buildGenericPrompt(input: GenericPromptInput): string {
   // main (« spelled exactly as written here between the guillemets ») que le prompt-director n'a pas
   // reprise. On ne peut pas dépendre de la formulation d'un fragment généré : la règle est posée ici,
   // une fois, pour tout produit qui écrit du texte.
-  if (title || n > 0) {
+  // Seulement si des guillemets subsistent réellement dans les consignes assemblées : une recette
+  // qui n'en utilise pas (délimiteurs retirés des fragments) n'a pas besoin de la règle, et l'y
+  // ajouter reviendrait à parler au modèle de caractères qu'il ne voit nulle part.
+  if ((title || n > 0) && lines.some((l) => l.includes('«'))) {
     lines.push(
       'TEXT DELIMITERS: the guillemets « » in the instructions above only mark where each text ' +
         'starts and ends. Draw the words BETWEEN them and nothing else — never draw the « » ' +
