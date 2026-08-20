@@ -340,9 +340,15 @@ function mockupsGridRow(opts: {
  * Layout PLEINE LARGEUR : aucun logo en tête, bandeaux 100% bord-à-bord (plus de marges crème),
  * contenu centré à 680px. L'email commence directement par l'œuvre.
  */
-function layout(opts: { title: string; preheader: string; rows: string }): string {
+function layout(opts: {
+  title: string
+  preheader: string
+  rows: string
+  /** Langue du document — les mails historiques sont en français, d'où le défaut. */
+  lang?: string
+}): string {
   return `<!DOCTYPE html>
-<html lang="fr" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<html lang="${opts.lang || 'fr'}" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 ${head(opts.title)}
 <body style="margin:0; padding:0; width:100%; background-color:${WHITE};">
   <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:${WHITE};">
@@ -538,5 +544,196 @@ export function renderMockupsEmail(input: {
       rows,
     }),
     text: textVersion({ headline, paragraphs, reassurance, resumeUrl: input.resumeUrl, ctaLabel }),
+  }
+}
+
+/* ==========================================================================================
+ * Email « votre création est prête » — 5 langues.
+ *
+ * POURQUOI : le studio cesse d'attendre au bout de 3 minutes (POLL_TIMEOUT du thème) alors que
+ * la génération, elle, va au bout. La cliente voyait un échec et perdait sa création si elle
+ * n'avait pas laissé d'adresse. Elle peut désormais demander à être prévenue : c'est CET email
+ * qui arrive quand le rendu est prêt, avec le lien de reprise du studio.
+ *
+ * Les autres emails custom-art sont français-only (historique). Celui-ci part dans la langue où
+ * la cliente a créé : un mail dans une langue qu'elle ne lit pas est un mail perdu, et c'est
+ * justement le seul lien qui lui reste vers sa création.
+ * ========================================================================================== */
+
+export type CustomArtLocale = 'fr' | 'en' | 'de' | 'nl' | 'es'
+
+const READY_LOCALES: CustomArtLocale[] = ['fr', 'en', 'de', 'nl', 'es']
+
+/** Normalise un code langue quelconque ('EN-gb', 'de_DE'…) vers une locale supportée. */
+export function normalizeCustomArtLocale(raw: unknown): CustomArtLocale {
+  const v = String(raw || '')
+    .trim()
+    .toLowerCase()
+    .slice(0, 2)
+  return (READY_LOCALES as string[]).includes(v) ? (v as CustomArtLocale) : 'fr'
+}
+
+interface ReadyStrings {
+  subject: string
+  title: string
+  preheader: string
+  eyebrow: string
+  headline: string
+  paragraphs: string[]
+  cta: string
+  intent: string
+  caption: string
+  alt: string
+  fallbackTitle: string
+  fallbackSub: string
+  reassurance: ReassureItem[]
+}
+
+const READY_TEXTS: Record<CustomArtLocale, ReadyStrings> = {
+  fr: {
+    subject: 'Votre création est prête',
+    title: 'Votre création est prête',
+    preheader: 'Elle vous attend &mdash; rien n&rsquo;est imprimé avant votre validation.',
+    eyebrow: 'Sortie d&rsquo;atelier',
+    headline: 'Elle est prête, et elle vous ressemble',
+    paragraphs: [
+      'Votre création a demandé un peu plus de temps que prévu &mdash; la voici. Elle est née de votre photo, redessinée dans notre atelier, et elle n&rsquo;existe qu&rsquo;en un seul exemplaire : le vôtre.',
+      'Reprenez-la quand vous voulez : un clic sur le bouton et elle se rouvre là où vous l&rsquo;aviez laissée. Rien n&rsquo;est imprimé tant que vous n&rsquo;avez pas validé.',
+    ],
+    cta: 'Découvrir ma création',
+    intent: 'Un clic, vous validez l&rsquo;aperçu &mdash; on n&rsquo;imprime qu&rsquo;ensuite.',
+    caption: 'Épreuve d&rsquo;atelier &mdash; non encore imprimée.',
+    alt: 'Aperçu de votre création personnalisée',
+    fallbackTitle: 'Votre création vous attend',
+    fallbackSub: 'L&rsquo;aperçu se révèle dès que vous la rouvrez.',
+    reassurance: [
+      { strong: 'Aperçu avant impression', rest: 'vous validez, puis nous imprimons' },
+      { strong: 'Conservée 30 jours', rest: 'vous reprenez quand vous voulez' },
+      { strong: 'Conçu en France', rest: 'imprimé en Europe &mdash; rendu mat' },
+    ],
+  },
+  en: {
+    subject: 'Your creation is ready',
+    title: 'Your creation is ready',
+    preheader: 'It is waiting for you &mdash; nothing is printed before you approve it.',
+    eyebrow: 'Out of the studio',
+    headline: 'It is ready, and it looks like you',
+    paragraphs: [
+      'Your creation took a little longer than expected &mdash; here it is. It was drawn from your own photo in our studio, and it exists in one copy only: yours.',
+      'Pick it up whenever you like: one click on the button and it opens again exactly where you left it. Nothing is printed until you approve it.',
+    ],
+    cta: 'See my creation',
+    intent: 'One click and you approve the proof &mdash; we print only afterwards.',
+    caption: 'Studio proof &mdash; not printed yet.',
+    alt: 'Preview of your personalised creation',
+    fallbackTitle: 'Your creation is waiting',
+    fallbackSub: 'The preview appears as soon as you open it again.',
+    reassurance: [
+      { strong: 'Proof before printing', rest: 'you approve, then we print' },
+      { strong: 'Kept for 30 days', rest: 'come back whenever you want' },
+      { strong: 'Designed in France', rest: 'printed in Europe &mdash; matte finish' },
+    ],
+  },
+  de: {
+    subject: 'Ihre Kreation ist fertig',
+    title: 'Ihre Kreation ist fertig',
+    preheader: 'Sie wartet auf Sie &mdash; gedruckt wird erst nach Ihrer Freigabe.',
+    eyebrow: 'Frisch aus dem Atelier',
+    headline: 'Sie ist fertig &mdash; und sie sieht Ihnen ähnlich',
+    paragraphs: [
+      'Ihre Kreation hat etwas länger gedauert als gedacht &mdash; hier ist sie. Sie ist aus Ihrem eigenen Foto entstanden, in unserem Atelier neu gezeichnet, und es gibt sie nur ein einziges Mal: für Sie.',
+      'Nehmen Sie sie wieder auf, wann Sie möchten: ein Klick auf den Button und sie öffnet sich genau dort, wo Sie aufgehört haben. Gedruckt wird nichts, solange Sie nicht freigegeben haben.',
+    ],
+    cta: 'Meine Kreation ansehen',
+    intent: 'Ein Klick, Sie geben die Vorschau frei &mdash; erst danach wird gedruckt.',
+    caption: 'Atelierabzug &mdash; noch nicht gedruckt.',
+    alt: 'Vorschau Ihrer personalisierten Kreation',
+    fallbackTitle: 'Ihre Kreation wartet',
+    fallbackSub: 'Die Vorschau erscheint, sobald Sie sie wieder öffnen.',
+    reassurance: [
+      { strong: 'Vorschau vor dem Druck', rest: 'Sie geben frei, dann drucken wir' },
+      { strong: '30 Tage aufbewahrt', rest: 'kommen Sie zurück, wann Sie wollen' },
+      { strong: 'Entworfen in Frankreich', rest: 'gedruckt in Europa &mdash; matt' },
+    ],
+  },
+  nl: {
+    subject: 'Je creatie is klaar',
+    title: 'Je creatie is klaar',
+    preheader: 'Ze wacht op je &mdash; er wordt niets gedrukt voordat jij akkoord gaat.',
+    eyebrow: 'Vers uit het atelier',
+    headline: 'Ze is klaar, en ze lijkt op jou',
+    paragraphs: [
+      'Je creatie had iets meer tijd nodig dan verwacht &mdash; hier is ze. Ze is ontstaan uit je eigen foto, opnieuw getekend in ons atelier, en ze bestaat maar één keer: voor jou.',
+      'Pak haar op wanneer je wilt: één klik op de knop en ze opent precies waar je gebleven was. Er wordt niets gedrukt zolang jij niet akkoord gaat.',
+    ],
+    cta: 'Mijn creatie bekijken',
+    intent: 'Eén klik en je keurt het voorbeeld goed &mdash; pas daarna drukken we.',
+    caption: 'Atelierproef &mdash; nog niet gedrukt.',
+    alt: 'Voorbeeld van je gepersonaliseerde creatie',
+    fallbackTitle: 'Je creatie wacht op je',
+    fallbackSub: 'Het voorbeeld verschijnt zodra je haar weer opent.',
+    reassurance: [
+      { strong: 'Voorbeeld vóór het drukken', rest: 'jij keurt goed, dan drukken wij' },
+      { strong: '30 dagen bewaard', rest: 'kom terug wanneer je wilt' },
+      { strong: 'Ontworpen in Frankrijk', rest: 'gedrukt in Europa &mdash; mat' },
+    ],
+  },
+  es: {
+    subject: 'Tu creación está lista',
+    title: 'Tu creación está lista',
+    preheader: 'Te está esperando &mdash; no se imprime nada antes de que lo apruebes.',
+    eyebrow: 'Recién salida del taller',
+    headline: 'Ya está lista, y se parece a ti',
+    paragraphs: [
+      'Tu creación ha tardado un poco más de lo previsto &mdash; aquí la tienes. Ha nacido de tu propia foto, redibujada en nuestro taller, y existe en un solo ejemplar: el tuyo.',
+      'Retómala cuando quieras: un clic en el botón y se vuelve a abrir justo donde la dejaste. No se imprime nada mientras no lo apruebes.',
+    ],
+    cta: 'Ver mi creación',
+    intent: 'Un clic y apruebas la vista previa &mdash; solo después imprimimos.',
+    caption: 'Prueba de taller &mdash; aún sin imprimir.',
+    alt: 'Vista previa de tu creación personalizada',
+    fallbackTitle: 'Tu creación te espera',
+    fallbackSub: 'La vista previa aparece en cuanto la vuelvas a abrir.',
+    reassurance: [
+      { strong: 'Vista previa antes de imprimir', rest: 'tú apruebas y luego imprimimos' },
+      { strong: 'Guardada 30 días', rest: 'vuelve cuando quieras' },
+      { strong: 'Diseñado en Francia', rest: 'impreso en Europa &mdash; acabado mate' },
+    ],
+  },
+}
+
+/** Email « votre création est prête », dans la langue où la cliente a créé. */
+export function renderReadyEmail(input: {
+  locale: CustomArtLocale
+  resumeUrl: string
+  previewUrl: string | null
+}): RenderedEmail {
+  const t = READY_TEXTS[input.locale] || READY_TEXTS.fr
+  const rows = [
+    framedPreviewRow({
+      previewUrl: input.previewUrl,
+      alt: t.alt,
+      caption: t.caption,
+      fallbackTitle: t.fallbackTitle,
+      fallbackSub: t.fallbackSub,
+    }),
+    eyebrowRow(t.eyebrow),
+    h1Row(t.headline),
+    bodyRow(t.paragraphs),
+    intentCtaRow(t.intent, input.resumeUrl, t.cta),
+    spacerRow(),
+    reassuranceRow(t.reassurance),
+  ].join('\n          ')
+
+  return {
+    subject: t.subject,
+    html: layout({ title: t.title, preheader: t.preheader, rows, lang: input.locale }),
+    text: textVersion({
+      headline: t.headline,
+      paragraphs: t.paragraphs,
+      reassurance: t.reassurance,
+      resumeUrl: input.resumeUrl,
+      ctaLabel: t.cta,
+    }),
   }
 }
