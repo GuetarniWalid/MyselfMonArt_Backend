@@ -144,7 +144,7 @@ export default class CustomArtWorker {
       POLL_MS,
       MAX_INFLIGHT_JOBS
     )
-    CustomArtWorker.recoverOrphans()
+    CustomArtWorker.recoverOrphans(true)
       .catch((e) => Logger.error('custom-art recover: %s', e?.message || e))
       .finally(() => CustomArtWorker.loop())
   }
@@ -161,10 +161,19 @@ export default class CustomArtWorker {
    * Seuil d'ancienneté sur updated_at : un job traité activement par un sibling est sauvé
    * à chaque transition, donc jamais assez vieux pour être volé ici.
    */
-  private static async recoverOrphans(): Promise<void> {
-    const staleBefore = DateTime.now()
-      .minus({ minutes: ORPHAN_MIN_AGE_MIN })
-      .toSQL({ includeOffset: false }) as string
+  private static async recoverOrphans(atBoot = false): Promise<void> {
+    // AU DÉMARRAGE, aucun délai : un job encore `generating`/`judging` est FORCÉMENT orphelin.
+    // Le worker ne tourne que sur UNE instance (garde NODE_APP_INSTANCE ci-dessus) et cette
+    // instance vient de démarrer — personne d'autre ne le traitait. Le seuil de 10 minutes ne
+    // protège que le re-scan PÉRIODIQUE, où le job peut être en cours de traitement par CE
+    // process (son updated_at est rafraîchi à chaque transition).
+    // Sans cette distinction, un simple redéploiement pendant une génération laissait la cliente
+    // devant une erreur — le studio renonce à 3 min (POLL_TIMEOUT du thème) alors que le job ne
+    // repartait qu'à 10. Constaté le 20/08/2026 : job créé à 15:10:03, conteneur redémarré à
+    // 15:10:12, écran en échec, création pourtant produite ensuite.
+    const staleBefore = (
+      atBoot ? DateTime.now() : DateTime.now().minus({ minutes: ORPHAN_MIN_AGE_MIN })
+    ).toSQL({ includeOffset: false }) as string
     const result = await Database.rawQuery(
       `UPDATE custom_art_jobs
        SET recovery_count = recovery_count + 1,
@@ -182,9 +191,9 @@ export default class CustomArtWorker {
     const recovered = result?.[0]?.affectedRows ?? 0
     if (recovered > 0) {
       Logger.warn(
-        'custom-art: %s job(s) orphelin(s) traité(s) (inactifs > %s min ; >%s relances -> manual_review)',
+        'custom-art: %s job(s) orphelin(s) traité(s) (%s ; >%s relances -> manual_review)',
         recovered,
-        ORPHAN_MIN_AGE_MIN,
+        atBoot ? 'au démarrage, sans délai' : `inactifs > ${ORPHAN_MIN_AGE_MIN} min`,
         MAX_RECOVERIES
       )
     }
