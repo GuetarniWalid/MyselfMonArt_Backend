@@ -15,6 +15,8 @@ export default class ExtensionShopifyProductPublisherRequestValidator {
         clientId: schema.string.optional({}, [rules.maxLength(64)]),
         passePartout: schema.boolean.optional(),
         passePartoutOf: schema.string.optional({}, [rules.maxLength(64)]),
+        // Preuve « avant -> apres » (poster personnalise) : statut a part, ni jumeau ni alt IA.
+        proof: schema.boolean.optional(),
       })
     ),
     ratio: schema.enum(['portrait', 'landscape', 'square'] as const),

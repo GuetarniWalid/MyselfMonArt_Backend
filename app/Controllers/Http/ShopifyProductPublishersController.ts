@@ -2,7 +2,10 @@ import type { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
 import ExtensionShopifyProductPublisherRequestValidator from 'App/Validators/ExtensionShopifyProductPublisherRequestValidator'
 import ReplaceProductImagesValidator from 'App/Validators/ReplaceProductImagesValidator'
 import ShopifyProductPublisher from 'App/Services/ShopifyProductPublisher'
-import { composePosterMedia } from 'App/Services/ShopifyProductPublisher/composePosterMedia'
+import {
+  composePosterMedia,
+  PROOF_FILENAME_SUFFIX,
+} from 'App/Services/ShopifyProductPublisher/composePosterMedia'
 import ProductPublisher from 'App/Services/Claude/ProductPublisher'
 import { buildPersonalizationBrief } from 'App/Services/Claude/ProductPublisher/personalizationBrief'
 import ProductReimage from 'App/Services/Shopify/ProductReimage'
@@ -695,6 +698,7 @@ export default class ShopifyProductPublishersController {
           clientId: i.clientId,
           passePartout: i.passePartout,
           passePartoutOf: i.passePartoutOf,
+          proof: i.proof,
         }))
       const originalEntry = entries.find((i) => i.type === 'original')!
       const originalIsKept = Boolean(originalEntry.mediaId)
@@ -810,6 +814,12 @@ export default class ShopifyProductPublishersController {
           if (index === newOriginalIndex) {
             alt = mainArtworkAlt
             filename = mainArtworkFilename!
+          } else if (entry.proof) {
+            // Preuve « avant -> après » : même traitement qu'à la publication (cf.
+            // composePosterMedia). Testé AVANT la branche « 1er mockup », qui lui donnerait
+            // l'alt et le slug de l'œuvre.
+            alt = `${mainArtworkAlt} — avant / après : de la photo au tableau`
+            filename = `${slugFromAlt(mainArtworkAlt).substring(0, 60)}${PROOF_FILENAME_SUFFIX}`
           } else if (keptIds.length === 0 && index === 0) {
             alt = mainArtworkAlt
             filename = slugFromAlt(mainArtworkAlt)

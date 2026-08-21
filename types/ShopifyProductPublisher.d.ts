@@ -9,6 +9,9 @@ export interface ExtensionRequest {
     clientId?: string
     passePartout?: boolean
     passePartoutOf?: string
+    // Preuve « avant -> apres » (poster personnalise uniquement) : une demonstration, pas une mise
+    // en situation -> nom de fichier marque (le theme l'exclut de l'appariage) et alt deterministe.
+    proof?: boolean
   }>
   ratio: Ratio
   productType: ProductType

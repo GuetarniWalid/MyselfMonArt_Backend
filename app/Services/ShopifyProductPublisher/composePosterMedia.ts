@@ -17,6 +17,14 @@
 
 const PP_ALT_SUFFIX = ' — passe-partout blanc'
 const PP_FILENAME_SUFFIX = '-passe-partout'
+/**
+ * Preuve « avant -> après » (poster personnalisé) : la photo d'origine et le rendu côte à côte.
+ * Le marqueur vit dans le NOM DE FICHIER parce que c'est le seul discriminant que le thème lise
+ * (il apparie image↔jumeau par nom) : un alt serait reformulé par l'IA et traduit en 5 langues, un
+ * metafield positionnel casserait au premier réordonnancement. Le token `mma` est là pour qu'aucun
+ * slug dérivé d'un alt SEO français ne puisse le produire par accident.
+ */
+export const PROOF_FILENAME_SUFFIX = '-mma-preuve'
 
 /** Slug SEO depuis un alt (identique au studio : minuscules, [^a-z0-9]→'-', trim, 80 max). */
 export function slugFromAlt(s: string): string {
@@ -33,6 +41,7 @@ export interface PosterMediaImageMeta {
   clientId?: string
   passePartout?: boolean
   passePartoutOf?: string
+  proof?: boolean
 }
 
 export interface ComposePosterMediaParams {
@@ -87,6 +96,14 @@ export async function composePosterMedia(
         // Œuvre : alt/filename générés (studio) ou déterministes (copie)
         alt = mainArtworkAlt
         filename = mainArtworkFilename
+      } else if (meta?.proof) {
+        // Preuve « avant -> après » : alt DÉTERMINISTE, zéro appel IA. Le générateur de mockups
+        // décrirait « une œuvre murale photographiée dans un cadre lifestyle » — une mise en
+        // situation qui n'existe pas ici. Le slug est tronqué à 60 pour que le marqueur, ajouté
+        // après, ne soit jamais rogné par la limite de 80 de slugFromAlt.
+        // (Testé avant `index === 0` : une preuve remontée en tête y prendrait l'alt de l'œuvre.)
+        alt = `${mainArtworkAlt} — avant / après : de la photo au tableau`
+        filename = `${slugFromAlt(mainArtworkAlt).substring(0, 60)}${PROOF_FILENAME_SUFFIX}`
       } else if (index === 0) {
         // 1er mockup (fond blanc) : réutilise l'alt de l'œuvre + slug dérivé (évite un doublon de filename)
         alt = mainArtworkAlt
