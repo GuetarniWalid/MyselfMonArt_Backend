@@ -10,6 +10,7 @@ import MockupCleaner, { CleanOptions } from '../MockupCleaner'
 import PhotoExamplesGenerator, { ExampleKind, PhotoExamplesPolicy } from '../PhotoExamplesGenerator'
 import RecipeDirector, { RecipeDirectorStepInfo, RecipePrompts } from '../RecipeDirector'
 import StudioDirector, { StudioCatalogEntry, StudioPlan } from '../StudioDirector'
+import RecipeTester, { RecipeTestResult } from '../CustomArt/RecipeTester'
 
 /**
  * Stockage de jobs de redimensionnement sur disque + exécution en arrière-plan.
@@ -33,6 +34,8 @@ interface Job {
   // Étape en cours d'un job à plusieurs passes (analyse de design : 'plan' puis 'prompt').
   // Renvoyée au front pendant le polling : sans elle, 30 à 60 s s'écoulent sans aucun signe.
   phase?: string
+  // Test de recette (Publisher) : rendu d'essai + verdict du juge
+  test?: RecipeTestResult
   error?: string
   createdAt: number
 }
@@ -90,6 +93,7 @@ async function finish(
     scene?: string
     prompts?: RecipePrompts
     plan?: StudioPlan
+    test?: RecipeTestResult
     error?: string
   }
 ): Promise<void> {
@@ -459,6 +463,49 @@ export function startRecipeDirector(
         Math.round((Date.now() - t0) / 1000),
         (error && (error as any).message) || String(error)
       )
+    }
+  })()
+  inflight.add(p)
+  p.finally(() => inflight.delete(p))
+}
+
+/**
+ * Lance un TEST de recette (Publisher : « tester le prompt »). Une génération d'essai + le verdict
+ * du juge, sans publier de produit. Même réserve que les autres : NE PAS attendre dans le
+ * controller — c'est long (génération + jugement), et Cloudflare coupe à ~100 s.
+ */
+export function startRecipeTest(
+  id: string,
+  input: {
+    artwork: string
+    photo: string
+    studioConfig: any
+    studioRecipe: any
+    values: Record<string, string>
+  }
+): void {
+  if (inflight.size >= MAX_INFLIGHT) {
+    finish(id, {
+      status: 'error',
+      error: 'Service de génération occupé. Réessaie dans quelques secondes.',
+    }).catch(() => {})
+    return
+  }
+  const p = (async () => {
+    const t0 = Date.now()
+    try {
+      await setPhase(id, 'prompt')
+      const test = await new RecipeTester().run(input)
+      await finish(id, { status: 'done', test })
+      Logger.info(
+        'recipe-test OK job=%s %ss pass=%s',
+        id,
+        Math.round((Date.now() - t0) / 1000),
+        test.pass
+      )
+    } catch (error) {
+      await finish(id, { status: 'error', error: mapResizeError(error) })
+      Logger.error('recipe-test FAIL job=%s: %s', id, (error as any)?.message || error)
     }
   })()
   inflight.add(p)

@@ -188,6 +188,9 @@ Route.group(() => {
   // (relecture seule pour Walid). Async (job+polling), auth (appel Gemini payant).
   Route.post('/analyze-design', 'RecipeDirectorController.generate').middleware(['auth'])
   Route.get('/analyze-design/result', 'RecipeDirectorController.result').middleware(['auth'])
+  // « Tester le prompt » : rendu d'essai + verdict du juge, AVANT publication.
+  Route.post('/test-recipe', 'RecipeTestController.generate').middleware(['auth'])
+  Route.get('/test-recipe/result', 'RecipeTestController.result').middleware(['auth'])
 }).prefix('/api')
 
 // Batch « posters en masse » (cf. BulkPostersController). Appelé par le moteur de rendu PC (workflow

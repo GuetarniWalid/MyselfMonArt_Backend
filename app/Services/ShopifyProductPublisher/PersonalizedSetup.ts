@@ -1,11 +1,7 @@
-import Logger from '@ioc:Adonis/Core/Logger'
 import Shopify from 'App/Services/Shopify'
-import DesignTextReader, {
-  DesignStepInfo,
-  applyDesignTexts,
-} from 'App/Services/ShopifyProductPublisher/DesignTextReader'
 import StudioTranslator from 'App/Services/ChatGPT/StudioTranslator'
 import { I18N_PATHS, getAtPath, isI18nMap } from 'App/Services/StudioConfig'
+import { finalizeRecipeFromDesign } from 'App/Services/ShopifyProductPublisher/finalizeRecipe'
 import {
   OPTION_SIZE_NAME,
   OPTION_FRAME_NAME,
@@ -50,14 +46,6 @@ import {
 // Cf. commands/ShopifyFinishCustomProduct.ts (finalisation manuelle historique, même contrainte).
 // Posée + poster.isCustom AVANT artwork.type par le CONTRÔLEUR (course P0) — pas ici.
 export const PERSONALIZED_POSTER_CATEGORY_GID = 'gid://shopify/TaxonomyCategory/hg-3-4-2-1'
-
-// Fragments de prompt STRUCTURELS : identiques pour tous les produits (aucune UI, aucun LLM) —
-// imposés ici à la publication. Le reste (base/perPerson/replaceTitle/add/removeExtra) est écrit
-// par RecipeDirector au chargement du design côté Publisher, puis relu par Walid.
-const PROMPT_IMAGE_ROLES =
-  'Two images are attached. IMAGE 1 is the CUSTOMER PHOTO: it is the ONLY source for the subjects — how many they are, their left-to-right order, relative sizes, apparent ages and distinctive features. IMAGE 2 is the STYLE REFERENCE: copy its art style, composition, framing, typography and layout EXACTLY, but never copy its subjects, their faces or its words.'
-const PROMPT_COUNT_LINE =
-  'The final illustration shows EXACTLY {n} person(s), in this left-to-right order: {tokens}. Render no other person, and no text other than the ones requested below.'
 
 export interface PersonalizedSetupParams {
   productId: string
@@ -142,60 +130,12 @@ export default class PersonalizedSetup {
     // le design lui-même. On les lit ici sur l'image de référence, associées aux étapes du
     // parcours. Échec = non bloquant : la table du préréglage reste telle quelle (warning) et
     // le produit naît en brouillon — Walid la voit à son test studio avant activation.
-    const recipeToWrite = JSON.parse(JSON.stringify(studioRecipe))
-    const stepsInfo: DesignStepInfo[] = (configToWrite.steps || [])
-      .filter((s: any) => s && s.type !== 'format' && s.type !== 'photo')
-      .map((s: any) => ({
-        payloadKey: String(s.payloadKey || s.name),
-        type: String(s.type),
-        titleFr: String((s.title && s.title.fr) || s.name),
-      }))
-    const designTexts = await new DesignTextReader().read(referenceBase64, stepsInfo)
-    if (designTexts) {
-      applyDesignTexts(
-        recipeToWrite,
-        designTexts,
-        stepsInfo.map((s) => s.payloadKey),
-        warnings
-      )
-      Logger.info(
-        'design-texts: title=%s slots=%s template=%s',
-        designTexts.title || '—',
-        designTexts.slots.length,
-        designTexts.titleTemplate || '—'
-      )
-    } else {
-      warnings.push(
-        'Lecture des textes du design impossible — table de remplacement du préréglage conservée, vérifie le brouillon.'
-      )
-    }
-
-    // 2d) Fragments de prompt structurels : imposés (identiques pour tous les produits), et
-    // élagage cohérent avec la table lue — sans légendes par sujet (tokens), les fragments
-    // par-personne n'ont pas d'objet ; sans titre, pas de remplacement de titre.
-    recipeToWrite.prompt = recipeToWrite.prompt || {}
-    recipeToWrite.prompt.imageRoles = PROMPT_IMAGE_ROLES
-    if (recipeToWrite.inputs && recipeToWrite.inputs.tokens) {
-      recipeToWrite.prompt.countLine = PROMPT_COUNT_LINE
-    } else {
-      delete recipeToWrite.prompt.countLine
-      delete recipeToWrite.prompt.perPerson
-      delete recipeToWrite.prompt.addExtra
-      delete recipeToWrite.prompt.removeExtra
-      // Le comptage de figures se règle sur les légendes attendues (n = tokens.length). Sans
-      // légendes, n vaut 0 : laisser le contrôle actif ferait échouer TOUS les candidats, donc
-      // tout le produit. C'est calculable, ce n'est pas un réglage — on l'éteint ici, quoi que
-      // le builder ait envoyé (un design sans prénom par sujet est un cas normal).
-      if (recipeToWrite.judge && recipeToWrite.judge.figureCount) {
-        recipeToWrite.judge.figureCount = false
-        warnings.push(
-          'Aucune légende par sujet lue sur le design : le comptage de personnages est désactivé pour ce produit.'
-        )
-      }
-    }
-    if (!(recipeToWrite.inputs && recipeToWrite.inputs.title)) {
-      delete recipeToWrite.prompt.replaceTitle
-    }
+    const recipeToWrite = await finalizeRecipeFromDesign({
+      studioConfig: configToWrite,
+      studioRecipe,
+      referenceBase64,
+      warnings,
+    })
 
     // 3) Metafields -----------------------------------------------------------------
     // Chaque set est tenté indépendamment ; on collecte les échecs (avec la clé, pour le
