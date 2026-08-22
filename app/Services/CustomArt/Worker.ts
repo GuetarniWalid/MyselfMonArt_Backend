@@ -27,8 +27,8 @@ import {
 import {
   resolveProviderChain,
   resolveForcedProvider,
+  resolveRecipeProviders,
   fakeProviderEnabled,
-  makeProvider,
 } from './providers'
 import type { CustomArtProvider, GenerateParams, GenerateResult } from './providers/types'
 
@@ -540,25 +540,10 @@ export default class CustomArtWorker {
       // Modèles à essayer, DANS L'ORDRE : maillon imposé (file admin), mode factice (M10),
       // chaîne déclarée par la recette, sinon le modèle unique de la recette (comportement
       // historique — IDs -preview déjà mappés vers le stable par RecipeService).
-      let providers: CustomArtProvider[]
-      if (job.forcedProvider) {
-        const forced = resolveForcedProvider(job.forcedProvider)
-        if (!forced) {
-          throw new Error(`Provider imposé introuvable ou non configuré: ${job.forcedProvider}`)
-        }
-        providers = [forced]
-      } else if (fake) {
-        providers = resolveProviderChain().slice(0, 1)
-      } else if (recipe.providers) {
-        // Les maillons non configurés (clé API absente) sont écartés plutôt que de faire échouer
-        // toute la chaîne : c'est le principe même d'un filet de secours.
-        providers = recipe.providers.chain
-          .map((key) => makeProvider(key))
-          .filter((p): p is CustomArtProvider => Boolean(p && p.isAvailable()))
-      } else {
-        const built = makeProvider(`gemini:${recipe.model}`)
-        providers = built && built.isAvailable() ? [built] : []
+      if (job.forcedProvider && !resolveForcedProvider(job.forcedProvider)) {
+        throw new Error(`Provider imposé introuvable ou non configuré: ${job.forcedProvider}`)
       }
+      const providers = resolveRecipeProviders({ recipe, forcedProvider: job.forcedProvider })
       if (providers.length === 0) {
         throw new Error('Aucun provider de génération configuré (clé API absente).')
       }

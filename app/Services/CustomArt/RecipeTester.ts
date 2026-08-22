@@ -3,7 +3,7 @@ import sharp from 'sharp'
 import RecipeService from 'App/Services/CustomArt/RecipeService'
 import JudgeRunner from 'App/Services/CustomArt/JudgeRunner'
 import { buildGenericPrompt } from 'App/Services/CustomArt/genericPrompt'
-import { resolveProviderChain } from 'App/Services/CustomArt/providers'
+import { resolveRecipeProviders } from 'App/Services/CustomArt/providers'
 import { finalizeRecipeFromDesign } from 'App/Services/ShopifyProductPublisher/finalizeRecipe'
 
 /**
@@ -23,6 +23,8 @@ import { finalizeRecipeFromDesign } from 'App/Services/ShopifyProductPublisher/f
  */
 export interface RecipeTestResult {
   image: string
+  /** Modèle qui a réellement produit l'image (ex « openai:gpt-image-2 ») — c'est ce qui rend deux essais comparables. */
+  provider: string
   prompt: string
   pass: boolean
   score: number | null
@@ -79,8 +81,13 @@ export default class RecipeTester {
     // 3) Une image, par la chaîne de providers configurée (mêmes modèles qu'en production).
     const photoBuffer = await this.toBuffer(input.photo)
     const refBuffer = await this.toBuffer(input.artwork)
-    const providers = resolveProviderChain()
+    // MÊME résolution que les vraies commandes (cf. resolveRecipeProviders) : le modèle déclaré
+    // par la recette, sinon son modèle unique. Avant, ce test interrogeait la chaîne GLOBALE et
+    // pouvait donc juger un modèle que la cliente n'aurait jamais eu.
+    const providers = resolveRecipeProviders({ recipe })
+    if (providers.length === 0) throw new Error('Aucun modèle configuré pour cette recette.')
     let imageBuffer: Buffer | null = null
+    let usedProvider: string | null = null
     for (const provider of providers) {
       try {
         const result = await provider.generate({
@@ -95,12 +102,14 @@ export default class RecipeTester {
           continue
         }
         imageBuffer = result.imageBuffer
+        usedProvider = provider.key
         break
       } catch (e: any) {
         warnings.push(`${provider.key} : ${e?.message || e}`)
       }
     }
     if (!imageBuffer) throw new Error('Aucun rendu produit — voir les avertissements.')
+    if (!usedProvider) throw new Error('Aucun rendu produit — voir les avertissements.')
 
     // 4) Le MÊME juge que la production : c'est lui qui accepte ou refuse en vrai.
     let pass = true
@@ -126,9 +135,16 @@ export default class RecipeTester {
     }
 
     const jpeg = await sharp(imageBuffer).jpeg({ quality: 88, mozjpeg: true }).toBuffer()
-    Logger.info('recipe-test pass=%s score=%s prompt=%s car.', pass, score, prompt.length)
+    Logger.info(
+      'recipe-test model=%s pass=%s score=%s prompt=%s car.',
+      usedProvider,
+      pass,
+      score,
+      prompt.length
+    )
     return {
       image: `data:image/jpeg;base64,${jpeg.toString('base64')}`,
+      provider: usedProvider,
       prompt,
       pass,
       score,

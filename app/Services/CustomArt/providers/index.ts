@@ -124,3 +124,35 @@ export function resolveForcedProvider(key: string): CustomArtProvider | null {
   const provider = makeProvider(key)
   return provider && provider.isAvailable() ? provider : null
 }
+
+/**
+ * Modèles à essayer pour UNE recette, DANS L'ORDRE. Extrait du Worker (22/08/2026) pour que le
+ * bouton « tester le prompt » du Publisher et les vraies commandes ne puissent plus diverger :
+ * un test qui n'interrogerait pas le même modèle que la production mentirait précisément là où
+ * on attend une preuve.
+ *
+ * Priorité, inchangée : maillon imposé (file admin) > mode factice > chaîne déclarée par la
+ * recette > modèle unique de la recette. Une recette SANS `providers` retombe donc exactement
+ * sur le comportement historique — c'est ce qui protège les produits déjà publiés.
+ *
+ * Rend une liste possiblement VIDE (clés API absentes) : l'appelant décide quoi en faire.
+ */
+export function resolveRecipeProviders(input: {
+  recipe: { model: string; providers?: { chain: string[] } | null }
+  forcedProvider?: string | null
+}): CustomArtProvider[] {
+  if (input.forcedProvider) {
+    const forced = resolveForcedProvider(input.forcedProvider)
+    return forced ? [forced] : []
+  }
+  if (fakeProviderEnabled()) return resolveProviderChain().slice(0, 1)
+  if (input.recipe.providers) {
+    // Les maillons non configurés (clé API absente) sont écartés plutôt que de faire échouer
+    // toute la chaîne : c'est le principe même d'un filet de secours.
+    return input.recipe.providers.chain
+      .map((key) => makeProvider(key))
+      .filter((p): p is CustomArtProvider => Boolean(p && p.isAvailable()))
+  }
+  const built = makeProvider(`gemini:${input.recipe.model}`)
+  return built && built.isAvailable() ? [built] : []
+}
