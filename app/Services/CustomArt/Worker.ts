@@ -159,6 +159,18 @@ export default class CustomArtWorker {
    *
    * UPDATE atomique unique (CASE MySQL) -> sûr en cluster : `recovery_count` est incrémenté
    * et le statut basculé en une seule requête, quel que soit le nombre d'instances.
+   *
+   * ⚠️ L'ORDRE DES AFFECTATIONS EST LOAD-BEARING. MySQL évalue un SET de gauche à droite et
+   * les affectations SUIVANTES lisent la valeur DÉJÀ mise à jour (contrairement au SQL
+   * standard). `status` et `error` doivent donc se calculer AVANT l'incrément. Écrit dans
+   * l'autre sens, le test portait sur `recovery_count + 1` alors que la colonne valait déjà
+   * `ancien + 1` : la condition devenait `ancien + 2 > 1`, TOUJOURS vraie avec
+   * MAX_RECOVERIES=1. La relance gratuite n'avait jamais lieu et la PREMIÈRE interruption
+   * était terminale — donc, depuis que la reprise au démarrage se fait sans délai, chaque
+   * redémarrage du conteneur pendant une génération envoyait la création en revue, avec un
+   * message mentant sur le nombre de tentatives (« interrompue plusieurs fois » après une
+   * seule). Constaté le 30/08/2026 sur une création cliente restée 29 h en revue.
+   *
    * Seuil d'ancienneté sur updated_at : un job traité activement par un sibling est sauvé
    * à chaque transition, donc jamais assez vieux pour être volé ici.
    */
@@ -176,10 +188,12 @@ export default class CustomArtWorker {
       atBoot ? DateTime.now() : DateTime.now().minus({ minutes: ORPHAN_MIN_AGE_MIN })
     ).toSQL({ includeOffset: false }) as string
     const result = await Database.rawQuery(
+      // status/error AVANT l'incrément : cf. l'avertissement du docblock (MySQL lit la valeur
+      // déjà mise à jour). `recovery_count` est donc ici le nombre de relances DÉJÀ subies.
       `UPDATE custom_art_jobs
-       SET recovery_count = recovery_count + 1,
-           status = IF(recovery_count + 1 > :max, 'manual_review', 'pending'),
-           error = IF(recovery_count + 1 > :max, :reason, error),
+       SET status = IF(recovery_count >= :max, 'manual_review', 'pending'),
+           error = IF(recovery_count >= :max, :reason, error),
+           recovery_count = recovery_count + 1,
            updated_at = NOW()
        WHERE status IN ('generating', 'judging') AND updated_at < :stale`,
       {
