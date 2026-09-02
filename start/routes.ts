@@ -253,6 +253,13 @@ Route.group(() => {
   // que le J+30 automatique. Refusé si la création a été achetée.
   Route.post('/review/:uuid/dismiss', 'CustomArtReviewAdminController.dismiss')
 
+  // Toutes les créations encore actionnables — pas seulement celles en revue. Une création qui
+  // ABOUTIT quitte la file et devenait introuvable : plus moyen de savoir à qui écrire ni de
+  // corriger l'image (incident 30/08/2026). `ready-mail` envoie/renvoie « votre création est
+  // prête », le seul e-mail qu'aucune route admin ne savait déclencher.
+  Route.get('/creations', 'CustomArtReviewAdminController.creations')
+  Route.post('/creations/:uuid/ready-mail', 'CustomArtReviewAdminController.resendReady')
+
   // File print (M9, plan §9) : validation humaine de chaque fichier d'impression
   // avant la commande manuelle sur le portail Picanova.
   Route.get('/print-queue', 'CustomArtPrintAdminController.index')

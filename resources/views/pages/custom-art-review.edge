@@ -39,6 +39,23 @@
       </div>
     </section>
 
+    <section class="card">
+      <div class="card-head">
+        <h2 class="card-title">Toutes les créations</h2>
+        <span id="creationsHint" class="hint">—</span>
+      </div>
+      <p class="card-note">
+        Une création qui aboutit quitte la file du dessus. Tu la retrouves ici pour
+        <strong>remplacer son image</strong> par ton propre rendu, ou <strong>prévenir la cliente</strong>
+        que son tableau l'attend.
+      </p>
+      <input id="creationsSearch" class="crea-search" type="search" autocomplete="off"
+             placeholder="Chercher un prénom, une adresse e-mail…">
+      <div id="creations" class="queue">
+        <p class="empty-row">Chargement…</p>
+      </div>
+    </section>
+
   </main>
 
   <div id="toast" class="toast hidden"></div>

@@ -4,10 +4,12 @@
 const $ = (s, r = document) => r.querySelector(s)
 
 const API = '/admin/custom-art/review'
+const ADMIN = '/admin/custom-art'
 
 const state = {
   jobs: [], // [{uuid, playerName, playerNumber, team, format, frame, reason, photoUrl, candidates}]
   providers: [], // maillons relançables, ex 'gemini:gemini-3-pro-image'
+  creations: [], // toutes les créations actionnables (pas seulement celles en revue)
 }
 
 /* ---------- Toast ---------- */
@@ -22,8 +24,8 @@ function toast(msg, kind = '') {
 }
 
 /* ---------- Helpers HTTP (toujours JSON en retour) ---------- */
-async function api(path, options = {}) {
-  const rsp = await fetch(API + path, options)
+async function req(url, options = {}) {
+  const rsp = await fetch(url, options)
   let body = null
   try {
     body = await rsp.json()
@@ -37,6 +39,10 @@ async function api(path, options = {}) {
     throw new Error(msg)
   }
   return body.data
+}
+
+async function api(path, options = {}) {
+  return req(API + path, options)
 }
 
 function esc(s) {
@@ -207,6 +213,143 @@ La photo du client et les rendus déjà générés seront définitivement suppri
   }
 })
 
-$('#refreshBtn').addEventListener('click', loadQueue)
+/* ===================== Toutes les créations =====================
+   La file du haut ne montre que `manual_review` : une création qui aboutit en sort et
+   devenait introuvable — impossible de savoir à qui écrire ni de corriger l'image
+   (incident 30/08/2026). Ici on la retrouve, avec les deux seules actions qui restent
+   utiles : remplacer l'image, prévenir la cliente. */
+
+function creationRow(c) {
+  const titre = c.numero != null ? `${esc(c.nom)} · n°${esc(c.numero)}` : esc(c.nom)
+  const thumb = c.apercuUrl
+    ? `<img class="crea-thumb" src="${esc(c.apercuUrl)}" alt="aperçu de la création" loading="lazy">`
+    : '<div class="crea-thumb"></div>'
+
+  // L'état de l'e-mail est porté par la ligne d'adresse : c'est ce qui décide si on clique.
+  const ligneMail = c.email
+    ? c.mailPretEnvoyeLe
+      ? `${esc(c.email)} — prévenue le ${esc(fmtDate(c.mailPretEnvoyeLe))}`
+      : `${esc(c.email)} — jamais prévenue`
+    : 'aucune adresse laissée — impossible de lui écrire'
+
+  const peutAttacher = c.statut === 'ready' || c.statut === 'manual_review'
+  const peutEcrire = Boolean(c.email) && c.statut === 'ready'
+
+  return `
+  <article class="crea" data-uuid="${esc(c.uuid)}">
+    ${thumb}
+    <div class="crea-id">
+      <span class="crea-name">${titre}
+        <span class="crea-state ${c.statut === 'manual_review' ? 'is-review' : ''}">${esc(c.statutLisible)}</span>
+        ${c.achetee ? '<span class="crea-state">achetée</span>' : ''}
+      </span>
+      <span class="crea-line">${esc(c.option)} — ${esc(c.format)} / ${esc(c.frame)} · reçue le ${esc(fmtDate(c.creeLe))}</span>
+      <span class="crea-line">${ligneMail}</span>
+    </div>
+    <div class="crea-actions">
+      <input type="file" accept="image/jpeg,image/png,image/webp" hidden data-role="file">
+      ${peutAttacher ? '<button class="ghost-btn small" data-action="crea-attach">⬆ Remplacer l\'image</button>' : ''}
+      ${peutEcrire ? `<button class="primary-btn small" data-action="crea-mail">✉ ${c.mailPretEnvoyeLe ? 'Renvoyer' : 'Envoyer'} l'e-mail</button>` : ''}
+    </div>
+  </article>`
+}
+
+function renderCreations() {
+  const box = $('#creations')
+  const q = ($('#creationsSearch').value || '').trim().toLowerCase()
+  const rows = state.creations.filter(
+    (c) =>
+      !q || [c.nom, c.option, c.email, c.uuid].some((v) => v && String(v).toLowerCase().includes(q))
+  )
+  $('#creationsHint').textContent = q
+    ? `${rows.length} sur ${state.creations.length}`
+    : `${state.creations.length} création${state.creations.length > 1 ? 's' : ''}`
+
+  box.innerHTML = rows.length
+    ? rows.map(creationRow).join('')
+    : `<p class="empty-row">${q ? 'Aucune création ne correspond.' : 'Aucune création.'}</p>`
+}
+
+async function loadCreations() {
+  try {
+    const data = await req(`${ADMIN}/creations`)
+    state.creations = data.creations || []
+    renderCreations()
+  } catch (e) {
+    $('#creations').innerHTML = `<p class="empty-row">${esc(e.message)}</p>`
+  }
+}
+
+$('#creationsSearch').addEventListener('input', renderCreations)
+
+$('#creations').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-action]')
+  if (!btn) return
+  const card = btn.closest('.crea')
+  const uuid = card && card.dataset.uuid
+  if (!uuid) return
+  const crea = state.creations.find((c) => c.uuid === uuid)
+  if (!crea) return
+
+  // Remplacer l'image : même endpoint que la file du haut, qui accepte désormais `ready`.
+  // Sur une création DÉJÀ ACHETÉE, le remplacement change le fichier qui partira à
+  // l'impression : on le dit avant, plutôt que de le découvrir sur le tirage.
+  if (btn.dataset.action === 'crea-attach') {
+    if (
+      crea.achetee &&
+      !confirm(
+        `Cette création a été ACHETÉE.\n\nRemplacer son image change le fichier qui part à l’impression. Si le tirage est déjà lancé, il faudra le refaire.\n\nContinuer ?`
+      )
+    ) {
+      return
+    }
+    const input = card.querySelector('[data-role="file"]')
+    input.onchange = async () => {
+      const file = input.files && input.files[0]
+      input.value = ''
+      if (!file) return
+      const fd = new FormData()
+      fd.append('image', file)
+      btn.disabled = true
+      btn.textContent = 'Envoi en cours…'
+      try {
+        await api(`/${uuid}/result`, { method: 'POST', body: fd })
+        toast('Image remplacée — c’est elle que voit la cliente.', 'ok')
+        await Promise.all([loadCreations(), loadQueue()])
+      } catch (err) {
+        toast(err.message, 'err')
+        btn.disabled = false
+        btn.textContent = "⬆ Remplacer l'image"
+      }
+    }
+    input.click()
+    return
+  }
+
+  // Écrire à la cliente : action sortante et irréversible -> on nomme l'adresse dans la question.
+  if (btn.dataset.action === 'crea-mail') {
+    const question = crea.mailPretEnvoyeLe
+      ? `Renvoyer l’e-mail « votre création est prête » à ${crea.email} ?\n\nElle a déjà été prévenue le ${fmtDate(crea.mailPretEnvoyeLe)}.`
+      : `Envoyer l’e-mail « votre création est prête » à ${crea.email} ?`
+    if (!confirm(question)) return
+    btn.disabled = true
+    btn.textContent = 'Envoi…'
+    try {
+      await req(`${ADMIN}/creations/${uuid}/ready-mail`, { method: 'POST' })
+      toast(`E-mail envoyé à ${crea.email} ✓`, 'ok')
+      await loadCreations()
+    } catch (err) {
+      toast(err.message, 'err')
+      btn.disabled = false
+      btn.textContent = "✉ Envoyer l'e-mail"
+    }
+  }
+})
+
+$('#refreshBtn').addEventListener('click', () => {
+  loadQueue()
+  loadCreations()
+})
 
 loadQueue()
+loadCreations()
