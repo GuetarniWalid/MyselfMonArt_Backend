@@ -53,6 +53,10 @@ const MOCKUP_BACKLOG_SCAN_MS = 60_000
 // de repartir en pending. Garde-fou anti-boucle infinie si un job crashe systématiquement
 // le process (SIGSEGV libvips non rattrapable par try/catch) — incident coûts 13/06.
 const MAX_RECOVERIES = 1
+// Raison posée sur un job dont les relances orphelines sont épuisées. Extraite en constante :
+// elle sert à la fois à l'UPDATE et à l'e-mail d'alerte, qui doivent dire la MÊME chose.
+const RECOVERY_EXHAUSTED_REASON =
+  'Génération interrompue plusieurs fois (incident technique). Notre équipe la réalise à la main.'
 // Plafond de coût quotidien (€) si CUSTOM_ART_DAILY_COST_CAP_EUR absent — disjoncteur du
 // worker (en plus du cap à la création de job dans le contrôleur).
 const DAILY_COST_CAP_FALLBACK = 30
@@ -187,6 +191,17 @@ export default class CustomArtWorker {
     const staleBefore = (
       atBoot ? DateTime.now() : DateTime.now().minus({ minutes: ORPHAN_MIN_AGE_MIN })
     ).toSQL({ includeOffset: false }) as string
+    // Créations sur le point de BASCULER en revue (plafond déjà atteint) : relevées AVANT
+    // l'UPDATE, seul moment où on peut encore les distinguer de celles simplement relancées.
+    // Le worker ne tourne que sur UNE instance (garde NODE_APP_INSTANCE plus haut), donc pas
+    // de course avec un sibling. Best-effort : un échec de lecture ne doit pas empêcher la
+    // reprise elle-même.
+    const aBasculer = await CustomArtJob.query()
+      .whereIn('status', ['generating', 'judging'])
+      .where('updated_at', '<', staleBefore)
+      .where('recovery_count', '>=', MAX_RECOVERIES)
+      .catch(() => [] as CustomArtJob[])
+
     const result = await Database.rawQuery(
       // status/error AVANT l'incrément : cf. l'avertissement du docblock (MySQL lit la valeur
       // déjà mise à jour). `recovery_count` est donc ici le nombre de relances DÉJÀ subies.
@@ -198,8 +213,7 @@ export default class CustomArtWorker {
        WHERE status IN ('generating', 'judging') AND updated_at < :stale`,
       {
         max: MAX_RECOVERIES,
-        reason:
-          'Génération interrompue plusieurs fois (incident technique). Notre équipe la réalise à la main.',
+        reason: RECOVERY_EXHAUSTED_REASON,
         stale: staleBefore,
       }
     )
@@ -211,6 +225,23 @@ export default class CustomArtWorker {
         atBoot ? 'au démarrage, sans délai' : `inactifs > ${ORPHAN_MIN_AGE_MIN} min`,
         MAX_RECOVERIES
       )
+    }
+
+    // ALERTE : sans elle, une création part en revue EN SILENCE. `ReviewMailer` n'était appelé
+    // que par toManualReview() ; ce chemin-ci, purement SQL, ne prévenait personne — l'atelier
+    // ne pouvait découvrir la création qu'en ouvrant la file par hasard. Constaté le
+    // 30/08/2026 : une création cliente a passé 29 h dans la file sans que personne le sache.
+    // Best-effort de bout en bout : un e-mail raté ne remet jamais en cause la reprise.
+    for (const stale of aBasculer) {
+      try {
+        const job = await CustomArtJob.find(stale.id)
+        if (!job || job.status !== 'manual_review') continue
+        await new ReviewMailer()
+          .send({ job, teamName: '', reason: job.error || RECOVERY_EXHAUSTED_REASON })
+          .catch(() => {})
+      } catch (e) {
+        Logger.error('custom-art recover-mail uuid=%s: %s', stale.uuid, (e as any)?.message || e)
+      }
     }
   }
 
