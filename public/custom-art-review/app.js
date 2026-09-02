@@ -10,6 +10,8 @@ const state = {
   jobs: [], // [{uuid, playerName, playerNumber, team, format, frame, reason, photoUrl, candidates}]
   providers: [], // maillons relançables, ex 'gemini:gemini-3-pro-image'
   creations: [], // toutes les créations actionnables (pas seulement celles en revue)
+  creationsChargees: false, // évite d'afficher « introuvable » avant le 1er chargement
+  suivi: [], // relances que l'atelier garde sous les yeux : [{uuid, nom, provider, depuis}]
 }
 
 /* ---------- Toast ---------- */
@@ -154,9 +156,19 @@ $('#queue').addEventListener('click', async (e) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider }),
       })
-      toast('Job relancé — il quitte la file.', 'ok')
+      // La création quitte la file (elle n'est plus `manual_review`) : sans trace, elle
+      // « disparaissait » sous les yeux de l'atelier. On la met sous suivi à la place.
+      const nom = ((card.querySelector('.review-title') || {}).textContent || 'création').trim()
+      state.suivi = [
+        { uuid, nom, provider, depuis: new Date().toISOString() },
+        ...state.suivi.filter((s) => s.uuid !== uuid),
+      ]
+      ecrireSuivi(state.suivi)
+      toast('Relancée — suis-la dans « Relances en cours ».', 'ok')
       state.jobs = state.jobs.filter((j) => j.uuid !== uuid)
       renderQueue()
+      renderSuivi()
+      loadCreations()
     } catch (err) {
       toast(err.message, 'err')
       btn.disabled = false
@@ -274,11 +286,123 @@ async function loadCreations() {
   try {
     const data = await req(`${ADMIN}/creations`)
     state.creations = data.creations || []
+    state.creationsChargees = true
     renderCreations()
+    // Le suivi des relances lit son état ICI : une seule source, un seul appel réseau.
+    renderSuivi()
+    planifierSuivi()
   } catch (e) {
     $('#creations').innerHTML = `<p class="empty-row">${esc(e.message)}</p>`
   }
 }
+
+/* ===================== Relances en cours =====================
+   Un clic sur « Relancer » sort la création de `manual_review`, donc de la file : elle
+   disparaissait de l'écran sur-le-champ, sans rien laisser. C'est exactement ce qu'a vécu
+   l'atelier le 30/08/2026. Elle reste désormais ici, avec son état réel, jusqu'à ce que
+   l'atelier la retire lui-même. Mémorisé par onglet (sessionStorage) : un rafraîchissement
+   ne perd pas le fil. */
+
+const SUIVI_KEY = 'ca_suivi'
+const SUIVI_TERMINAL = ['ready', 'failed', 'manual_review']
+const SUIVI_POLL_MS = 8000
+let suiviTimer = null
+
+function lireSuivi() {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(SUIVI_KEY) || '[]')
+    return Array.isArray(v) ? v : []
+  } catch {
+    return []
+  }
+}
+
+function ecrireSuivi(v) {
+  try {
+    sessionStorage.setItem(SUIVI_KEY, JSON.stringify(v))
+  } catch {
+    /* navigation privée : le suivi vit alors le temps de la page */
+  }
+}
+
+function renderSuivi() {
+  const carte = $('#suiviCard')
+  const box = $('#suivi')
+  if (!state.suivi.length) {
+    carte.hidden = true
+    box.innerHTML = ''
+    return
+  }
+  carte.hidden = false
+  $('#suiviHint').textContent = `${state.suivi.length} en suivi`
+
+  box.innerHTML = state.suivi
+    .map((s) => {
+      const live = state.creations.find((c) => c.uuid === s.uuid)
+      const etat = live
+        ? live.statutLisible
+        : state.creationsChargees
+          ? 'introuvable'
+          : 'chargement…'
+      const fini = Boolean(live) && SUIVI_TERMINAL.includes(live.statut)
+      const thumb =
+        live && live.apercuUrl
+          ? `<img class="crea-thumb" src="${esc(live.apercuUrl)}" alt="aperçu de la création" loading="lazy">`
+          : '<div class="crea-thumb"></div>'
+      // Ce que l'atelier doit faire ensuite, en une ligne — pas un journal d'état.
+      const suite = !live
+        ? state.creationsChargees
+          ? 'cette création n’est plus dans la liste (expirée ou retirée)'
+          : '…'
+        : live.statut === 'ready'
+          ? 'le tableau est prêt — la cliente peut le voir et commander'
+          : live.statut === 'manual_review'
+            ? 'revenue en revue : elle est de nouveau dans la file du dessus'
+            : live.statut === 'failed'
+              ? 'la relance a échoué'
+              : 'génération en cours…'
+      return `
+      <article class="crea" data-uuid="${esc(s.uuid)}">
+        ${thumb}
+        <div class="crea-id">
+          <span class="crea-name">${esc(s.nom)}
+            <span class="crea-state ${live && live.statut === 'manual_review' ? 'is-review' : ''}">${esc(etat)}</span>
+          </span>
+          <span class="crea-line">relancée avec ${esc(s.provider)} · ${esc(fmtDate(s.depuis))}</span>
+          <span class="crea-line">${esc(suite)}</span>
+        </div>
+        <div class="crea-actions">
+          <button class="ghost-btn small" data-action="suivi-stop">${fini ? '✓ Retirer du suivi' : 'Arrêter le suivi'}</button>
+        </div>
+      </article>`
+    })
+    .join('')
+}
+
+/** Re-scrute tant qu'une relance suivie n'a pas atteint un état terminal. */
+function planifierSuivi() {
+  clearTimeout(suiviTimer)
+  const enCours = state.suivi.some((s) => {
+    const live = state.creations.find((c) => c.uuid === s.uuid)
+    // Introuvable APRÈS chargement (expirée, retirée) : plus rien à attendre — sinon on
+    // scruterait indéfiniment une création qui ne reviendra jamais dans la liste.
+    if (!live) return !state.creationsChargees
+    return !SUIVI_TERMINAL.includes(live.statut)
+  })
+  if (!enCours) return
+  suiviTimer = setTimeout(loadCreations, SUIVI_POLL_MS)
+}
+
+$('#suivi').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-action="suivi-stop"]')
+  if (!btn) return
+  const card = btn.closest('.crea')
+  if (!card) return
+  state.suivi = state.suivi.filter((s) => s.uuid !== card.dataset.uuid)
+  ecrireSuivi(state.suivi)
+  renderSuivi()
+  planifierSuivi()
+})
 
 $('#creationsSearch').addEventListener('input', renderCreations)
 
@@ -350,6 +474,9 @@ $('#refreshBtn').addEventListener('click', () => {
   loadQueue()
   loadCreations()
 })
+
+state.suivi = lireSuivi()
+renderSuivi()
 
 loadQueue()
 loadCreations()
