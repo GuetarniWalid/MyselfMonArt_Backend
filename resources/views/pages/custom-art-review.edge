@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/custom-art-teams/style.css">
-<link rel="stylesheet" href="/custom-art-review/style.css">
+<link rel="stylesheet" href="/custom-art-review/style.css?v=20261004">
 </head>
 <body>
 <div class="app">
@@ -73,6 +73,21 @@
   <div id="toast" class="toast hidden"></div>
 </div>
 
-<script src="/custom-art-review/app.js"></script>
+<div id="loupe" class="loupe" hidden role="dialog" aria-modal="true" aria-label="Comparer la photo d'origine et le rendu">
+  <button type="button" class="loupe-close" data-loupe="fermer" aria-label="Fermer">✕</button>
+  <div class="loupe-panes">
+    <figure class="loupe-pane">
+      <figcaption>Photo d'origine</figcaption>
+      <div class="loupe-frame"><img id="loupePhoto" alt="photo d'origine de la cliente"></div>
+    </figure>
+    <figure class="loupe-pane" id="loupeRenduPane">
+      <figcaption id="loupeRenduLegende">Rendu</figcaption>
+      <div class="loupe-frame"><img id="loupeRendu" alt="rendu généré"></div>
+    </figure>
+  </div>
+  <div id="loupeStrip" class="loupe-strip" hidden></div>
+</div>
+
+<script src="/custom-art-review/app.js?v=20261004"></script>
 </body>
 </html>

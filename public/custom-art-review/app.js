@@ -83,11 +83,11 @@ function renderQueue() {
     .map((job) => {
       const cands = (job.candidates || [])
         .map(
-          (c) => `
-          <span class="cand" title="${esc(c.reason || '')}">
+          (c, i) => `
+          <button type="button" class="cand" data-zoom="rendu" data-i="${i}" title="${esc(c.reason || '')}">
             <img src="${esc(c.previewUrl)}" alt="candidat ${esc(c.provider)}" loading="lazy">
             <span class="cand-score">${c.pass ? '✓' : '✗'} ${esc(c.score)}${c.suspicion ? ` · s${esc(c.suspicion)}` : ''}</span>
-          </span>`
+          </button>`
         )
         .join('')
       // Jobs génériques (recette produit) : pas de numéro — playerName porte le libellé
@@ -103,7 +103,9 @@ function renderQueue() {
         : ''
       return `
       <article class="review-card" data-uuid="${esc(job.uuid)}">
-        <img class="review-photo" src="${esc(job.photoUrl)}" alt="photo client" loading="lazy">
+        <button type="button" class="vignette-btn" data-zoom="photo" aria-label="Agrandir la photo d'origine">
+          <img class="review-photo" src="${esc(job.photoUrl)}" alt="photo client" loading="lazy">
+        </button>
         <div class="review-main">
           <div class="review-head">
             <span class="review-title">${title}</span>
@@ -231,11 +233,29 @@ La photo du client et les rendus déjà générés seront définitivement suppri
    (incident 30/08/2026). Ici on la retrouve, avec les deux seules actions qui restent
    utiles : remplacer l'image, prévenir la cliente. */
 
+/**
+ * Photo d'origine + rendu actuel, côte à côte et cliquables. La photo est là pour COMPARER les
+ * visages : sans elle, une création relancée ou remplacée ne montrait plus que l'image générée.
+ */
+function vignettes(c) {
+  const photo =
+    c && c.photoUrl
+      ? `<button type="button" class="vignette-btn" data-zoom="photo" aria-label="Agrandir la photo d'origine">
+        <img class="crea-thumb" src="${esc(c.photoUrl)}" alt="photo d'origine" loading="lazy" decoding="async">
+      </button>`
+      : ''
+  const rendu =
+    c && c.apercuUrl
+      ? `<button type="button" class="vignette-btn" data-zoom="rendu" data-i="0" aria-label="Agrandir le rendu">
+        <img class="crea-thumb" src="${esc(c.apercuUrl)}" alt="aperçu de la création" loading="lazy" decoding="async">
+      </button>`
+      : '<div class="crea-thumb"></div>'
+  return `<div class="crea-thumbs">${photo}${rendu}</div>`
+}
+
 function creationRow(c) {
   const titre = c.numero != null ? `${esc(c.nom)} · n°${esc(c.numero)}` : esc(c.nom)
-  const thumb = c.apercuUrl
-    ? `<img class="crea-thumb" src="${esc(c.apercuUrl)}" alt="aperçu de la création" loading="lazy">`
-    : '<div class="crea-thumb"></div>'
+  const thumb = vignettes(c)
 
   // L'état de l'e-mail est porté par la ligne d'adresse : c'est ce qui décide si on clique.
   const ligneMail = c.email
@@ -345,10 +365,7 @@ function renderSuivi() {
           ? 'introuvable'
           : 'chargement…'
       const fini = Boolean(live) && SUIVI_TERMINAL.includes(live.statut)
-      const thumb =
-        live && live.apercuUrl
-          ? `<img class="crea-thumb" src="${esc(live.apercuUrl)}" alt="aperçu de la création" loading="lazy">`
-          : '<div class="crea-thumb"></div>'
+      const thumb = vignettes(live)
       // Ce que l'atelier doit faire ensuite, en une ligne — pas un journal d'état.
       const suite = !live
         ? state.creationsChargees
@@ -468,6 +485,167 @@ $('#creations').addEventListener('click', async (e) => {
       btn.textContent = "✉ Envoyer l'e-mail"
     }
   }
+})
+
+/* ===================== Loupe : photo d'origine ↔ rendu =====================
+   Les vignettes (120 px au mieux) ne permettaient pas de juger un visage. Un clic ouvre la
+   photo d'origine et le rendu CÔTE À CÔTE ; un clic sur une image zoome (×2,5) là où l'on a
+   cliqué, puis l'image suit la souris (ou le doigt) pour balayer le gros plan. */
+
+const loupe = { rendus: [], i: 0, retour: null }
+
+/** Ce que la loupe compare pour une ligne : la photo d'origine et les rendus connus. */
+function contexteLoupe(article) {
+  const uuid = article.dataset.uuid
+  if (article.closest('#queue')) {
+    const job = state.jobs.find((j) => j.uuid === uuid)
+    if (!job) return null
+    return {
+      photoUrl: job.photoUrl,
+      rendus: (job.candidates || []).map((c, i) => ({
+        url: c.previewUrl,
+        legende: `Rendu ${i + 1} — ${c.pass ? 'validé' : 'refusé'} par le juge`,
+      })),
+    }
+  }
+  // « Relances en cours » et « Toutes les créations » lisent la même source.
+  const crea = state.creations.find((c) => c.uuid === uuid)
+  if (!crea) return null
+  return {
+    photoUrl: crea.photoUrl,
+    rendus: crea.apercuUrl
+      ? [{ url: crea.apercuUrl, legende: 'Rendu actuel — celui que voit la cliente' }]
+      : [],
+  }
+}
+
+function dezoomer() {
+  document.querySelectorAll('#loupe .loupe-frame').forEach((f) => {
+    f.classList.remove('zoome')
+    f.querySelector('img').style.transformOrigin = ''
+  })
+}
+
+/** Charge une image dans un cadre de la loupe, avec un repli lisible si elle est introuvable. */
+function chargerDans(img, url) {
+  const cadre = img.closest('.loupe-frame')
+  cadre.classList.remove('indispo')
+  img.onerror = () => cadre.classList.add('indispo')
+  if (img.getAttribute('src') !== url) img.src = url
+}
+
+function afficherRendu() {
+  const r = loupe.rendus[loupe.i]
+  dezoomer()
+  if (!r) return
+  chargerDans($('#loupeRendu'), r.url)
+  $('#loupeRenduLegende').textContent = r.legende
+  document
+    .querySelectorAll('#loupeStrip [data-loupe-i]')
+    .forEach((b) => b.classList.toggle('actif', Number(b.dataset.loupeI) === loupe.i))
+}
+
+function ouvrirLoupe(ctx, i) {
+  loupe.rendus = ctx.rendus
+  loupe.i = Math.min(Math.max(i, 0), Math.max(ctx.rendus.length - 1, 0))
+
+  const el = $('#loupe')
+  const panePhoto = $('#loupePhoto').closest('.loupe-pane')
+  panePhoto.hidden = !ctx.photoUrl
+  if (ctx.photoUrl) chargerDans($('#loupePhoto'), ctx.photoUrl)
+  $('#loupeRenduPane').hidden = ctx.rendus.length === 0
+  el.classList.toggle('seule', !ctx.photoUrl || ctx.rendus.length === 0)
+
+  // Choisir parmi plusieurs rendus : la bande n'apparaît que s'il y a un choix à faire.
+  const strip = $('#loupeStrip')
+  strip.hidden = ctx.rendus.length < 2
+  strip.innerHTML = ctx.rendus
+    .map(
+      (r, n) =>
+        `<button type="button" data-loupe-i="${n}" aria-label="${esc(r.legende)}"><img src="${esc(r.url)}" alt=""></button>`
+    )
+    .join('')
+
+  afficherRendu()
+  el.hidden = false
+  document.body.style.overflow = 'hidden'
+  el.querySelector('.loupe-close').focus()
+}
+
+function fermerLoupe() {
+  const el = $('#loupe')
+  if (el.hidden) return
+  el.hidden = true
+  dezoomer()
+  document.body.style.overflow = ''
+  if (loupe.retour && document.body.contains(loupe.retour)) loupe.retour.focus()
+}
+
+/** Point visé, en % du cadre : c'est lui qui reste sous le pointeur pendant le zoom. */
+function viser(cadre, e) {
+  const r = cadre.getBoundingClientRect()
+  const x = Math.min(Math.max(((e.clientX - r.left) / r.width) * 100, 0), 100)
+  const y = Math.min(Math.max(((e.clientY - r.top) / r.height) * 100, 0), 100)
+  cadre.querySelector('img').style.transformOrigin = `${x}% ${y}%`
+}
+
+// Vignette introuvable (photo purgée, aperçu manquant) : une case vide plutôt qu'une image cassée.
+// En capture, car l'événement `error` d'une image ne remonte pas.
+document.addEventListener(
+  'error',
+  (e) => {
+    const img = e.target
+    if (!(img instanceof HTMLImageElement) || !img.closest('.crea-thumbs')) return
+    const vide = document.createElement('div')
+    vide.className = 'crea-thumb'
+    img.closest('.vignette-btn').replaceWith(vide)
+  },
+  true
+)
+
+// Ouverture depuis n'importe quelle vignette des trois listes.
+document.addEventListener('click', (e) => {
+  const vignette = e.target.closest('[data-zoom]')
+  if (!vignette) return
+  const article = vignette.closest('[data-uuid]')
+  const ctx = article && contexteLoupe(article)
+  if (!ctx) return
+  loupe.retour = vignette
+  ouvrirLoupe(ctx, vignette.dataset.zoom === 'rendu' ? Number(vignette.dataset.i) || 0 : 0)
+})
+
+$('#loupe').addEventListener('click', (e) => {
+  if (e.target.closest('[data-loupe="fermer"]')) return fermerLoupe()
+  const choix = e.target.closest('[data-loupe-i]')
+  if (choix) {
+    loupe.i = Number(choix.dataset.loupeI)
+    return afficherRendu()
+  }
+  const cadre = e.target.closest('.loupe-frame')
+  if (cadre && !cadre.classList.contains('indispo')) {
+    if (cadre.classList.toggle('zoome')) viser(cadre, e)
+    else cadre.querySelector('img').style.transformOrigin = ''
+    return
+  }
+  // Clic dans le vide autour des images : on referme.
+  if (!e.target.closest('figcaption')) fermerLoupe()
+})
+
+// Balayage du gros plan : souris au survol, doigt en glissant (touch-action:none sur le cadre zoomé).
+$('#loupe').addEventListener('pointermove', (e) => {
+  const cadre = e.target.closest('.loupe-frame.zoome')
+  if (cadre) viser(cadre, e)
+})
+
+document.addEventListener('keydown', (e) => {
+  if ($('#loupe').hidden) return
+  if (e.key === 'Escape') return fermerLoupe()
+  const n = loupe.rendus.length
+  if (n < 2) return
+  if (e.key === 'ArrowRight') loupe.i = (loupe.i + 1) % n
+  else if (e.key === 'ArrowLeft') loupe.i = (loupe.i - 1 + n) % n
+  else return
+  afficherRendu()
 })
 
 $('#refreshBtn').addEventListener('click', () => {

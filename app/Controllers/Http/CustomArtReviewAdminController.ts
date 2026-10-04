@@ -106,7 +106,10 @@ export default class CustomArtReviewAdminController {
     try {
       const buffer = await CustomArtStorage.get(job.photoPath)
       response.header('Content-Type', 'image/jpeg')
-      response.header('Cache-Control', 'no-store')
+      // `private` : jamais dans un cache partagé (Cloudflare) — c'est la photo d'une cliente. Les
+      // 10 min de cache NAVIGATEUR évitent de la retélécharger à chaque rafraîchissement de la liste
+      // (scrutée toutes les 8 s pendant une relance) : la photo d'un job ne change jamais.
+      response.header('Cache-Control', 'private, max-age=600')
       return response.send(buffer)
     } catch {
       return response.status(404).json({ success: false, message: 'Photo indisponible.' })
@@ -354,6 +357,9 @@ export default class CustomArtReviewAdminController {
           creeLe: job.createdAt?.toISO() || null,
           // Aperçu de la version actuellement retenue : c'est CE que voit la cliente.
           apercuUrl: chosen?.previewPath ? CustomArtStorage.publicUrl(chosen.previewPath) : null,
+          // Photo d'origine, à côté du rendu : sans elle, une création relancée ou remplacée ne
+          // montrait plus que l'image générée, et l'atelier ne pouvait plus comparer les visages.
+          photoUrl: job.photoPath ? `/admin/custom-art/review/${job.uuid}/photo` : null,
           email: job.notifyEmail || emailBySession.get(job.sessionId) || null,
           mailPretEnvoyeLe: job.notifySentAt?.toISO() || null,
           achetee: orderedJobIds.has(job.id),
