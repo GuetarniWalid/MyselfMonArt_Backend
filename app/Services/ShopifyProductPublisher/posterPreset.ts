@@ -36,7 +36,7 @@ export const POSTER_SIZE_GRID: PosterSize[] = [
     name: '75x100 cm',
     gid: 'gid://shopify/Metaobject/138451878235',
     sans: '64.90',
-    avec: '134.90',
+    avec: '159.90',
   },
   { name: '90x120 cm', gid: 'gid://shopify/Metaobject/138452500827', sans: '71.90', avec: null },
 ]

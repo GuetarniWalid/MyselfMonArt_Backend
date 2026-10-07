@@ -31,8 +31,8 @@ export default class RebuildPosterCadre extends BaseCommand {
     '40x30 cm': '47.90',
     '60x80 cm': '94.90',
     '80x60 cm': '94.90',
-    '75x100 cm': '134.90',
-    '100x75 cm': '134.90',
+    '75x100 cm': '159.90',
+    '100x75 cm': '159.90',
   }
 
   // The 4 reused framePoster swatch metaobjects (Noir, Blanc, Chêne clair, Noyer).

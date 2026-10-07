@@ -485,10 +485,14 @@ export default class ArtworkCopier extends ModelCopier {
 
   public getRelatedProducts(products: Product[], product: ProductById) {
     const tag = this.getTagFromModel(product)
+    // Toiles et posters partagent les tags de ratio : sans ce filtre, éditer un modèle
+    // poster (un prix, par ex.) relançait la copie sur toutes les toiles du même ratio.
+    const modelArtworkType = product.artworkTypeMetafield?.value
 
     return products.filter((p) => {
       const artworkType = p.artworkTypeMetafield?.value
       if (artworkType !== 'painting' && artworkType !== 'poster') return false
+      if (artworkType !== modelArtworkType) return false
 
       if (this.isCustomPoster(p)) return false
 
